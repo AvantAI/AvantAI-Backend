@@ -1,2 +1,2 @@
-# StockVision.AI-Backend
-Backend for StockVision.AI
+# AvantAI-Backend
+Backend for Avant.AI
