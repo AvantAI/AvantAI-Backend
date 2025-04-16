@@ -79,21 +79,6 @@ type SapienApi struct {
 	Logger *zap.Logger
 }
 
-const NewsAgent = "news-agent"
-
-func NewsAgentReqInfo(news string) (string, *ServeRequest, error) {
-
-	agentName := NewsAgent
-
-	reqData := &ServeRequest{
-		Input: []Field{
-			{Name: "news", Value: news},
-		},
-	}
-
-	return agentName, reqData, nil
-}
-
 func NewSapienApi(host string, apiKey string, logger *zap.Logger) *SapienApi {
 	return &SapienApi{
 		Host:   host,
@@ -112,7 +97,7 @@ func (s *SapienApi) ServeReqUrl(agentNamespace string, agentName string, version
 
 func (s *SapienApi) GenerateCompletion(agentNamespace string, agentName string, serverReq *ServeRequest) (int, string, *ServeResponse, error) {
 
-	apiUrl := s.ServeReqUrl(agentNamespace, agentName, "0.0.3")
+	apiUrl := s.ServeReqUrl(agentNamespace, agentName, "")
 
 	reqBody, err := json.Marshal(serverReq)
 	if err != nil {

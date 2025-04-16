@@ -1,4 +1,4 @@
-package main
+package ep
 
 import (
 	"encoding/csv"
@@ -8,7 +8,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -61,19 +63,18 @@ type StockStats struct {
 
 // Configuration
 const (
-	API_KEY                         = "your_api_key_here" // Replace with your actual Alpha Vantage API key
-	MIN_ADR_PERCENT                 = 4.0                 // Minimum Average Daily Range in percent
-	MIN_DOLLAR_VOLUME               = 10000000.0          // Minimum Dollar Volume
-	MIN_GAP_UP_PERCENT              = 10.0                // Minimum Gap Up in percent
-	CONSOLIDATION_DAYS              = 5                   // Number of days to check for consolidation
-	MAX_CONSOLIDATION_RANGE_PERCENT = 5.0                 // Maximum range for consolidation period
+	MIN_ADR_PERCENT                 = 4.0        // Minimum Average Daily Range in percent
+	MIN_DOLLAR_VOLUME               = 10000000.0 // Minimum Dollar Volume
+	MIN_GAP_UP_PERCENT              = 10.0       // Minimum Gap Up in percent
+	CONSOLIDATION_DAYS              = 5          // Number of days to check for consolidation
+	MAX_CONSOLIDATION_RANGE_PERCENT = 5.0        // Maximum range for consolidation period
 )
 
-func main() {
+func FilterStocks(apiKey string) {
 	fmt.Println("Starting stock filter program...")
 
 	// Get bulk quotes data
-	stocks, err := fetchBulkQuotes()
+	stocks, err := fetchBulkQuotes(apiKey)
 	if err != nil {
 		log.Fatalf("Error fetching bulk quotes: %v", err)
 	}
@@ -96,7 +97,7 @@ func main() {
 		// Initial filtering based on simple metrics
 		if adr >= MIN_ADR_PERCENT && dolVol >= MIN_DOLLAR_VOLUME && gapUp >= MIN_GAP_UP_PERCENT {
 			// Check for consolidation
-			isConsolidating, err := checkConsolidation(stock.Symbol)
+			isConsolidating, err := checkConsolidation(apiKey, stock.Symbol)
 			if err != nil {
 				fmt.Printf("Error checking consolidation for %s: %v\n", stock.Symbol, err)
 				continue
@@ -127,73 +128,88 @@ func main() {
 	fmt.Printf("Filter complete. Found %d stocks matching criteria.\n", len(filteredStocks))
 }
 
-func fetchBulkQuotes() ([]StockData, error) {
+func fetchBulkQuotes(apiKey string) ([]StockData, error) {
 	file, err := os.Open("config.csv")
-    if err != nil {
-        return nil, err
-    }
-    defer file.Close()
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
 
-    reader := csv.NewReader(file)
-    rows, err := reader.ReadAll()
-    if err != nil {
-        return nil, err
-    }
+	reader := csv.NewReader(file)
+	rows, err := reader.ReadAll()
+	if err != nil {
+		return nil, err
+	}
 
-    // Parse stock symbols (assuming first column)
-    var symbols []string
-    for _, row := range rows {
-        if len(row) > 0 && row[0] != "Symbol" && row[0] != "" {
-            symbols = append(symbols, row[0])
-        }
-    }
+	// Parse stock symbols (assuming first column)
+	var symbols []string
+	for _, row := range rows {
+		if len(row) > 0 && row[0] != "Symbol" && row[0] != "" {
+			symbols = append(symbols, row[0])
+		}
+	}
 
-    // Process in batches of 100 symbols
-    const batchSize = 100
-    var allQuotes []StockData
+	// Process in batches of 100 symbols
+	const batchSize = 100
+	var allQuotes []StockData
 
-    for i := 0; i < len(symbols); i += batchSize {
-        end := i + batchSize
-        if end > len(symbols) {
-            end = len(symbols)
-        }
-        
-        // Create a batch of symbols
-        batch := symbols[i:end]
-        batchSymbols := strings.Join(batch, ",")
-        
-        url := fmt.Sprintf("https://www.alphavantage.co/query?function=BATCH_STOCK_QUOTES&symbols=%s&apikey=%s", 
-                           batchSymbols, API_KEY)
+	var wg sync.WaitGroup
+	resultCh := make(chan []StockData, len(symbols)/batchSize) // Channel to collect result
 
-        resp, err := http.Get(url)
-        if err != nil {
-            return nil, err
-        }
-        
-        body, err := io.ReadAll(resp.Body)
-        resp.Body.Close()
-        if err != nil {
-            return nil, err
-        }
+	for i := 0; i < len(symbols); i += batchSize {
+		end := i + batchSize
+		if end > len(symbols) {
+			end = len(symbols)
+		}
 
-        var bulkResponse BulkQuoteResponse
-        err = json.Unmarshal(body, &bulkResponse)
-        if err != nil {
-            return nil, fmt.Errorf("error parsing bulk quotes response: %v. Response: %s", err, string(body))
-        }
+		// Create a batch of symbols
+		batch := symbols[i:end]
+		batchSymbols := strings.Join(batch, ",")
 
-        // Add quotes from this batch to the total
-        allQuotes = append(allQuotes, bulkResponse.Symbols...)
-        
-        // Add a small delay to avoid rate limits (if needed)
-        time.Sleep(200 * time.Millisecond)
+		wg.Add(1) // Increment the counter for each goroutine
+		go getBulkQuotesReq(&wg, apiKey, batchSymbols, resultCh)
+	}
+
+	// Wait for all goroutines to finish
+	wg.Wait()
+	close(resultCh) // Close the channel after all goroutines are done
+
+	for result := range resultCh {
+		// Add quotes from this batch to the total
+		allQuotes = append(allQuotes, result...)
 	}
 
 	return allQuotes, nil
 }
 
-func checkConsolidation(symbol string) (bool, error) {
-	url := fmt.Sprintf("https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=%s&outputsize=compact&apikey=%s", symbol, API_KEY)
+func getBulkQuotesReq(wg *sync.WaitGroup, apiKey string, batchSymbols string, resultCh chan<- []StockData) {
+	defer wg.Done() // Decrement the counter when the goroutine completes
+	url := fmt.Sprintf("https://www.alphavantage.co/query?function=BATCH_STOCK_QUOTES&symbols=%s&apikey=%s",
+		batchSymbols, apiKey)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		os.Exit(1)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		os.Exit(1)
+	}
+
+	var bulkResponse BulkQuoteResponse
+	err = json.Unmarshal(body, &bulkResponse)
+	if err != nil {
+		fmt.Printf("error parsing bulk quotes response: %v. Response: %s", err, string(body))
+		os.Exit(1)
+	}
+
+	resultCh <- bulkResponse.Symbols // Send the result back through the channel
+}
+
+func checkConsolidation(apiKey string, symbol string) (bool, error) {
+	url := fmt.Sprintf("https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=%s&outputsize=compact&apikey=%s", symbol, apiKey)
 
 	resp, err := http.Get(url)
 	if err != nil {
@@ -277,7 +293,14 @@ func outputToJSON(stocks []FilteredStock) error {
 		return err
 	}
 
-	err = os.WriteFile("filtered_stocks.json", jsonData, 0644)
+	stockDir := "data/stockdata"
+
+	if err := os.MkdirAll(stockDir, 0755); err != nil {
+		fmt.Printf("Error creating directories: %v\n", err)
+		os.Exit(1)
+	}
+
+	err = os.WriteFile(filepath.Join(stockDir, "filtered_stocks.json"), jsonData, 0644)
 	if err != nil {
 		return err
 	}
