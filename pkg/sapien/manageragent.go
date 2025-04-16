@@ -16,14 +16,11 @@ type StockData struct {
 	Volume float64 `json:"volume,string"`
 }
 
-func ManagerAgentReqInfo(min string, stockData StockData, news string, earnings_report string) (*ServeResponse, error) {
+func ManagerAgentReqInfo(stock_data string, news string, earnings_report string) (*ServeResponse, error) {
 	const EpClaudeManagerAgent = "ep-claude-manager-agent"
 	const namespace = "pranav"
 
-	stock_data := fmt.Sprintf(min + " Open: " + fmt.Sprint(stockData.Open) + 
-	" Price: " + fmt.Sprint(stockData.Price) + " High: " + fmt.Sprint(stockData.High) + "Low: " + fmt.Sprint(stockData.Low))
-
-	sapienApi := NewSapienApi("localhost:8081", "", zap.Must(zap.NewProduction()))	
+	sapienApi := NewSapienApi("localhost:8081", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhZG1pbiI6InN5c3RlbV9hZG1pbiIsImF1ZCI6WyJjbWQiXSwiZXhwIjoxNzQ3MzI3MzY5LCJpYXQiOjE3NDQ3MzUzNjksImlzcyI6IlNhcGllbmh1YiIsImp0aSI6IjQ2MjczMzA5LWVkYTctNGNiZC1hNWFkLWE1NjcyZjU0M2IzNCIsInN1YiI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCIsInRlbmFudCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCJ9.eJYaCCoLpyZ6xxvP0M9cdMubYn-sdyhn9VyVPSHGlKw", zap.Must(zap.NewProduction()))	
 
 	statusCode, status, agentRes, err := sapienApi.GenerateCompletion(
     namespace, 
