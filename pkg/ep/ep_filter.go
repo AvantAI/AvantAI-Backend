@@ -192,7 +192,7 @@ func fetchBulkQuotes(apiKey string) ([]StockData, error) {
 	var wg sync.WaitGroup
 	resultCh := make(chan []StockData, len(symbols)/batchSize) // Channel to collect result
 
-	for i := 0; i < 100; i += batchSize {
+	for i := 0; i < 4800; i += batchSize {
 		end := i + batchSize
 		if end > len(symbols) {
 			end = len(symbols)
