@@ -7,13 +7,41 @@ import (
 	"log"
 	"os"
 	"sync"
+
+	"github.com/joho/godotenv"
 )
 
-const apiKey = "QGFZ0LNEQHQAMHOI"
-
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	apiKey := os.Getenv("API_KEY")
 	// Filters out stocks that don't match the given criteria
 	ep.FilterStocks(apiKey)
+	// url := fmt.Sprintf("https://www.alphavantage.co/query?function=REALTIME_BULK_QUOTES&symbol=%sentitlement=realtime&apikey=%s",
+	// 	"AAPL,NVDA,IBM", apiKey)
+
+	// resp, err := http.Get(url)
+	// if err != nil {
+	// 	os.Exit(1)
+	// }
+
+	// body, err := io.ReadAll(resp.Body)
+	// resp.Body.Close()
+	// if err != nil {
+	// 	os.Exit(1)
+	// }
+
+	// var bulkResponse ep.BulkQuoteResponse
+	// err = json.Unmarshal(body, &bulkResponse)
+	// if err != nil {
+	// 	fmt.Printf("error parsing bulk quotes response: %v. Response: %s", err, string(body))
+	// 	os.Exit(1)
+	// }
+
+	// fmt.Printf("bulk response: %+v", bulkResponse.Data)
 
 	// Navigate to the directory and open the file
 	filePath := "data/stockdata/filtered_stocks.json"
@@ -45,7 +73,7 @@ func main() {
 	for _, stock := range stocks {
 		// Start the goroutine
 		wg.Add(1)
-		go ep.GetNews(&wg, apiKey, stock.Symbol)
+		go ep.GetNews(&wg, apiKey, stock.Symbol, stock.StockInfo.Timestamp)
 	}
 
 	// Wait for all goroutines to finish

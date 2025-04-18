@@ -1,0 +1,80 @@
+NEWS SENTIMENT REPORT FOR PLTR
+Generated on: 2025-04-17 12:46:22
+Total articles: 4
+
+--------------------------------------------------------------------------------
+
+ARTICLE 1
+Title: Red Cat Holdings to Host Investor and Analyst Day on February 27, 2025, in New York City
+Source: GlobeNewswire
+Published: 20250203T180900
+URL: https://www.globenewswire.com/news-release/2025/02/03/3019791/0/en/Red-Cat-Holdings-to-Host-Investor-and-Analyst-Day-on-February-27-2025-in-New-York-City.html
+Sentiment:  (Score: -0.06)
+PLTR Sentiment:  (Score: 0.0, Relevance: 0.165031)
+
+Summary:
+SAN JUAN, Puerto Rico, Feb. 03, 2025 ( GLOBE NEWSWIRE ) -- Red Cat Holdings, Inc. ( Nasdaq: RCAT ) ( "Red Cat" or the "Company" ) , a drone technology company integrating robotic hardware and software for military, government, and commercial operations, will host an Investor and Analyst Day on ...
+
+Topics:
+- Energy & Transportation (Relevance: 0.5)
+- Technology (Relevance: 0.5)
+- Financial Markets (Relevance: 0.158519)
+
+--------------------------------------------------------------------------------
+
+ARTICLE 2
+Title: Red Cat Holdings to Host Investor and Analyst Day on February 27, 2025, in New York City - Red Cat Hldgs  ( NASDAQ:RCAT ) , Palantir Technologies  ( NASDAQ:PLTR ) 
+Source: Benzinga
+Published: 20250203T180908
+URL: https://www.benzinga.com/pressreleases/25/02/g43444006/red-cat-holdings-to-host-investor-and-analyst-day-on-february-27-2025-in-new-york-city
+Sentiment:  (Score: -0.02)
+PLTR Sentiment:  (Score: 0.0, Relevance: 0.149656)
+
+Summary:
+SAN JUAN, Puerto Rico, Feb. 03, 2025 ( GLOBE NEWSWIRE ) -- Red Cat Holdings, Inc.
+
+Topics:
+- Energy & Transportation (Relevance: 0.5)
+- Technology (Relevance: 0.5)
+- Financial Markets (Relevance: 0.360215)
+
+--------------------------------------------------------------------------------
+
+ARTICLE 3
+Title: Should iShares Russell Mid-Cap ETF  ( IWR )  Be on Your Investing Radar?
+Source: Zacks Commentary
+Published: 20250203T112021
+URL: https://www.zacks.com/stock/news/2408011/should-ishares-russell-mid-cap-etf-iwr-be-on-your-investing-radar
+Sentiment:  (Score: 0.19)
+PLTR Sentiment:  (Score: 0.055635, Relevance: 0.1331)
+
+Summary:
+Style Box ETF report for ...
+
+Topics:
+- Technology (Relevance: 1.0)
+- Financial Markets (Relevance: 1.0)
+
+--------------------------------------------------------------------------------
+
+ARTICLE 4
+Title: Elon Musk's $4 Billion A Day DOGE Plan May Cut Federal Spending 30%; Apple's Spring 2025 Lineup Revealed; Triumph Group To Go Private In $3 Billion Deal - Top Headlines While The U.S. Slept
+Source: Benzinga
+Published: 20250203T163409
+URL: https://www.benzinga.com/25/02/43440720/elon-musks-4b-doge-plan-may-cut-federal-spending-30-apples-spring-2025-lineup-revealed-triumph-group-to-go-privat
+Sentiment:  (Score: -0.06)
+PLTR Sentiment:  (Score: 0.165079, Relevance: 0.045396)
+
+Summary:
+Larry Summers Slams Trump's 'Bizarre' Tariffs On Canada And Mexico: 'This Is A Stop-Or-I'll-Shoot-Myself-In-The-Foot Kind Of Policy' Elon Musk's Daily $4 Billion DOGE Target Will Lead To 30% Cut In Federal Spending, Says Economist Jason Furman
+
+Topics:
+- Economy - Monetary (Relevance: 0.158519)
+- Retail & Wholesale (Relevance: 0.333333)
+- Financial Markets (Relevance: 0.929393)
+- Manufacturing (Relevance: 0.333333)
+- Technology (Relevance: 0.333333)
+- Blockchain (Relevance: 0.158519)
+
+--------------------------------------------------------------------------------
+

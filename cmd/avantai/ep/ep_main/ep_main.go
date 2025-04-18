@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 // Structure to hold the intraday data response
@@ -24,9 +26,13 @@ type TimeSeries struct {
 // Global slice to store the fetched stock data
 var stockDataList []TimeSeries
 
-const apiKey = ""
-
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	apiKey := os.Getenv("API_KEY")
 	// Navigate to the directory and open the file
 	filePath := "data/stockdata/filtered_stocks.json"
 	file, err := os.Open(filePath)
@@ -84,7 +90,7 @@ func main() {
 	}
 }
 
-func getData( symbols string, apiKey string) ([]ep.StockData, error) {
+func getData(symbols string, apiKey string) ([]ep.StockData, error) {
 	// Send the HTTP GET request
 	resp, err := http.Get(fmt.Sprintf("https://www.alphavantage.co/query?function=REALTIME_BULK_QUOTES&symbol=%s&apikey=%s", symbols, apiKey))
 	if err != nil {
@@ -105,15 +111,15 @@ func getData( symbols string, apiKey string) ([]ep.StockData, error) {
 		os.Exit(1)
 	}
 
-	return bulkResponse.Symbols, nil
+	return bulkResponse.Data, nil
 
 }
 
 func runManagerAgent(wg *sync.WaitGroup, min string, stock ep.StockData) {
 	defer wg.Done() // Decrement the counter when the goroutine completes
 
-	stock_data := fmt.Sprintf(min + " Open: " + fmt.Sprint(stock.Open) + 
-	" Close: " + fmt.Sprint(stock.PreviousClose) + " High: " + fmt.Sprint(stock.High) + "Low: " + fmt.Sprint(stock.Low))
+	stock_data := fmt.Sprintf(min + " Open: " + fmt.Sprint(stock.Open) +
+		" Close: " + fmt.Sprint(stock.PreviousClose) + " High: " + fmt.Sprint(stock.High) + "Low: " + fmt.Sprint(stock.Low))
 
 	dataDir := "reports"
 	stockDir := filepath.Join(dataDir, stock.Symbol)

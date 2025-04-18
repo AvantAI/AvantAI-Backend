@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/joho/godotenv"
 	"go.uber.org/zap"
 )
 
@@ -31,7 +32,14 @@ func EarningsReportAgentReqInfo(wg *sync.WaitGroup, stock string) {
 		log.Fatalf("Error reading file: %v\n", err)
 	}
 
-	sapienApi := NewSapienApi("localhost:8081", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhZG1pbiI6InN5c3RlbV9hZG1pbiIsImF1ZCI6WyJjbWQiXSwiZXhwIjoxNzQ3MzI3MzY5LCJpYXQiOjE3NDQ3MzUzNjksImlzcyI6IlNhcGllbmh1YiIsImp0aSI6IjQ2MjczMzA5LWVkYTctNGNiZC1hNWFkLWE1NjcyZjU0M2IzNCIsInN1YiI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCIsInRlbmFudCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCJ9.eJYaCCoLpyZ6xxvP0M9cdMubYn-sdyhn9VyVPSHGlKw", zap.Must(zap.NewProduction()))
+	err = godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	apiKey := os.Getenv("SAPIEN_TOKEN")
+
+	sapienApi := NewSapienApi("http://localhost:8081", apiKey, zap.Must(zap.NewProduction()))
 
 	statusCode, status, agentRes, err := sapienApi.GenerateCompletion(
 		namespace,

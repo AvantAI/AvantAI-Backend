@@ -10,7 +10,7 @@ import (
 	"sync"
 )
 
-func WorkerAgentMain() {
+func main() {
 
 	// Navigate to the directory and open the file
 	filePath := "data/stockdata/filtered_stocks.json"
@@ -41,7 +41,7 @@ func WorkerAgentMain() {
 	// gets the news info for the respective stock
 	for _, stock := range stocks {
 		// Start the goroutine
-		wg.Add(1)
+		wg.Add(2)
 
 		// TODO: add the agent pipeline
 		go sapien.NewsAgentReqInfo(&wg, stock.Symbol)

@@ -43,21 +43,25 @@ type TickerSentiment struct {
 	Relevance string `json:"relevance_score"`
 }
 
-func GetNews(wg *sync.WaitGroup, apiKey string, ticker string) {
+func GetNews(wg *sync.WaitGroup, apiKey string, ticker string, timestamp string) {
 	defer wg.Done() // Decrement the counter when the goroutine completes
-	if len(os.Args) != 3 {
-		fmt.Println("Usage: ./stock-news-sentiment <API_KEY> <TICKER>")
-		os.Exit(1)
-	}
 
 	// Get current and previous day's date
-	now := time.Now()
-	yesterday := now.AddDate(0, 0, -1)
-	timeFrom := yesterday.Format("20060102T0000")
-	timeTo := now.Format("20060102T2359")
+	// now := time.Now()
+	// yesterday := now.AddDate(0, 0, -1)
+	// timeFrom := yesterday.Format("20060102T0000")
+	// timeTo := now.Format("20060102T2359")
+
+	// timeFrom := "20250203T0000"
+	// timeTo := "20250204T0000"
+
+	timeFrom, timeTo := getTime(timestamp)
+
+	fmt.Println("Time from:", timeFrom)
+	fmt.Println("Time to:", timeTo)
 
 	// Fetch data from Alpha Vantage
-	url := fmt.Sprintf("https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=%s&apikey=%s&limit=10&time_from=%s&time_to=%s",
+	url := fmt.Sprintf("https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=%s&apikey=%s&limit=10&time_from=%s&time_to=%s&sort=RELEVANCE",
 		ticker, apiKey, timeFrom, timeTo)
 
 	fmt.Printf("Fetching news sentiment data for %s...\n", ticker)
@@ -84,6 +88,8 @@ func GetNews(wg *sync.WaitGroup, apiKey string, ticker string) {
 		fmt.Printf("Error parsing JSON: %v\n", err)
 		os.Exit(1)
 	}
+
+	fmt.Println(result.Sentiment)
 
 	// Create folders
 	dataDir := "data"
@@ -193,4 +199,30 @@ func writeArticlesToFile(filePath string, articles []Article, ticker string) err
 	}
 
 	return nil
+}
+
+func getTime(timestamp string) (string, string) {
+	// Get current and previous day's date
+	now := time.Now()
+	yesterday := now.AddDate(0, 0, -1)
+	timeFrom := yesterday.Format("20060102T0000")
+	timeTo := now.Format("20060102T2359")
+
+	fmt.Println(timestamp)
+
+	if (timestamp != "") {
+		// Parse the timestamp
+		t, err := time.Parse("2006-01-02", timestamp[0:10])
+		if err != nil {
+			fmt.Printf("Error parsing timestamp: %v\n", err)
+			return timeFrom, timeTo
+		}
+
+		// Format the time to the required format
+		y := t.AddDate(0, 0, -1)
+		timeFrom = y.Format("20060102T0000")
+		timeTo = t.Format("20060102T0000")
+	}
+
+	return timeFrom, timeTo
 }
