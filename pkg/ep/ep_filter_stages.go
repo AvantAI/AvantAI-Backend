@@ -16,26 +16,39 @@ import (
 	"time"
 )
 
-// API response structures
 type BulkQuoteResponse struct {
-	MetaData map[string]string `json:"Meta Data"`
-	Data     []StockData       `json:"data"`
+    Endpoint string      `json:"endpoint"`
+    Message  string      `json:"message"`
+    Data     []StockData `json:"data"`
 }
 
 type StockData struct {
-	Symbol                     string  `json:"symbol"`
-	Timestamp                  string  `json:"timestamp"`
-	Open                       float64 `json:"open,string"`
-	High                       float64 `json:"high,string"`
-	Low                        float64 `json:"low,string"`
-	Close                      float64 `json:"close,string"`
-	Volume                     float64 `json:"volume,string"`
-	PreviousClose              float64 `json:"previousClose,string"`
-	Change                     float64 `json:"change,string"`
-	ChangePercent              float64 `json:"changePercent"`
-	ExtendedHoursQuote         float64 `json:"extendedhoursquote"`
-	ExtendedHoursChange        float64 `json:"extendedhourschange"`
-	ExtendedHoursChangePercent string  `json:"extendedhourschangepercent"`
+    Symbol                      string  `json:"symbol"`
+    Timestamp                   string  `json:"timestamp"`
+    Open                        float64 `json:"-"`
+    High                        float64 `json:"-"`
+    Low                         float64 `json:"-"`
+    Close                       float64 `json:"-"`
+    Volume                      int64   `json:"-"`
+    PreviousClose               float64 `json:"-"`
+    Change                      float64 `json:"-"`
+    ChangePercent               float64 `json:"-"`
+    ExtendedHoursQuote          float64 `json:"-"`
+    ExtendedHoursChange         float64 `json:"-"`
+    ExtendedHoursChangePercent  float64 `json:"-"`
+    
+    // Raw JSON values for manual processing
+    RawOpen                   string `json:"open"`
+    RawHigh                   string `json:"high"`
+    RawLow                    string `json:"low"`
+    RawClose                  string `json:"close"`
+    RawVolume                 string `json:"volume"`
+    RawPreviousClose          string `json:"previous_close"`
+    RawChange                 string `json:"change"`
+    RawChangePercent          string `json:"change_percent"`
+    RawExtHoursQuote          string `json:"extended_hours_quote"`
+    RawExtHoursChange         string `json:"extended_hours_change"`
+    RawExtHoursChangePercent  string `json:"extended_hours_change_percent"`
 }
 
 // Overview response structure
@@ -169,7 +182,7 @@ func stage1FilterByGapUp(apiKey string) ([]StockData, error) {
 					continue // Skip if data is not available
 				}
 				// Calculate gap up percentage: ((Open - Close)/Close) * 100
-				gapUp := ((stock.ExtendedHoursQuote - stock.Close) / stock.Close) * 100
+				gapUp := stock.ExtendedHoursChangePercent
 				
 				if gapUp >= MIN_GAP_UP_PERCENT {
 					fmt.Printf("Stock %s has gap up of %.2f%%\n", stock.Symbol, gapUp)
@@ -211,7 +224,7 @@ func stage2FilterByMarketCap(apiKey string, stocks []StockData) ([]FilteredStock
 		}
 		
 		// Calculate gap up for output consistency
-		gapUp := ((stock.ExtendedHoursQuote - stock.Close) / stock.Close) * 100
+		gapUp := stock.ExtendedHoursChangePercent
 		
 		// Check market cap threshold
 		if overview.MarketCap >= MIN_MARKET_CAP {
@@ -312,14 +325,56 @@ func getBulkQuotesReq(apiKey string, batchSymbols string) ([]StockData, error) {
 	}
 
 	var bulkResponse BulkQuoteResponse
-	err = json.Unmarshal(body, &bulkResponse)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing bulk quotes response: %v", err)
-	}
-
-	fmt.Println(string(body))
+    if err := json.Unmarshal(body, &bulkResponse); err != nil {
+        log.Fatalf("Error parsing bulk quotes response: %v", err)
+    }
+    
+    // Process the data to convert string values to their proper types
+    for i := range bulkResponse.Data {
+        bulkResponse.Data[i].Process()
+    }
 
 	return bulkResponse.Data, nil
+}
+
+// Process converts raw string values to their respective typed values
+func (s *StockData) Process() {
+    // Helper function to parse float values
+    parseFloat := func(val string) float64 {
+        if val == "" {
+            return 0
+        }
+        f, err := strconv.ParseFloat(val, 64)
+        if err != nil {
+            return 0
+        }
+        return f
+    }
+    
+    // Helper function to parse int values
+    parseInt := func(val string) int64 {
+        if val == "" {
+            return 0
+        }
+        i, err := strconv.ParseInt(val, 10, 64)
+        if err != nil {
+            return 0
+        }
+        return i
+    }
+    
+    // Convert all the raw string values to their proper types
+    s.Open = parseFloat(s.RawOpen)
+    s.High = parseFloat(s.RawHigh)
+    s.Low = parseFloat(s.RawLow)
+    s.Close = parseFloat(s.RawClose)
+    s.Volume = parseInt(s.RawVolume)
+    s.PreviousClose = parseFloat(s.RawPreviousClose)
+    s.Change = parseFloat(s.RawChange)
+    s.ChangePercent = parseFloat(s.RawChangePercent)
+    s.ExtendedHoursQuote = parseFloat(s.RawExtHoursQuote)
+    s.ExtendedHoursChange = parseFloat(s.RawExtHoursChange)
+    s.ExtendedHoursChangePercent = parseFloat(s.RawExtHoursChangePercent)
 }
 
 // Function to get company overview

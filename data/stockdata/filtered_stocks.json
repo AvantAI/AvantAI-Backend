@@ -1,1 +1,16 @@
-null
+[
+  {
+    "symbol": "NDSN",
+    "stock_info": {
+      "timestamp": "2025-04-21 18:26:46.974",
+      "market_cap": 10290215000,
+      "dolvol": 84168814.77380951,
+      "gap-up": 20.780870645361627,
+      "adr": 103.86773589294437,
+      "name": "Nordson Corporation",
+      "exchange": "NASDAQ",
+      "sector": "TECHNOLOGY",
+      "industry": "GENERAL INDUSTRIAL MACHINERY \u0026 EQUIPMENT, NEC"
+    }
+  }
+]

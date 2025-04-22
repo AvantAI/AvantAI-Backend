@@ -256,7 +256,8 @@ func getIntradayData(symbols string, dates []string, increment int, apiKey strin
 				stockData.Close, _ = strconv.ParseFloat(close, 64)
 			}
 			if volume, ok := dataMap["5. volume"].(string); ok {
-				stockData.Volume, _ = strconv.ParseFloat(volume, 64)
+				volumeFloat, _ := strconv.ParseFloat(volume, 64)
+				stockData.Volume = int64(volumeFloat)
 			}
 
 			result = append(result, stockData)
