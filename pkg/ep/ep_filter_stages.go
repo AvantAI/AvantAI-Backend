@@ -87,7 +87,6 @@ const (
 	MIN_GAP_UP_PERCENT = 10.0        // Minimum Gap Up in percent
 	MIN_ADR_PERCENT    = 4.0         // Minimum Average Daily Range in percent
 	MIN_MARKET_CAP     = 200000000.0 // Minimum Market Cap in dollars
-	HISTORY_DAYS       = 21          // Number of days for historical analysis
 )
 
 func FilterStocks(apiKey string) {
@@ -395,7 +394,7 @@ func calculateHistoricalMetrics(timeSeriesData *TimeSeriesResponse) (float64, fl
 	})
 
 	// Check if we have enough data
-	if len(dates) < HISTORY_DAYS {
+	if len(dates) < 21 {
 		return 0, 0, fmt.Errorf("not enough historical data, only %d days available", len(dates))
 	}
 
@@ -404,7 +403,7 @@ func calculateHistoricalMetrics(timeSeriesData *TimeSeriesResponse) (float64, fl
 	var daysCount int = 0
 
 	// Process the last HISTORY_DAYS days
-	for i := 0; i < HISTORY_DAYS && i < len(dates); i++ {
+	for i := 0; i < 21 && i < len(dates); i++ {
 		dataItem := timeSeriesData.TimeSeries[dates[i]]
 
 		// Parse values
