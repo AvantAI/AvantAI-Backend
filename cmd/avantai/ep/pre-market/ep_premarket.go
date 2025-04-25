@@ -17,7 +17,8 @@ func main() {
 		log.Fatal("Error loading .env file")
 	}
 
-	apiKey := os.Getenv("API_KEY")
+	// apiKey := os.Getenv("API_KEY")
+	apiKey := os.Getenv("TIINGO_KEY")
 	// Filters out stocks that don't match the given criteria
 	ep.FilterStocks(apiKey)
 	// url := fmt.Sprintf("https://www.alphavantage.co/query?function=REALTIME_BULK_QUOTES&symbol=%sentitlement=realtime&apikey=%s",

@@ -165,7 +165,6 @@ func getIntradayData(symbols string, dates []string, increment int, apiKey strin
 		// Format the year and month for the API parameter
 		yearMonth := parsedDate.Format("2006-01")
 
-
 		// Format the API URL for Intraday Time Series (1min interval) with month parameter
 		apiURL := fmt.Sprintf("https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol=%s&interval=1min&month=%s&outputsize=full&apikey=%s",
 			symbol, yearMonth, apiKey)
