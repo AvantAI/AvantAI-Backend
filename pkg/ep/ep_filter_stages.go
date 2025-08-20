@@ -114,33 +114,34 @@ package ep
 
 // 	fmt.Printf("Stage 1 complete. Found %d stocks with significant gap up.\n", len(gapUpStocks))
 
-// 	// Stage 2: Filter by market cap
-// 	fmt.Println("Stage 2: Filtering by market cap...")
-// 	marketCapStocks, err := stage2FilterByMarketCap(apiKey, gapUpStocks)
-// 	if err != nil {
-// 		log.Fatalf("Error in Stage 2: %v", err)
-// 	}
+// 	// // Stage 2: Filter by market cap
+// 	// fmt.Println("Stage 2: Filtering by market cap...")
+// 	// marketCapStocks, err := stage2FilterByMarketCap(apiKey, gapUpStocks)
+// 	// if err != nil {
+// 	// 	log.Fatalf("Error in Stage 2: %v", err)
+// 	// }
 
-// 	fmt.Printf("Stage 2 complete. Found %d stocks with sufficient market cap.\n", len(marketCapStocks))
+// 	// fmt.Printf("Stage 2 complete. Found %d stocks with sufficient market cap.\n", len(marketCapStocks))
 
-// 	// Stage 3: Calculate and filter by dollar volume and ADR
-// 	fmt.Println("Stage 3: Calculating historical metrics (DolVol and ADR)...")
-// 	finalFilteredStocks, err := stage3FilterByHistoricalMetrics(apiKey, marketCapStocks)
-// 	if err != nil {
-// 		log.Fatalf("Error in Stage 3: %v", err)
-// 	}
+// 	// // Stage 3: Calculate and filter by dollar volume and ADR
+// 	// fmt.Println("Stage 3: Calculating historical metrics (DolVol and ADR)...")
+// 	// finalFilteredStocks, err := stage3FilterByHistoricalMetrics(apiKey, marketCapStocks)
+// 	// if err != nil {
+// 	// 	log.Fatalf("Error in Stage 3: %v", err)
+// 	// }
 
-// 	// Output results to JSON file
-// 	err = outputToJSON(finalFilteredStocks)
-// 	if err != nil {
-// 		log.Fatalf("Error writing to JSON: %v", err)
-// 	}
+// 	// // Output results to JSON file
+// 	// err = outputToJSON(finalFilteredStocks)
+// 	// if err != nil {
+// 	// 	log.Fatalf("Error writing to JSON: %v", err)
+// 	// }
 
-// 	fmt.Printf("Filter complete. Found %d stocks matching all criteria.\n", len(finalFilteredStocks))
+// 	// fmt.Printf("Filter complete. Found %d stocks matching all criteria.\n", len(finalFilteredStocks))
 // }
 
 // // Stage 1: Filter by gap up
 // func stage1FilterByGapUp(apiKey string) ([]StockData, error) {
+// 	count := 0
 // 	// Get stock symbols from config file
 // 	symbols, err := getStockSymbols()
 // 	if err != nil {
@@ -182,12 +183,13 @@ package ep
 // 				// 	continue // Skip if data is not available
 // 				// }
 // 				// Calculate gap up percentage: ((Open - Close)/Close) * 100
-// 				//gapUp := stock.ExtendedHoursChangePercent
-// 				gapUp := ((stock.Open - stock.PreviousClose) / stock.PreviousClose) * 100
+// 				gapUp := stock.ExtendedHoursChangePercent
+// 				// gapUp := ((stock.Open - stock.PreviousClose) / stock.PreviousClose) * 100
 
-// 				if gapUp >= MIN_GAP_UP_PERCENT {
+// 				if gapUp >= MIN_GAP_UP_PERCENT && (stock.Open - stock.PreviousClose) > 0 {
 // 					fmt.Printf("Stock %s has gap up of %.2f%%\n", stock.Symbol, gapUp)
 // 					batchResults = append(batchResults, stock)
+// 					count++
 // 				}
 // 			}
 
@@ -206,6 +208,8 @@ package ep
 // 	for result := range resultCh {
 // 		gapUpStocks = append(gapUpStocks, result...)
 // 	}
+
+// 	fmt.Println("Count: ", count)
 
 // 	return gapUpStocks, nil
 // }

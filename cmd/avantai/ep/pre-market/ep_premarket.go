@@ -18,9 +18,12 @@ func main() {
 	}
 
 	// apiKey := os.Getenv("API_KEY")
-	apiKey := os.Getenv("TIINGO_KEY")
+	apiKey := os.Getenv("API_KEY")
+	// tiingoKey := os.Getenv("TIINGO_KEY")
+	marketStackKey := os.Getenv("MARKETSTACK_TOKEN")
 	// Filters out stocks that don't match the given criteria
-	ep.FilterStocks(apiKey)
+	// ep.FilterStocks(apiKey)
+	ep.FilterStocksMarketstack(marketStackKey)
 	// url := fmt.Sprintf("https://www.alphavantage.co/query?function=REALTIME_BULK_QUOTES&symbol=%sentitlement=realtime&apikey=%s",
 	// 	"AAPL,NVDA,IBM", apiKey)
 
@@ -45,7 +48,7 @@ func main() {
 	// fmt.Printf("bulk response: %+v", bulkResponse.Data)
 
 	// Navigate to the directory and open the file
-	filePath := "data/stockdata/filtered_stocks.json"
+	filePath := "data/stockdata/filtered_stocks_marketstack.json"
 	file, err := os.Open(filePath)
 	if err != nil {
 		log.Fatalf("Error opening file: %v\n", err)

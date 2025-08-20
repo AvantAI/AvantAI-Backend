@@ -21,7 +21,7 @@ type StockData struct {
 
 func ManagerAgentReqInfo(stock_data string, news string, earnings_report string) (*ServeResponse, error) {
 	const EpClaudeManagerAgent = "ep-claude-manager-agent"
-	const namespace = "pranav"
+	const namespace = "avant"
 
 	err := godotenv.Load()
 	if err != nil {

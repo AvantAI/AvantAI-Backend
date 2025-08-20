@@ -14,8 +14,8 @@ import (
 
 func EarningsReportAgentReqInfo(wg *sync.WaitGroup, stock string) {
 	defer wg.Done() // Decrement the counter when the goroutine completes
-	const EpClaudeManagerAgent = "ep-earnings-report-agent"
-	const namespace = "pranav"
+	const EpEarningsReportAgent = "ep-earnings-report-agent"
+	const namespace = "avant"
 
 	// Navigate to the directory and open the file
 	dirPath := fmt.Sprintf("data/%s", stock)
@@ -43,7 +43,7 @@ func EarningsReportAgentReqInfo(wg *sync.WaitGroup, stock string) {
 
 	statusCode, status, agentRes, err := sapienApi.GenerateCompletion(
 		namespace,
-		EpClaudeManagerAgent,
+		EpEarningsReportAgent,
 		&ServeRequest{
 			Input: []Field{
 				{Name: "ep_earnings", Value: string(earnings_report)},

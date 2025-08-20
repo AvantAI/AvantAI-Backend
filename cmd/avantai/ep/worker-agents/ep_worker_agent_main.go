@@ -13,7 +13,7 @@ import (
 func main() {
 
 	// Navigate to the directory and open the file
-	filePath := "data/stockdata/filtered_stocks.json"
+	filePath := "data/stockdata/filtered_stocks_marketstack.json"
 	file, err := os.Open(filePath)
 	if err != nil {
 		log.Fatalf("Error opening file: %v\n", err)
