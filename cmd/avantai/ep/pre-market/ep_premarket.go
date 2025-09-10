@@ -23,7 +23,7 @@ func main() {
 	marketStackKey := os.Getenv("MARKETSTACK_TOKEN")
 	// Filters out stocks that don't match the given criteria
 	// ep.FilterStocks(apiKey)
-	ep.FilterStocksMarketstack(marketStackKey)
+	ep.FilterStocksEpisodicPivot(marketStackKey)
 	// url := fmt.Sprintf("https://www.alphavantage.co/query?function=REALTIME_BULK_QUOTES&symbol=%sentitlement=realtime&apikey=%s",
 	// 	"AAPL,NVDA,IBM", apiKey)
 

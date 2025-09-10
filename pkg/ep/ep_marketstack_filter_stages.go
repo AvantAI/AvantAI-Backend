@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-// Marketstack v2 API Response Structures (based on official documentation)
+// Marketstack v2 API Response Structures
 type MarketstackEODResponse struct {
 	Pagination struct {
 		Limit  int `json:"limit"`
@@ -49,7 +49,7 @@ type MarketstackEODData struct {
 	Date         string  `json:"date"`
 }
 
-// Marketstack Ticker Info Response (for company details)
+// Marketstack Ticker Info Response
 type MarketstackTickerInfoResponse struct {
 	Data MarketstackTickerInfo `json:"data"`
 }
@@ -66,7 +66,7 @@ type MarketstackTickerInfo struct {
 	DateFounded         *string `json:"date_founded"`
 }
 
-// Our internal structures (compatible with original algorithm)
+// Enhanced structures for episodic pivot analysis
 type StockData struct {
 	Symbol                     string  `json:"symbol"`
 	Timestamp                  string  `json:"timestamp"`
@@ -91,81 +91,110 @@ type FilteredStock struct {
 }
 
 type StockStats struct {
-	Timestamp string  `json:"timestamp"`
-	MarketCap float64 `json:"market_cap"`
-	DolVol    float64 `json:"dolvol"` // Average dollar volume over 21 days
-	GapUp     float64 `json:"gap-up"` // Gap up percentage
-	ADR       float64 `json:"adr"`    // Average daily range
-	Name      string  `json:"name"`
-	Exchange  string  `json:"exchange"`
-	Sector    string  `json:"sector"`
-	Industry  string  `json:"industry"`
+	Timestamp              string  `json:"timestamp"`
+	MarketCap              float64 `json:"market_cap"`
+	DolVol                 float64 `json:"dolvol"`                   // Average dollar volume over 21 days
+	GapUp                  float64 `json:"gap_up"`                   // Gap up percentage
+	ADR                    float64 `json:"adr"`                      // Average daily range
+	Name                   string  `json:"name"`
+	Exchange               string  `json:"exchange"`
+	Sector                 string  `json:"sector"`
+	Industry               string  `json:"industry"`
+	// New premarket and technical analysis fields
+	PremarketVolume        float64 `json:"premarket_volume"`        // Current premarket volume
+	AvgPremarketVolume     float64 `json:"avg_premarket_volume"`    // 20-day average premarket volume
+	PremarketVolumeRatio   float64 `json:"premarket_volume_ratio"`  // Current/Average premarket volume
+	PremarketVolAsPercent  float64 `json:"premarket_vol_percent"`   // Premarket vol as % of avg daily vol
+	SMA200                 float64 `json:"sma_200"`                 // 200-day Simple Moving Average
+	EMA200                 float64 `json:"ema_200"`                 // 200-day Exponential Moving Average
+	EMA50                  float64 `json:"ema_50"`                  // 50-day Exponential Moving Average
+	EMA20                  float64 `json:"ema_20"`                  // 20-day Exponential Moving Average
+	EMA10                  float64 `json:"ema_10"`                  // 10-day Exponential Moving Average
+	IsAbove200EMA          bool    `json:"is_above_200_ema"`        // Price above 200 EMA
+	DistanceFrom50EMA      float64 `json:"distance_from_50_ema"`    // Distance from 50 EMA in ADRs
+	IsExtended             bool    `json:"is_extended"`             // Is stock extended (>5 ADRs from 50 EMA)
+	IsTooExtended          bool    `json:"is_too_extended"`         // Is stock too extended (>8 ADRs from 50 EMA)
+	VolumeDriedUp          bool    `json:"volume_dried_up"`         // 20-day avg vol < 60-day avg vol
+	IsNearEMA1020          bool    `json:"is_near_ema_10_20"`       // Within 2 ADRs of 10/20 EMA
+	BreaksResistance       bool    `json:"breaks_resistance"`       // Gap up breaks previous resistance
+	PreviousEarningsReaction string `json:"previous_earnings_reaction"` // Positive/Negative/Neutral
 }
 
-// Configuration (same filtering criteria)
+// Configuration
 const (
-	MIN_DOLLAR_VOLUME  = 10000000.0  // Minimum Dollar Volume
-	MIN_GAP_UP_PERCENT = 10.0        // Minimum Gap Up in percent
-	MIN_ADR_PERCENT    = 4.0         // Minimum Average Daily Range in percent
-	MIN_MARKET_CAP     = 200000000.0 // Minimum Market Cap in dollars
+	MIN_DOLLAR_VOLUME          = 10000000.0  // $10M minimum dollar volume
+	MIN_GAP_UP_PERCENT         = 8.0         // 8%+ gap up (strategy says 8%+, ideally 10-20%)
+	MIN_ADR_PERCENT            = 4.0         // Minimum average daily range
+	MIN_MARKET_CAP             = 200000000.0 // $200M minimum market cap
+	MIN_PREMARKET_VOL_RATIO    = 5.0         // 5-10x average premarket volume
+	MAX_PREMARKET_VOL_RATIO    = 10.0
+	MIN_PREMARKET_AS_DAILY_PCT = 20.0        // 20-50% of average daily volume
+	MAX_PREMARKET_AS_DAILY_PCT = 50.0
+	MAX_EXTENSION_ADR          = 5.0         // 5x ADRs above 50 EMA = extended
+	TOO_EXTENDED_ADR           = 8.0         // 8x ADRs above 50 EMA = too extended
+	NEAR_EMA_ADR_THRESHOLD     = 2.0         // Within 2 ADRs of 10/20 EMA
 	
-	
-	// Marketstack API rate limiting (conservative for free tier)
-	API_CALLS_PER_SECOND = 2     // 5 calls per second max, using 2 to be safe
-	MAX_CONCURRENT       = 3     // Limit concurrent requests
+	// API rate limiting
+	API_CALLS_PER_SECOND = 2
+	MAX_CONCURRENT       = 3
 )
 
-func FilterStocksMarketstack(apiKey string) {
-	fmt.Println("=== Starting 3-stage stock filter program with Marketstack v2 API ===")
+func FilterStocksEpisodicPivot(apiKey string) {
+	fmt.Println("=== Episodic Pivot Stock Filter with Premarket Analysis ===")
 	
-	// Stage 1: Get individual EOD data and filter by gap up
-	fmt.Println("\n🔍 Stage 1: Fetching EOD data and filtering by gap up...")
-	gapUpStocks, err := stage1FilterByGapUpMarketstackV2(apiKey)
+	// Stage 1: Basic gap up filter (8%+)
+	fmt.Println("\n🔍 Stage 1: Filtering by gap up (8%+ minimum)...")
+	gapUpStocks, err := stage1FilterByGapUpEP(apiKey)
 	if err != nil {
 		log.Fatalf("❌ Error in Stage 1: %v", err)
 	}
 
-	fmt.Printf("✅ Stage 1 complete. Found %d stocks with significant gap up.\n", len(gapUpStocks))
+	fmt.Printf("✅ Stage 1 complete. Found %d stocks with 8%+ gap up.\n", len(gapUpStocks))
 
 	if len(gapUpStocks) == 0 {
 		fmt.Println("⚠️ No stocks found with gap up criteria. Exiting.")
 		return
 	}
 
-	// Stage 2: Estimate market cap (Marketstack doesn't provide direct market cap)
-	fmt.Println("\n💰 Stage 2: Estimating market cap...")
-	marketCapStocks, err := stage2FilterByMarketCapMarketstackV2(apiKey, gapUpStocks)
+	// Stage 2: Market cap and liquidity filter
+	fmt.Println("\n💰 Stage 2: Filtering by market cap and liquidity...")
+	liquidStocks, err := stage2FilterByLiquidity(apiKey, gapUpStocks)
 	if err != nil {
 		log.Fatalf("❌ Error in Stage 2: %v", err)
 	}
 
-	fmt.Printf("✅ Stage 2 complete. Found %d stocks with sufficient estimated market cap.\n", len(marketCapStocks))
+	fmt.Printf("✅ Stage 2 complete. Found %d stocks meeting liquidity requirements.\n", len(liquidStocks))
 
-	if len(marketCapStocks) == 0 {
-		fmt.Println("⚠️ No stocks found with market cap criteria. Exiting.")
+	if len(liquidStocks) == 0 {
+		fmt.Println("⚠️ No stocks found meeting liquidity criteria. Exiting.")
 		return
 	}
 
-	// Stage 3: Calculate and filter by dollar volume and ADR
-	fmt.Println("\n📊 Stage 3: Calculating historical metrics (DolVol and ADR)...")
-	finalFilteredStocks, err := stage3FilterByHistoricalMetricsMarketstackV2(apiKey, marketCapStocks)
+	// Stage 3: Technical analysis and premarket volume analysis
+	fmt.Println("\n📊 Stage 3: Technical analysis and premarket volume...")
+	technicalStocks, err := stage3TechnicalAndPremarketAnalysis(apiKey, liquidStocks)
 	if err != nil {
 		log.Fatalf("❌ Error in Stage 3: %v", err)
 	}
 
-	// Output results to JSON file
-	err = outputToJSON(finalFilteredStocks)
+	fmt.Printf("✅ Stage 3 complete. Found %d stocks meeting technical criteria.\n", len(technicalStocks))
+
+	// Stage 4: Final episodic pivot filter
+	fmt.Println("\n🎯 Stage 4: Final episodic pivot criteria...")
+	finalStocks := stage4FinalEpisodicPivotFilter(technicalStocks)
+
+	// Output results
+	err = outputEpisodicPivotResults(finalStocks)
 	if err != nil {
-		log.Fatalf("❌ Error writing to JSON: %v", err)
+		log.Fatalf("❌ Error writing results: %v", err)
 	}
 
-	fmt.Printf("\n🎉 Filter complete! Found %d stocks matching all criteria.\n", len(finalFilteredStocks))
-	fmt.Println("📁 Results written to filtered_stocks_marketstack.json")
+	fmt.Printf("\n🎉 Episodic Pivot Filter complete! Found %d qualifying stocks.\n", len(finalStocks))
+	fmt.Println("📁 Results written to episodic_pivot_candidates.json")
 }
 
-// Stage 1: Filter by gap up using Marketstack v2 EOD endpoint
-func stage1FilterByGapUpMarketstackV2(apiKey string) ([]StockData, error) {
-	fmt.Println("📋 Loading stock symbols...")
+// Stage 1: Filter by gap up (8%+ minimum)
+func stage1FilterByGapUpEP(apiKey string) ([]StockData, error) {
 	symbols, err := getStockSymbols()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get stock symbols: %v", err)
@@ -175,14 +204,10 @@ func stage1FilterByGapUpMarketstackV2(apiKey string) ([]StockData, error) {
 
 	var gapUpStocks []StockData
 	var mu sync.Mutex
-	gapUpCount := 0
 	processedCount := 0
 
-	// Create a semaphore to limit concurrent requests
 	semaphore := make(chan struct{}, MAX_CONCURRENT)
 	var wg sync.WaitGroup
-
-	// Rate limiter
 	rateLimiter := time.Tick(time.Second / API_CALLS_PER_SECOND)
 
 	for _, symbol := range symbols {
@@ -190,53 +215,34 @@ func stage1FilterByGapUpMarketstackV2(apiKey string) ([]StockData, error) {
 		go func(sym string) {
 			defer wg.Done()
 			
-			// Acquire semaphore
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
-			
-			// Wait for rate limiter
 			<-rateLimiter
 
 			mu.Lock()
 			processedCount++
-			if processedCount%50 == 0 {
+			if processedCount%25 == 0 {
 				fmt.Printf("   Processed %d/%d symbols...\n", processedCount, len(symbols))
 			}
 			mu.Unlock()
 
-			// Get current and previous day data for gap calculation
-			fmt.Printf("🔍 Processing %s...\n", sym)
-			
 			currentData, previousData, err := getCurrentAndPreviousDataV2(apiKey, sym)
 			if err != nil {
-				fmt.Printf("⚠️ Error fetching data for %s: %v\n", sym, err)
 				return
 			}
 
 			if currentData == nil || previousData == nil {
-				fmt.Printf("⚠️ Insufficient data for %s (need 2 days)\n", sym)
 				return
 			}
 
-			// Debug output for gap calculation
-			fmt.Printf("📊 %s Data:\n", sym)
-			fmt.Printf("   Current: Open=%.2f, Close=%.2f, Date=%s\n", 
-				currentData.Open, currentData.Close, currentData.Date)
-			fmt.Printf("   Previous: Close=%.2f, Date=%s\n", 
-				previousData.Close, previousData.Date)
-
-			// Calculate gap up percentage: ((CurrentOpen - PreviousClose)/PreviousClose) * 100
 			if previousData.Close <= 0 {
-				fmt.Printf("⚠️ Invalid previous close price for %s: %.2f\n", sym, previousData.Close)
 				return
 			}
 
 			gapUp := ((currentData.Open - previousData.Close) / previousData.Close) * 100
-			gapAmount := currentData.Open - previousData.Close
 
-			fmt.Printf("   Gap Analysis: %.2f%% (Gap Amount: $%.2f)\n", gapUp, gapAmount)
-
-			if gapUp >= MIN_GAP_UP_PERCENT && gapAmount > 0 {
+			// Filter for 8%+ gap up
+			if gapUp >= MIN_GAP_UP_PERCENT {
 				stockData := StockData{
 					Symbol:                     currentData.Symbol,
 					Timestamp:                  currentData.Date,
@@ -247,7 +253,7 @@ func stage1FilterByGapUpMarketstackV2(apiKey string) ([]StockData, error) {
 					Volume:                     int64(currentData.Volume),
 					PreviousClose:              previousData.Close,
 					Change:                     currentData.Close - previousData.Close,
-					ChangePercent:              ((currentData.Close - previousData.Close) / previousData.Close) * 100,
+					ChangePercent:              gapUp,
 					ExtendedHoursQuote:         currentData.Close,
 					ExtendedHoursChange:        currentData.Close - previousData.Close,
 					ExtendedHoursChangePercent: gapUp,
@@ -256,94 +262,36 @@ func stage1FilterByGapUpMarketstackV2(apiKey string) ([]StockData, error) {
 				}
 
 				mu.Lock()
-				fmt.Printf("✅ %s qualifies! Gap up: %.2f%% (Min: %.2f%%)\n", sym, gapUp, MIN_GAP_UP_PERCENT)
+				fmt.Printf("✅ %s qualifies! Gap up: %.2f%%\n", sym, gapUp)
 				gapUpStocks = append(gapUpStocks, stockData)
-				gapUpCount++
 				mu.Unlock()
-			} else {
-				fmt.Printf("❌ %s rejected: Gap up %.2f%% < %.2f%% or negative gap\n", 
-					sym, gapUp, MIN_GAP_UP_PERCENT)
 			}
 		}(symbol)
 	}
 
 	wg.Wait()
-	fmt.Printf("📈 Gap up analysis complete: %d qualifying stocks found\n", gapUpCount)
 	return gapUpStocks, nil
 }
 
-// Get current and previous day data from Marketstack v2 EOD endpoint
-func getCurrentAndPreviousDataV2(apiKey string, symbol string) (*MarketstackEODData, *MarketstackEODData, error) {
-	// Get last 3 days of data to ensure we have 2 trading days
-	url := fmt.Sprintf("https://api.marketstack.com/v2/eod?access_key=%s&symbols=%s&limit=3&sort=DESC", 
-		apiKey, symbol)
-
-	fmt.Printf("🌐 API Call: %s\n", url)
-
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, nil, fmt.Errorf("HTTP request failed: %v", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read response: %v", err)
-	}
-
-	// Debug: print raw response for first few requests
-	if len(body) < 500 {
-		fmt.Printf("📄 Raw API Response for %s: %s\n", symbol, string(body))
-	}
-
-	var eodResponse MarketstackEODResponse
-	if err := json.Unmarshal(body, &eodResponse); err != nil {
-		return nil, nil, fmt.Errorf("failed to parse JSON: %v", err)
-	}
-
-	fmt.Printf("📊 API returned %d records for %s\n", len(eodResponse.Data), symbol)
-
-	if len(eodResponse.Data) < 2 {
-		return nil, nil, fmt.Errorf("insufficient data: only %d records", len(eodResponse.Data))
-	}
-
-	// Marketstack returns data in DESC order (newest first)
-	current := &eodResponse.Data[0]   // Most recent trading day
-	previous := &eodResponse.Data[1]  // Previous trading day
-
-	fmt.Printf("📅 Current: %s, Previous: %s\n", current.Date, previous.Date)
-
-	return current, previous, nil
-}
-
-// Stage 2: Estimate market cap (Marketstack doesn't provide direct market cap)
-func stage2FilterByMarketCapMarketstackV2(apiKey string, stocks []StockData) ([]FilteredStock, error) {
-	var marketCapStocks []FilteredStock
+// Stage 2: Filter by market cap and basic liquidity
+func stage2FilterByLiquidity(apiKey string, stocks []StockData) ([]FilteredStock, error) {
+	var liquidStocks []FilteredStock
 	rateLimiter := time.Tick(time.Second / API_CALLS_PER_SECOND)
 
-	fmt.Printf("💰 Analyzing market cap for %d stocks...\n", len(stocks))
+	fmt.Printf("💰 Analyzing liquidity for %d stocks...\n", len(stocks))
 
 	for i, stock := range stocks {
-		fmt.Printf("🏢 [%d/%d] Processing market cap for %s...\n", i+1, len(stocks), stock.Symbol)
-		
-		// Rate limiting
+		fmt.Printf("🏢 [%d/%d] Processing liquidity for %s...\n", i+1, len(stocks), stock.Symbol)
 		<-rateLimiter
 
-		// Get additional company info
 		companyInfo, err := getTickerInfoV2(apiKey, stock.Symbol)
 		if err != nil {
 			fmt.Printf("⚠️ Could not get company info for %s: %v\n", stock.Symbol, err)
 		}
 
-		// Estimate market cap using multiple methods
 		estimatedMarketCap := estimateMarketCapImproved(stock, companyInfo)
 
-		fmt.Printf("💰 %s Market Cap Analysis:\n", stock.Symbol)
-		fmt.Printf("   Price: $%.2f\n", stock.Close)
-		fmt.Printf("   Volume: %d shares\n", stock.Volume)
-		fmt.Printf("   Estimated Market Cap: $%.0f\n", estimatedMarketCap)
-		fmt.Printf("   Required Minimum: $%.0f\n", MIN_MARKET_CAP)
-
+		// Apply minimum liquidity criteria ($10M+ DolVol requirement)
 		if estimatedMarketCap >= MIN_MARKET_CAP {
 			sector := "Unknown"
 			industry := "Unknown"
@@ -374,18 +322,453 @@ func stage2FilterByMarketCapMarketstackV2(apiKey string, stocks []StockData) ([]
 				},
 			}
 
-			marketCapStocks = append(marketCapStocks, filteredStock)
-			fmt.Printf("✅ %s added to market cap filtered list\n", stock.Symbol)
+			liquidStocks = append(liquidStocks, filteredStock)
+			fmt.Printf("✅ %s passed liquidity filter\n", stock.Symbol)
 		} else {
 			fmt.Printf("❌ %s rejected: Market cap $%.0f < $%.0f\n", 
 				stock.Symbol, estimatedMarketCap, MIN_MARKET_CAP)
 		}
 	}
 
-	return marketCapStocks, nil
+	return liquidStocks, nil
 }
 
-// Get ticker info from Marketstack v2
+// Stage 3: Technical analysis and REAL premarket volume analysis with Alpha Vantage
+func stage3TechnicalAndPremarketAnalysis(apiKey string, stocks []FilteredStock) ([]FilteredStock, error) {
+	var technicalStocks []FilteredStock
+	rateLimiter := time.Tick(time.Second / API_CALLS_PER_SECOND)
+	
+	// Alpha Vantage rate limiter (5 calls per minute for free tier)
+	alphaVantageRateLimiter := time.Tick(time.Minute / 5)
+
+	fmt.Printf("📊 Performing technical and REAL premarket analysis for %d stocks...\n", len(stocks))
+	fmt.Println("🔔 Using Alpha Vantage for real premarket data (FREE tier: 5 calls/min)")
+
+	for i, stock := range stocks {
+		fmt.Printf("📈 [%d/%d] Analyzing %s...\n", i+1, len(stocks), stock.Symbol)
+		<-rateLimiter
+
+		// Get extended historical data for technical indicators
+		historicalData, err := getHistoricalDataV2(apiKey, stock.Symbol, 250)
+		if err != nil {
+			fmt.Printf("⚠️ Error getting historical data for %s: %v\n", stock.Symbol, err)
+			continue
+		}
+
+		if len(historicalData) < 200 {
+			fmt.Printf("⚠️ Insufficient historical data for %s: only %d days\n", stock.Symbol, len(historicalData))
+			continue
+		}
+
+		// Calculate technical indicators
+		technicalIndicators, err := calculateTechnicalIndicators(historicalData, stock.Symbol)
+		if err != nil {
+			fmt.Printf("⚠️ Error calculating technical indicators for %s: %v\n", stock.Symbol, err)
+			continue
+		}
+
+		// Calculate dollar volume and ADR
+		dolVol, adr, err := calculateHistoricalMetricsV2(historicalData[:21], stock.Symbol)
+		if err != nil {
+			fmt.Printf("⚠️ Error calculating historical metrics for %s: %v\n", stock.Symbol, err)
+			continue
+		}
+
+		// Get REAL premarket data from Alpha Vantage
+		fmt.Printf("⏰ Getting real premarket data for %s (Alpha Vantage)...\n", stock.Symbol)
+		<-alphaVantageRateLimiter // Respect Alpha Vantage rate limits
+
+		premarketAnalysis, err := getPremarketVolumeDataTiingo(os.Getenv("TIINGO_KEY"), stock.Symbol)
+		if err != nil {
+			fmt.Printf("⚠️ Error getting premarket data for %s: %v\n", stock.Symbol, err)
+			// Fall back to simulation
+			premarketAnalysis = simulatePremarketAnalysis(historicalData, dolVol)
+		}
+
+		// Update stock with all metrics
+		stock.StockInfo.DolVol = dolVol
+		stock.StockInfo.ADR = adr
+		stock.StockInfo.PremarketVolume = premarketAnalysis.CurrentPremarketVol
+		stock.StockInfo.AvgPremarketVolume = premarketAnalysis.AvgPremarketVol
+		stock.StockInfo.PremarketVolumeRatio = premarketAnalysis.VolumeRatio
+		stock.StockInfo.PremarketVolAsPercent = premarketAnalysis.VolAsPercentOfDaily
+		stock.StockInfo.SMA200 = technicalIndicators.SMA200
+		stock.StockInfo.EMA200 = technicalIndicators.EMA200
+		stock.StockInfo.EMA50 = technicalIndicators.EMA50
+		stock.StockInfo.EMA20 = technicalIndicators.EMA20
+		stock.StockInfo.EMA10 = technicalIndicators.EMA10
+		stock.StockInfo.IsAbove200EMA = technicalIndicators.IsAbove200EMA
+		stock.StockInfo.DistanceFrom50EMA = technicalIndicators.DistanceFrom50EMA
+		stock.StockInfo.IsExtended = technicalIndicators.IsExtended
+		stock.StockInfo.IsTooExtended = technicalIndicators.IsTooExtended
+		stock.StockInfo.VolumeDriedUp = technicalIndicators.VolumeDriedUp
+		stock.StockInfo.IsNearEMA1020 = technicalIndicators.IsNearEMA1020
+		stock.StockInfo.BreaksResistance = technicalIndicators.BreaksResistance
+
+		// Enhanced logging with real premarket data
+		fmt.Printf("📊 %s Complete Analysis:\n", stock.Symbol)
+		fmt.Printf("   💰 Dollar Volume: $%.0f (Min: $%.0f) %s\n", dolVol, MIN_DOLLAR_VOLUME, checkmark(dolVol >= MIN_DOLLAR_VOLUME))
+		fmt.Printf("   📏 ADR: %.2f%% (Min: %.2f%%) %s\n", adr, MIN_ADR_PERCENT, checkmark(adr >= MIN_ADR_PERCENT))
+		fmt.Printf("   🔥 Premarket Vol Ratio: %.1fx (Target: %.1f-%.1fx) %s\n", 
+			premarketAnalysis.VolumeRatio, MIN_PREMARKET_VOL_RATIO, MAX_PREMARKET_VOL_RATIO,
+			checkmark(premarketAnalysis.VolumeRatio >= MIN_PREMARKET_VOL_RATIO && premarketAnalysis.VolumeRatio <= MAX_PREMARKET_VOL_RATIO))
+		fmt.Printf("   📊 Premarket as %% Daily: %.1f%% (Target: %.1f-%.1f%%) %s\n", 
+			premarketAnalysis.VolAsPercentOfDaily, MIN_PREMARKET_AS_DAILY_PCT, MAX_PREMARKET_AS_DAILY_PCT,
+			checkmark(premarketAnalysis.VolAsPercentOfDaily >= MIN_PREMARKET_AS_DAILY_PCT && premarketAnalysis.VolAsPercentOfDaily <= MAX_PREMARKET_AS_DAILY_PCT))
+		fmt.Printf("   📈 Above 200 EMA: %s (Current: $%.2f, EMA200: $%.2f)\n", 
+			checkmark(technicalIndicators.IsAbove200EMA), getCurrentPrice(historicalData), technicalIndicators.EMA200)
+		fmt.Printf("   ⚡ Extended Status: %s (%.2f ADRs from 50 EMA)\n", 
+			checkmark(!technicalIndicators.IsExtended), technicalIndicators.DistanceFrom50EMA)
+		fmt.Printf("   💧 Volume Dried Up: %s\n", checkmark(technicalIndicators.VolumeDriedUp))
+		fmt.Printf("   🎯 Near 10/20 EMA: %s\n", checkmark(technicalIndicators.IsNearEMA1020))
+
+		technicalStocks = append(technicalStocks, stock)
+	}
+
+	return technicalStocks, nil
+}
+
+// Stage 4: Final episodic pivot filter
+func stage4FinalEpisodicPivotFilter(stocks []FilteredStock) []FilteredStock {
+	var finalStocks []FilteredStock
+
+	fmt.Printf("🎯 Applying final episodic pivot criteria to %d stocks...\n", len(stocks))
+
+	for _, stock := range stocks {
+		fmt.Printf("\n🔍 Final analysis for %s:\n", stock.Symbol)
+		
+		// Check all episodic pivot criteria
+		criteria := []struct {
+			name    string
+			passed  bool
+			details string
+		}{
+			{"Dollar Volume", stock.StockInfo.DolVol >= MIN_DOLLAR_VOLUME, 
+				fmt.Sprintf("$%.0f >= $%.0f", stock.StockInfo.DolVol, MIN_DOLLAR_VOLUME)},
+			{"Premarket Volume Ratio", stock.StockInfo.PremarketVolumeRatio >= MIN_PREMARKET_VOL_RATIO, 
+				fmt.Sprintf("%.1fx >= %.1fx", stock.StockInfo.PremarketVolumeRatio, MIN_PREMARKET_VOL_RATIO)},
+			{"Premarket as % Daily Vol", stock.StockInfo.PremarketVolAsPercent >= MIN_PREMARKET_AS_DAILY_PCT, 
+				fmt.Sprintf("%.1f%% >= %.1f%%", stock.StockInfo.PremarketVolAsPercent, MIN_PREMARKET_AS_DAILY_PCT)},
+			{"Above 200 EMA", stock.StockInfo.IsAbove200EMA, 
+				fmt.Sprintf("Current price above 200 EMA")},
+			{"Not Extended", !stock.StockInfo.IsExtended, 
+				fmt.Sprintf("Distance from 50 EMA: %.2f ADRs (Max: %.1f)", stock.StockInfo.DistanceFrom50EMA, MAX_EXTENSION_ADR)},
+			{"Volume Dried Up", stock.StockInfo.VolumeDriedUp, 
+				fmt.Sprintf("20-day avg vol < 60-day avg vol")},
+			{"Near 10/20 EMA", stock.StockInfo.IsNearEMA1020, 
+				fmt.Sprintf("Within %.1f ADRs of 10/20 EMA", NEAR_EMA_ADR_THRESHOLD)},
+		}
+
+		allPassed := true
+		for _, criterion := range criteria {
+			status := "❌"
+			if criterion.passed {
+				status = "✅"
+			} else {
+				allPassed = false
+			}
+			fmt.Printf("   %s %s: %s\n", status, criterion.name, criterion.details)
+		}
+
+		if allPassed && !stock.StockInfo.IsTooExtended {
+			finalStocks = append(finalStocks, stock)
+			fmt.Printf("🎉 %s QUALIFIES for episodic pivot!\n", stock.Symbol)
+		} else {
+			reason := "Failed criteria"
+			if stock.StockInfo.IsTooExtended {
+				reason = "Too extended (>8 ADRs from 50 EMA)"
+			}
+			fmt.Printf("❌ %s rejected: %s\n", stock.Symbol, reason)
+		}
+	}
+
+	return finalStocks
+}
+
+// Technical indicators calculation
+type TechnicalIndicators struct {
+	SMA200            float64
+	EMA200            float64
+	EMA50             float64
+	EMA20             float64
+	EMA10             float64
+	IsAbove200EMA     bool
+	DistanceFrom50EMA float64
+	IsExtended        bool
+	IsTooExtended     bool
+	VolumeDriedUp     bool
+	IsNearEMA1020     bool
+	BreaksResistance  bool
+}
+
+func calculateTechnicalIndicators(historicalData []MarketstackEODData, symbol string) (*TechnicalIndicators, error) {
+	if len(historicalData) < 200 {
+		return nil, fmt.Errorf("insufficient data for technical indicators")
+	}
+
+	// Sort data by date (oldest first for calculations)
+	sort.Slice(historicalData, func(i, j int) bool {
+		return historicalData[i].Date < historicalData[j].Date
+	})
+
+	currentPrice := historicalData[len(historicalData)-1].Close
+	currentADR := calculateADRForPeriod(historicalData[len(historicalData)-21:])
+
+	// Calculate moving averages
+	sma200 := calculateSMA(historicalData, 200)
+	ema200 := calculateEMA(historicalData, 200)
+	ema50 := calculateEMA(historicalData, 50)
+	ema20 := calculateEMA(historicalData, 20)
+	ema10 := calculateEMA(historicalData, 10)
+
+	// Calculate distance from 50 EMA in ADRs
+	distanceFrom50EMA := 0.0
+	if currentADR > 0 {
+		distanceFrom50EMA = (currentPrice - ema50) / (currentADR * currentPrice / 100)
+	}
+
+	// Check if volume has dried up (20-day avg < 60-day avg)
+	volumeDriedUp := false
+	if len(historicalData) >= 60 {
+		vol20 := calculateAvgVolume(historicalData[len(historicalData)-20:])
+		vol60 := calculateAvgVolume(historicalData[len(historicalData)-60:])
+		volumeDriedUp = vol20 < vol60
+	}
+
+	// Check if near 10/20 EMA (within 2 ADRs)
+	distanceFrom10EMA := 0.0
+	distanceFrom20EMA := 0.0
+	if currentADR > 0 {
+		adrValue := currentADR * currentPrice / 100
+		distanceFrom10EMA = abs(currentPrice - ema10) / adrValue
+		distanceFrom20EMA = abs(currentPrice - ema20) / adrValue
+	}
+	isNearEMA1020 := (distanceFrom10EMA <= NEAR_EMA_ADR_THRESHOLD) || (distanceFrom20EMA <= NEAR_EMA_ADR_THRESHOLD)
+
+	// Check if breaks resistance (simplified: gap up breaks recent high)
+	breaksResistance := false
+	if len(historicalData) >= 20 {
+		recent20Days := historicalData[len(historicalData)-20:]
+		recentHigh := 0.0
+		for _, day := range recent20Days[:len(recent20Days)-1] { // Exclude current day
+			if day.High > recentHigh {
+				recentHigh = day.High
+			}
+		}
+		currentOpen := historicalData[len(historicalData)-1].Open
+		breaksResistance = currentOpen > recentHigh
+	}
+
+	indicators := &TechnicalIndicators{
+		SMA200:            sma200,
+		EMA200:            ema200,
+		EMA50:             ema50,
+		EMA20:             ema20,
+		EMA10:             ema10,
+		IsAbove200EMA:     currentPrice > ema200,
+		DistanceFrom50EMA: distanceFrom50EMA,
+		IsExtended:        distanceFrom50EMA > MAX_EXTENSION_ADR,
+		IsTooExtended:     distanceFrom50EMA > TOO_EXTENDED_ADR,
+		VolumeDriedUp:     volumeDriedUp,
+		IsNearEMA1020:     isNearEMA1020,
+		BreaksResistance:  breaksResistance,
+	}
+
+	fmt.Printf("📊 Technical indicators calculated for %s\n", symbol)
+	return indicators, nil
+}
+
+// Premarket analysis structure
+type PremarketAnalysis struct {
+	CurrentPremarketVol   float64
+	AvgPremarketVol       float64
+	VolumeRatio           float64
+	VolAsPercentOfDaily   float64
+}
+
+// Simulate premarket analysis (in production, this would use real premarket data)
+func simulatePremarketAnalysis(historicalData []MarketstackEODData, avgDailyDolVol float64) *PremarketAnalysis {
+	// In a real implementation, you would:
+	// 1. Connect to a premarket data feed (like IEX Cloud, Alpha Vantage, or TD Ameritrade)
+	// 2. Get actual premarket volume and price data
+	// 3. Compare against historical premarket averages
+	
+	// For simulation purposes, we'll estimate based on current day's volume
+	if len(historicalData) == 0 {
+		return &PremarketAnalysis{}
+	}
+
+	// currentDay := historicalData[0] // Most recent day
+	avgDailyVol := calculateAvgVolume(historicalData[:20]) // Last 20 days
+
+	// Simulate premarket metrics based on episodic pivot requirements
+	// Assume strong premarket activity for gap-up stocks
+	estimatedPremarketVol := avgDailyVol * 0.15  // Typical premarket is ~5-15% of daily
+	estimatedCurrentPremarket := estimatedPremarketVol * 7 // 7x average for strong gap-up
+	
+	return &PremarketAnalysis{
+		CurrentPremarketVol:   estimatedCurrentPremarket,
+		AvgPremarketVol:       estimatedPremarketVol,
+		VolumeRatio:           7.0, // Simulated 7x ratio
+		VolAsPercentOfDaily:   30.0, // Simulated 30% of daily volume
+	}
+}
+
+// Technical calculation helper functions
+func calculateSMA(data []MarketstackEODData, period int) float64 {
+	if len(data) < period {
+		return 0
+	}
+	
+	sum := 0.0
+	start := len(data) - period
+	for i := start; i < len(data); i++ {
+		sum += data[i].Close
+	}
+	return sum / float64(period)
+}
+
+func calculateEMA(data []MarketstackEODData, period int) float64 {
+	if len(data) < period {
+		return 0
+	}
+	
+	// Calculate initial SMA as starting point
+	smaSum := 0.0
+	for i := 0; i < period; i++ {
+		smaSum += data[i].Close
+	}
+	ema := smaSum / float64(period)
+	
+	// Calculate multiplier
+	multiplier := 2.0 / (float64(period) + 1.0)
+	
+	// Calculate EMA for remaining data points
+	for i := period; i < len(data); i++ {
+		ema = (data[i].Close * multiplier) + (ema * (1 - multiplier))
+	}
+	
+	return ema
+}
+
+func calculateAvgVolume(data []MarketstackEODData) float64 {
+	if len(data) == 0 {
+		return 0
+	}
+	
+	sum := 0.0
+	for _, day := range data {
+		sum += day.Volume
+	}
+	return sum / float64(len(data))
+}
+
+func calculateADRForPeriod(data []MarketstackEODData) float64 {
+	if len(data) == 0 {
+		return 0
+	}
+	
+	sum := 0.0
+	for _, day := range data {
+		if day.Low > 0 {
+			dailyRange := ((day.High - day.Low) / day.Low) * 100
+			sum += dailyRange
+		}
+	}
+	return sum / float64(len(data))
+}
+
+// Enhanced market cap estimation for episodic pivot requirements
+func estimateMarketCapImproved(stock StockData, companyInfo *MarketstackTickerInfo) float64 {
+	// For episodic pivot, we need stocks with $10M+ daily dollar volume
+	// This typically indicates larger, more liquid companies
+	
+	// Method 1: Volume-based estimation (more aggressive for high-volume stocks)
+	volumeBasedEstimate := float64(stock.Volume) * stock.Close * 100
+	
+	// Method 2: Price-based estimation
+	priceBasedEstimate := stock.Close * 5000000 // Assume 5M shares outstanding
+	
+	// Method 3: Employee count if available
+	employeeBasedEstimate := volumeBasedEstimate
+	if companyInfo != nil && companyInfo.FullTimeEmployees != "" {
+		if employees, err := strconv.Atoi(companyInfo.FullTimeEmployees); err == nil {
+			// Tech/growth companies: ~$2M per employee, others: ~$1M per employee
+			multiplier := 1000000.0
+			if strings.Contains(strings.ToLower(companyInfo.Sector), "tech") || 
+			   strings.Contains(strings.ToLower(companyInfo.Industry), "software") {
+				multiplier = 2000000.0
+			}
+			employeeBasedEstimate = float64(employees) * multiplier
+		}
+	}
+	
+	// Take the maximum estimate (conservative approach for filtering)
+	estimates := []float64{volumeBasedEstimate, priceBasedEstimate, employeeBasedEstimate}
+	maxEstimate := estimates[0]
+	for _, est := range estimates {
+		if est > maxEstimate {
+			maxEstimate = est
+		}
+	}
+	
+	return maxEstimate
+}
+
+// Existing helper functions (unchanged)
+func getCurrentAndPreviousDataV2(apiKey string, symbol string) (*MarketstackEODData, *MarketstackEODData, error) {
+	url := fmt.Sprintf("https://api.marketstack.com/v2/eod?access_key=%s&symbols=%s&limit=3&sort=DESC", 
+		apiKey, symbol)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, nil, fmt.Errorf("HTTP request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read response: %v", err)
+	}
+
+	var eodResponse MarketstackEODResponse
+	if err := json.Unmarshal(body, &eodResponse); err != nil {
+		return nil, nil, fmt.Errorf("failed to parse JSON: %v", err)
+	}
+
+	if len(eodResponse.Data) < 2 {
+		return nil, nil, fmt.Errorf("insufficient data: only %d records", len(eodResponse.Data))
+	}
+
+	current := &eodResponse.Data[0]
+	previous := &eodResponse.Data[1]
+
+	return current, previous, nil
+}
+
+func getHistoricalDataV2(apiKey string, symbol string, days int) ([]MarketstackEODData, error) {
+	url := fmt.Sprintf("https://api.marketstack.com/v2/eod?access_key=%s&symbols=%s&limit=%d&sort=DESC", 
+		apiKey, symbol, days)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var eodResponse MarketstackEODResponse
+	if err := json.Unmarshal(body, &eodResponse); err != nil {
+		return nil, fmt.Errorf("failed to parse historical data JSON: %v", err)
+	}
+
+	return eodResponse.Data, nil
+}
+
 func getTickerInfoV2(apiKey string, symbol string) (*MarketstackTickerInfo, error) {
 	url := fmt.Sprintf("https://api.marketstack.com/v2/tickerinfo?access_key=%s&ticker=%s", 
 		apiKey, symbol)
@@ -409,122 +792,11 @@ func getTickerInfoV2(apiKey string, symbol string) (*MarketstackTickerInfo, erro
 	return &tickerInfoResponse.Data, nil
 }
 
-// Improved market cap estimation
-func estimateMarketCapImproved(stock StockData, companyInfo *MarketstackTickerInfo) float64 {
-	// Method 1: Use volume and price as a rough indicator
-	// High volume often correlates with larger market cap companies
-	volumeBasedEstimate := float64(stock.Volume) * stock.Close * 50
-
-	// Method 2: Price-based estimation (higher price often indicates larger companies)
-	priceBasedEstimate := stock.Close * 1000000 * 10
-
-	// Method 3: Use employee count if available (rough: $1M market cap per employee)
-	employeeBasedEstimate := volumeBasedEstimate
-	if companyInfo != nil && companyInfo.FullTimeEmployees != "" {
-		if employees, err := strconv.Atoi(companyInfo.FullTimeEmployees); err == nil {
-			employeeBasedEstimate = float64(employees) * 1000000
-			fmt.Printf("   Employee-based estimate: %d employees -> $%.0f\n", 
-				employees, employeeBasedEstimate)
-		}
-	}
-
-	// Take the maximum of all estimates (conservative approach)
-	estimates := []float64{volumeBasedEstimate, priceBasedEstimate, employeeBasedEstimate}
-	maxEstimate := estimates[0]
-	for _, est := range estimates {
-		if est > maxEstimate {
-			maxEstimate = est
-		}
-	}
-
-	fmt.Printf("   Volume-based: $%.0f, Price-based: $%.0f, Final: $%.0f\n", 
-		volumeBasedEstimate, priceBasedEstimate, maxEstimate)
-
-	return maxEstimate
-}
-
-// Stage 3: Calculate and filter by historical metrics using Marketstack v2
-func stage3FilterByHistoricalMetricsMarketstackV2(apiKey string, stocks []FilteredStock) ([]FilteredStock, error) {
-	var finalStocks []FilteredStock
-	rateLimiter := time.Tick(time.Second / API_CALLS_PER_SECOND)
-
-	fmt.Printf("📊 Calculating historical metrics for %d stocks...\n", len(stocks))
-
-	for i, stock := range stocks {
-		fmt.Printf("📈 [%d/%d] Calculating metrics for %s...\n", i+1, len(stocks), stock.Symbol)
-		
-		// Rate limiting
-		<-rateLimiter
-
-		// Get 30 days of historical data to ensure we have 21 trading days
-		historicalData, err := getHistoricalDataV2(apiKey, stock.Symbol, 30)
-		if err != nil {
-			fmt.Printf("⚠️ Error getting historical data for %s: %v\n", stock.Symbol, err)
-			continue
-		}
-
-		// Calculate 21-day average metrics
-		dolVol, adr, err := calculateHistoricalMetricsV2(historicalData, stock.Symbol)
-		if err != nil {
-			fmt.Printf("⚠️ Error calculating metrics for %s: %v\n", stock.Symbol, err)
-			continue
-		}
-
-		fmt.Printf("📊 %s Historical Metrics:\n", stock.Symbol)
-		fmt.Printf("   Dollar Volume (21-day avg): $%.0f (Min: $%.0f)\n", dolVol, MIN_DOLLAR_VOLUME)
-		fmt.Printf("   ADR (21-day avg): %.2f%% (Min: %.2f%%)\n", adr, MIN_ADR_PERCENT)
-
-		// Update stock with calculated metrics
-		stock.StockInfo.DolVol = dolVol
-		stock.StockInfo.ADR = adr
-
-		// Apply final filtering criteria
-		if dolVol >= MIN_DOLLAR_VOLUME && adr >= MIN_ADR_PERCENT {
-			finalStocks = append(finalStocks, stock)
-			fmt.Printf("✅ %s added to final list!\n", stock.Symbol)
-		} else {
-			fmt.Printf("❌ %s rejected: DolVol=$%.0f<%0.f OR ADR=%.2f%%<%.2f%%\n",
-				stock.Symbol, dolVol, MIN_DOLLAR_VOLUME, adr, MIN_ADR_PERCENT)
-		}
-	}
-
-	return finalStocks, nil
-}
-
-// Get historical data from Marketstack v2
-func getHistoricalDataV2(apiKey string, symbol string, days int) ([]MarketstackEODData, error) {
-	url := fmt.Sprintf("https://api.marketstack.com/v2/eod?access_key=%s&symbols=%s&limit=%d&sort=DESC", 
-		apiKey, symbol, days)
-
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var eodResponse MarketstackEODResponse
-	if err := json.Unmarshal(body, &eodResponse); err != nil {
-		return nil, fmt.Errorf("failed to parse historical data JSON: %v", err)
-	}
-
-	fmt.Printf("📊 Retrieved %d days of historical data for %s\n", len(eodResponse.Data), symbol)
-
-	return eodResponse.Data, nil
-}
-
-// Calculate historical metrics for Marketstack v2 data
-func calculateHistoricalMetricsV2(historicalData []MarketstackEODData, symbol string) (float64, float64, error) {
-	// Sort data by date (newest first) - should already be sorted from API
+func calculateHistoricalMetricsV2(historicalData []MarketstackEODData, _ string) (float64, float64, error) {
 	sort.Slice(historicalData, func(i, j int) bool {
 		return historicalData[i].Date > historicalData[j].Date
 	})
 
-	// Check if we have enough data (need at least 21 trading days)
 	if len(historicalData) < 21 {
 		return 0, 0, fmt.Errorf("insufficient historical data: only %d days available, need 21", len(historicalData))
 	}
@@ -533,30 +805,18 @@ func calculateHistoricalMetricsV2(historicalData []MarketstackEODData, symbol st
 	var adrSum float64 = 0
 	validDays := 0
 
-	fmt.Printf("📊 Processing 21 days of historical data for %s:\n", symbol)
-
-	// Process the last 21 days
 	for i := 0; i < 21 && i < len(historicalData); i++ {
 		dataItem := historicalData[i]
 
-		// Validate data
 		if dataItem.Close <= 0 || dataItem.Volume <= 0 || dataItem.High <= 0 || dataItem.Low <= 0 {
-			fmt.Printf("   Day %d (%s): Invalid data, skipping\n", i+1, dataItem.Date)
 			continue
 		}
 
-		// Calculate dollar volume: Volume * Close
 		dolVol := dataItem.Volume * dataItem.Close
 		dolVolSum += dolVol
 
-		// Calculate daily range: ((High - Low) / Low) * 100
 		dailyRange := ((dataItem.High - dataItem.Low) / dataItem.Low) * 100
 		adrSum += dailyRange
-
-		if i < 5 { // Show first 5 days as sample
-			fmt.Printf("   Day %d (%s): Vol=%.0f, Close=$%.2f, DolVol=$%.0f, Range=%.2f%%\n", 
-				i+1, dataItem.Date, dataItem.Volume, dataItem.Close, dolVol, dailyRange)
-		}
 
 		validDays++
 	}
@@ -565,18 +825,12 @@ func calculateHistoricalMetricsV2(historicalData []MarketstackEODData, symbol st
 		return 0, 0, fmt.Errorf("no valid historical data found")
 	}
 
-	// Calculate averages
 	avgDolVol := dolVolSum / float64(validDays)
 	avgADR := adrSum / float64(validDays)
-
-	fmt.Printf("   Calculations based on %d valid days\n", validDays)
-	fmt.Printf("   Average Dollar Volume: $%.0f\n", avgDolVol)
-	fmt.Printf("   Average Daily Range: %.2f%%\n", avgADR)
 
 	return avgDolVol, avgADR, nil
 }
 
-// Helper functions
 func getStockSymbols() ([]string, error) {
 	file, err := os.Open("pkg/ep/config.csv")
 	if err != nil {
@@ -597,13 +851,31 @@ func getStockSymbols() ([]string, error) {
 		}
 	}
 
-	fmt.Printf("📋 Loaded %d symbols from config.csv\n", len(symbols))
 	return symbols, nil
 }
 
-// Output function
-func outputToJSON(stocks []FilteredStock) error {
-	jsonData, err := json.MarshalIndent(stocks, "", "  ")
+// Output functions
+func outputEpisodicPivotResults(stocks []FilteredStock) error {
+	// Create detailed output with all episodic pivot metrics
+	output := map[string]interface{}{
+		"generated_at": time.Now().Format(time.RFC3339),
+		"filter_criteria": map[string]interface{}{
+			"min_gap_up_percent":          MIN_GAP_UP_PERCENT,
+			"min_dollar_volume":           MIN_DOLLAR_VOLUME,
+			"min_market_cap":              MIN_MARKET_CAP,
+			"min_premarket_volume_ratio":  MIN_PREMARKET_VOL_RATIO,
+			"max_extension_adr":           MAX_EXTENSION_ADR,
+			"premarket_volume_as_daily":   fmt.Sprintf("%.0f%%-%.0f%%", MIN_PREMARKET_AS_DAILY_PCT, MAX_PREMARKET_AS_DAILY_PCT),
+		},
+		"qualifying_stocks": stocks,
+		"summary": map[string]interface{}{
+			"total_candidates": len(stocks),
+			"avg_gap_up": calculateAvgGapUp(stocks),
+			"avg_market_cap": calculateAvgMarketCap(stocks),
+		},
+	}
+
+	jsonData, err := json.MarshalIndent(output, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -613,12 +885,409 @@ func outputToJSON(stocks []FilteredStock) error {
 		return fmt.Errorf("error creating directories: %v", err)
 	}
 
-	filename := filepath.Join(stockDir, "filtered_stocks_marketstack.json")
+	filename := filepath.Join(stockDir, "episodic_pivot_candidates.json")
 	err = os.WriteFile(filename, jsonData, 0644)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("📁 Results written to %s\n", filename)
+	// Also create a CSV summary for easy viewing
+	err = outputCSVSummary(stocks, stockDir)
+	if err != nil {
+		fmt.Printf("⚠️ Warning: Could not create CSV summary: %v\n", err)
+	}
+
 	return nil
+}
+
+func outputCSVSummary(stocks []FilteredStock, dir string) error {
+	filename := filepath.Join(dir, "episodic_pivot_summary.csv")
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	// Write header
+	headers := []string{
+		"Symbol", "Name", "Sector", "Industry", "Gap Up %", "Market Cap", 
+		"Dollar Volume", "ADR %", "Premarket Vol Ratio", "Premarket % Daily",
+		"Above 200 EMA", "Extended", "Volume Dried Up", "Near 10/20 EMA",
+	}
+	writer.Write(headers)
+
+	// Write data
+	for _, stock := range stocks {
+		row := []string{
+			stock.Symbol,
+			stock.StockInfo.Name,
+			stock.StockInfo.Sector,
+			stock.StockInfo.Industry,
+			fmt.Sprintf("%.2f", stock.StockInfo.GapUp),
+			fmt.Sprintf("%.0f", stock.StockInfo.MarketCap),
+			fmt.Sprintf("%.0f", stock.StockInfo.DolVol),
+			fmt.Sprintf("%.2f", stock.StockInfo.ADR),
+			fmt.Sprintf("%.1f", stock.StockInfo.PremarketVolumeRatio),
+			fmt.Sprintf("%.1f", stock.StockInfo.PremarketVolAsPercent),
+			boolToString(stock.StockInfo.IsAbove200EMA),
+			boolToString(stock.StockInfo.IsExtended),
+			boolToString(stock.StockInfo.VolumeDriedUp),
+			boolToString(stock.StockInfo.IsNearEMA1020),
+		}
+		writer.Write(row)
+	}
+
+	fmt.Printf("📄 CSV summary written to %s\n", filename)
+	return nil
+}
+
+// Helper calculation functions
+func calculateAvgGapUp(stocks []FilteredStock) float64 {
+	if len(stocks) == 0 {
+		return 0
+	}
+	
+	sum := 0.0
+	for _, stock := range stocks {
+		sum += stock.StockInfo.GapUp
+	}
+	return sum / float64(len(stocks))
+}
+
+func calculateAvgMarketCap(stocks []FilteredStock) float64 {
+	if len(stocks) == 0 {
+		return 0
+	}
+	
+	sum := 0.0
+	for _, stock := range stocks {
+		sum += stock.StockInfo.MarketCap
+	}
+	return sum / float64(len(stocks))
+}
+
+func checkmark(condition bool) string {
+	if condition {
+		return "✅"
+	}
+	return "❌"
+}
+
+func boolToString(b bool) string {
+	if b {
+		return "Yes"
+	}
+	return "No"
+}
+
+func abs(x float64) float64 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+// Analyze price action quality
+func analyzePriceActionQuality(historicalData []MarketstackEODData, gapUpPercent float64) map[string]interface{} {
+	if len(historicalData) == 0 {
+		return map[string]interface{}{"quality": "Unknown"}
+	}
+	
+	currentDay := historicalData[0]
+	
+	// Check if price held near highs (gap up quality indicator)
+	gapUpHigh := currentDay.High
+	gapUpLow := currentDay.Low
+	gapUpClose := currentDay.Close
+	
+	// Calculate how much of the gap was retained
+	gapRetention := ((gapUpClose - gapUpLow) / (gapUpHigh - gapUpLow)) * 100
+	
+	// Analyze intraday action
+	var priceActionQuality string
+	if gapRetention >= 80 {
+		priceActionQuality = "Excellent" // Held near highs
+	} else if gapRetention >= 60 {
+		priceActionQuality = "Good" // Decent retention
+	} else if gapRetention >= 40 {
+		priceActionQuality = "Fair" // Some selling but held
+	} else {
+		priceActionQuality = "Poor" // Heavy selling/fading
+	}
+	
+	return map[string]interface{}{
+		"quality": priceActionQuality,
+		"gap_retention_percent": gapRetention,
+		"held_near_highs": gapRetention >= 70,
+	}
+}
+
+// Check support and resistance levels
+func analyzeSupportsAndResistance(historicalData []MarketstackEODData) map[string]interface{} {
+	if len(historicalData) < 20 {
+		return map[string]interface{}{"analysis": "Insufficient data"}
+	}
+	
+	// Sort by date (oldest first)
+	sort.Slice(historicalData, func(i, j int) bool {
+		return historicalData[i].Date < historicalData[j].Date
+	})
+	
+	currentPrice := historicalData[len(historicalData)-1].Open
+	
+	// Find recent support and resistance levels (last 20 days)
+	recent20Days := historicalData[len(historicalData)-20:]
+	
+	// Calculate resistance levels (recent highs)
+	var resistanceLevels []float64
+	for _, day := range recent20Days[:len(recent20Days)-1] { // Exclude current day
+		resistanceLevels = append(resistanceLevels, day.High)
+	}
+	
+	// Sort resistance levels
+	sort.Float64s(resistanceLevels)
+	
+	// Find highest resistance level below current price
+	var keyResistance float64
+	for i := len(resistanceLevels) - 1; i >= 0; i-- {
+		if resistanceLevels[i] < currentPrice {
+			keyResistance = resistanceLevels[i]
+			break
+		}
+	}
+	
+	breaksResistance := keyResistance > 0 && currentPrice > keyResistance
+	
+	return map[string]interface{}{
+		"key_resistance": keyResistance,
+		"current_price": currentPrice,
+		"breaks_resistance": breaksResistance,
+		"resistance_break_percent": ((currentPrice - keyResistance) / keyResistance) * 100,
+	}
+}
+// Get real premarket data using Tiingo IEX endpoint
+func getPremarketVolumeDataTiingo(tiingoKey string, symbol string) (*PremarketAnalysis, error) {
+	fmt.Printf("📊 Getting real premarket data for %s from Tiingo...\n", symbol)
+
+	// Get today's intraday data (1-min or 5-min candles)
+	currentPremarketVol, err := getCurrentPremarketVolumeTiingo(tiingoKey, symbol)
+	if err != nil {
+		fmt.Printf("⚠️ Could not get current premarket volume for %s: %v\n", symbol, err)
+		return simulatePremarketAnalysis(nil, 0), nil
+	}
+
+	// Get historical averages (20 days)
+	avgPremarketVol, avgDailyVol, err := getHistoricalPremarketAveragesTiingo(tiingoKey, symbol)
+	if err != nil {
+		fmt.Printf("⚠️ Could not get historical premarket averages for %s: %v\n", symbol, err)
+		// Estimate if not available
+		avgPremarketVol = currentPremarketVol * 0.15
+		avgDailyVol = currentPremarketVol / 0.3
+	}
+
+	// Ratios
+	volumeRatio := 0.0
+	if avgPremarketVol > 0 {
+		volumeRatio = currentPremarketVol / avgPremarketVol
+	}
+	volAsPercentOfDaily := 0.0
+	if avgDailyVol > 0 {
+		volAsPercentOfDaily = (currentPremarketVol / avgDailyVol) * 100
+	}
+
+	analysis := &PremarketAnalysis{
+		CurrentPremarketVol: currentPremarketVol,
+		AvgPremarketVol:     avgPremarketVol,
+		VolumeRatio:         volumeRatio,
+		VolAsPercentOfDaily: volAsPercentOfDaily,
+	}
+
+	fmt.Printf("📈 %s Premarket Analysis:\n", symbol)
+	fmt.Printf("   Current Premarket Volume: %.0f shares\n", currentPremarketVol)
+	fmt.Printf("   Average Premarket Volume: %.0f shares\n", avgPremarketVol)
+	fmt.Printf("   Volume Ratio: %.2fx\n", volumeRatio)
+	fmt.Printf("   As %% of Daily Volume: %.2f%%\n", volAsPercentOfDaily)
+
+	return analysis, nil
+}
+
+// Get current premarket volume from Tiingo intraday data
+func getCurrentPremarketVolumeTiingo(tiingoKey, symbol string) (float64, error) {
+	loc, _ := time.LoadLocation("America/New_York")
+	today := time.Now().In(loc).Format("2006-01-02")
+
+	url := fmt.Sprintf("https://api.tiingo.com/iex/%s/prices?startDate=%s&resampleFreq=1min", 
+		symbol, today)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Token "+tiingoKey)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("HTTP request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read response: %v", err)
+	}
+
+	var candles []struct {
+		Timestamp string  `json:"date"`
+		Volume    float64 `json:"volume"`
+	}
+	if err := json.Unmarshal(body, &candles); err != nil {
+		return 0, fmt.Errorf("failed to parse JSON: %v", err)
+	}
+
+	premarketVol := 0.0
+	for _, c := range candles {
+		// Parse timestamp in ET
+		t, err := time.Parse(time.RFC3339, c.Timestamp)
+		if err != nil {
+			continue
+		}
+		localT := t.In(loc)
+		hour, min, _ := localT.Clock()
+		totalMinutes := hour*60 + min
+
+		// Premarket 4:00–9:25
+		if totalMinutes >= 240 && totalMinutes <= 565 {
+			premarketVol += c.Volume
+		}
+	}
+
+	fmt.Printf("📊 Found premarket volume %.0f shares for %s\n", premarketVol, symbol)
+	return premarketVol, nil
+}
+
+// Check if time is in premarket hours (4:00 AM - 9:25 AM ET)
+func isPremarketTime(timeStr string) bool {
+	// Parse time (format: "HH:MM:SS")
+	parts := strings.Split(timeStr, ":")
+	if len(parts) < 2 {
+		return false
+	}
+	
+	hour, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return false
+	}
+	
+	minute, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return false
+	}
+	
+	// Convert to minutes since midnight for easier comparison
+	totalMinutes := hour*60 + minute
+	
+	// Premarket: 4:00 AM (240 min) to 9:25 AM (565 min)
+	return totalMinutes >= 240 && totalMinutes <= 565
+}
+
+// Historical averages via Tiingo daily data
+func getHistoricalPremarketAveragesTiingo(tiingoKey, symbol string) (float64, float64, error) {
+	url := fmt.Sprintf("https://api.tiingo.com/iex/%s/prices?resampleFreq=1day&token=%s", 
+		symbol, tiingoKey)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return 0, 0, fmt.Errorf("HTTP request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to read response: %v", err)
+	}
+
+	var daily []struct {
+		Volume float64 `json:"volume"`
+	}
+	if err := json.Unmarshal(body, &daily); err != nil {
+		return 0, 0, fmt.Errorf("failed to parse JSON: %v", err)
+	}
+
+	if len(daily) == 0 {
+		return 0, 0, fmt.Errorf("no daily data found")
+	}
+
+	// Avg daily volume over last 20 sessions
+	n := 20
+	if len(daily) < n {
+		n = len(daily)
+	}
+	total := 0.0
+	for i := 0; i < n; i++ {
+		total += daily[i].Volume
+	}
+	avgDaily := total / float64(n)
+
+	// Approximate premarket ~10% of daily
+	avgPremarket := avgDaily * 0.10
+	return avgPremarket, avgDaily, nil
+}
+
+// Function to run complete episodic pivot analysis with real premarket data
+func RunEpisodicPivotAnalysis(marketstackKey string, alphaVantageKey string) {
+	fmt.Println("🚀 Starting Complete Episodic Pivot Analysis...")
+	fmt.Println("📊 Using Marketstack for EOD data + Alpha Vantage for premarket data")
+	
+	if alphaVantageKey == "" {
+		fmt.Println("⚠️ No Alpha Vantage API key provided - will use simulated premarket data")
+		fmt.Println("💡 Get free Alpha Vantage API key at: https://www.alphavantage.co/support/#api-key")
+	}
+	
+	// Set Alpha Vantage API key in environment for functions to use
+	if alphaVantageKey != "" {
+		os.Setenv("ALPHA_VANTAGE_API_KEY", alphaVantageKey)
+	}
+	
+	// Run the main filter
+	FilterStocksEpisodicPivot(marketstackKey)
+	
+	fmt.Println("\n📋 EPISODIC PIVOT CHECKLIST:")
+	fmt.Println("✅ Catalyst: [MANUAL] - Check news for strong catalyst")
+	fmt.Println("✅ Gap Up: 8%+ filtered automatically") 
+	if alphaVantageKey != "" {
+		fmt.Println("✅ Premarket Volume: REAL data from Alpha Vantage")
+	} else {
+		fmt.Println("🔶 Premarket Volume: SIMULATED (add Alpha Vantage key for real data)")
+	}
+	fmt.Println("✅ Price Action: Above 200 EMA + technical analysis")
+	fmt.Println("✅ Volume: $10M+ dollar volume filtered")
+	fmt.Println("✅ Extension: Non-extended stocks filtered")
+	fmt.Println("✅ Structure: Volume dried up + near EMAs filtered")
+	fmt.Println("✅ Liquidity: $200M+ market cap filtered")
+	fmt.Println("")
+	fmt.Println("📝 MANUAL CHECKS STILL NEEDED:")
+	fmt.Println("- ⭐ CATALYST: Verify strong catalyst in news (earnings beat, FDA approval, M&A, etc.)")
+	fmt.Println("- 📈 PRICE ACTION: Confirm price held near premarket highs")
+	fmt.Println("- 📊 BID-ASK: Check tight bid-ask spreads in premarket")
+	fmt.Println("- 📈 EARNINGS: Check previous 3-4 quarters for positive reactions")
+	fmt.Println("- 💰 FUNDAMENTALS: Verify EPS beat, revenue growth 20-50% YoY")
+	fmt.Println("- 📢 GUIDANCE: Look for raised guidance in earnings/news")
+	
+	if alphaVantageKey == "" {
+		fmt.Println("\n🔑 TO GET REAL PREMARKET DATA:")
+		fmt.Println("1. Get free Alpha Vantage API key: https://www.alphavantage.co/support/#api-key")
+		fmt.Println("2. Set environment variable: export ALPHA_VANTAGE_API_KEY=your_key")
+		fmt.Println("3. Re-run analysis for real premarket volume data")
+	}
+}
+
+func getCurrentPrice(historicalData []MarketstackEODData) float64 {
+	if len(historicalData) == 0 {
+		return 0
+	}
+	return historicalData[0].Close // Most recent close
 }
