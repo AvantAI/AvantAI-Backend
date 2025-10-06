@@ -19,8 +19,8 @@ type StockData struct {
 	Volume float64 `json:"volume,string"`
 }
 
-func ManagerAgentReqInfo(stock_data string, news string, earnings_report string) (*ServeResponse, error) {
-	const EpClaudeManagerAgent = "ep-claude-manager-agent"
+func ManagerAgentReqInfo(stock_data string, news string, earnings_report string, sentiment string) (*ServeResponse, error) {
+	const EpCerebrasManagerAgent = "ep-cerebras-manager-agent"
 	const namespace = "avant"
 
 	err := godotenv.Load()
@@ -34,7 +34,7 @@ func ManagerAgentReqInfo(stock_data string, news string, earnings_report string)
 
 	statusCode, status, agentRes, err := sapienApi.GenerateCompletion(
 		namespace,
-		EpClaudeManagerAgent,
+		EpCerebrasManagerAgent,
 		&ServeRequest{
 			Input: []Field{
 				{Name: "stock_data", Value: stock_data},
@@ -42,6 +42,8 @@ func ManagerAgentReqInfo(stock_data string, news string, earnings_report string)
 				{Name: "news", Value: news},
 
 				{Name: "earnings_report", Value: earnings_report},
+
+				{Name: "stock_sentiment", Value: sentiment},
 			},
 		},
 	)

@@ -1,302 +1,172 @@
 package main
 
 import (
+	"avantai/pkg/ep"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
-	"net/http"
 	"os"
-	"sort"
 	"strings"
-	"time"
+	"sync"
 
 	"github.com/joho/godotenv"
 )
 
-// AlphaVantageIntradayResponse represents the structure of the Alpha Vantage TIME_SERIES_INTRADAY response
-type AlphaVantageIntradayResponse struct {
-	MetaData struct {
-		Information   string `json:"1. Information"`
-		Symbol        string `json:"2. Symbol"`
-		LastRefreshed string `json:"3. Last Refreshed"`
-		Interval      string `json:"4. Interval"`
-		OutputSize    string `json:"5. Output Size"`
-		TimeZone      string `json:"6. Time Zone"`
-	} `json:"Meta Data"`
-	TimeSeries map[string]struct {
-		Open   string `json:"1. open"`
-		High   string `json:"2. high"`
-		Low    string `json:"3. low"`
-		Close  string `json:"4. close"`
-		Volume string `json:"5. volume"`
-	} `json:"Time Series (1min)"`
+// Top-level structure that matches your JSON
+type BacktestReport struct {
+	BacktestConfig   BacktestConfig   `json:"backtest_config"`
+	BacktestDate     string           `json:"backtest_date"`
+	BacktestSummary  BacktestSummary  `json:"backtest_summary"`
+	FilterCriteria   FilterCriteria   `json:"filter_criteria"`
+	GeneratedAt      string           `json:"generated_at"`
+	QualifyingStocks []BacktestResult `json:"qualifying_stocks"`
 }
 
-// StockQuote represents our final stock data structure
-type StockQuote struct {
-	Symbol                     string `json:"symbol"`
-	Timestamp                  string `json:"timestamp"`
-	Open                       string `json:"open"`
-	High                       string `json:"high"`
-	Low                        string `json:"low"`
-	Close                      string `json:"close"`
-	Volume                     string `json:"volume"`
-	PreviousClose              string `json:"previous_close"`
-	Change                     string `json:"change"`
-	ChangePercent              string `json:"change_percent"`
-	ExtendedHoursQuote         string `json:"extended_hours_quote"`
-	ExtendedHoursChange        string `json:"extended_hours_change"`
-	ExtendedHoursChangePercent string `json:"extended_hours_change_percent"`
+type BacktestConfig struct {
+	LookbackDays int    `json:"lookback_days"`
+	TargetDate   string `json:"target_date"`
+}
+
+type BacktestSummary struct {
+	AvgGapUp               float64           `json:"avg_gap_up"`
+	AvgMarketCap           float64           `json:"avg_market_cap"`
+	DataQualityDistribution map[string]int   `json:"data_quality_distribution"`
+	TotalCandidates        int              `json:"total_candidates"`
+}
+
+type FilterCriteria struct {
+	MaxExtensionAdr          float64 `json:"max_extension_adr"`
+	MinDollarVolume          int64   `json:"min_dollar_volume"`
+	MinGapUpPercent          float64 `json:"min_gap_up_percent"`
+	MinMarketCap             int64   `json:"min_market_cap"`
+	MinPremarketVolumeRatio  float64 `json:"min_premarket_volume_ratio"`
+}
+
+type BacktestResult struct {
+	FilteredStock
+	BacktestDate    string   `json:"backtest_date"`
+	DataQuality     string   `json:"data_quality"`
+	HistoricalDays  int      `json:"historical_days_available"`
+	ValidationNotes []string `json:"validation_notes"`
+}
+
+type FilteredStock struct {
+	Symbol    string     `json:"symbol"`
+	StockInfo StockStats `json:"stock_info"`
+}
+
+type StockStats struct {
+	Timestamp               string  `json:"timestamp"`
+	MarketCap              float64 `json:"market_cap"`
+	Dolvol                 float64 `json:"dolvol"`
+	GapUp                  float64 `json:"gap_up"`
+	Adr                    float64 `json:"adr"`
+	Name                   string  `json:"name"`
+	Exchange               string  `json:"exchange"`
+	Sector                 string  `json:"sector"`
+	Industry               string  `json:"industry"`
+	PremarketVolume        float64 `json:"premarket_volume"`
+	AvgPremarketVolume     float64 `json:"avg_premarket_volume"`
+	PremarketVolumeRatio   float64 `json:"premarket_volume_ratio"`
+	PremarketVolPercent    int     `json:"premarket_vol_percent"`
+	Sma200                 float64 `json:"sma_200"`
+	Ema200                 float64 `json:"ema_200"`
+	Ema50                  float64 `json:"ema_50"`
+	Ema20                  float64 `json:"ema_20"`
+	Ema10                  float64 `json:"ema_10"`
+	IsAbove200Ema          bool    `json:"is_above_200_ema"`
+	DistanceFrom50Ema      float64 `json:"distance_from_50_ema"`
+	IsExtended             bool    `json:"is_extended"`
+	IsTooExtended          bool    `json:"is_too_extended"`
+	VolumeDriedUp          bool    `json:"volume_dried_up"`
+	IsNearEma1020          bool    `json:"is_near_ema_10_20"`
+	BreaksResistance       bool    `json:"breaks_resistance"`
+	PreviousEarningsReaction string `json:"previous_earnings_reaction"`
 }
 
 func main() {
-
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
 
-	apiKey := os.Getenv("API_KEY")
-	symbol := "MSFT"
-	targetDate := "2023-08-22"
-	outputFile := "stock_data.json"
+	// apiKey := os.Getenv("API_KEY")
+	tiingoKey := os.Getenv("TIINGO_KEY")
+	marketStackKey := os.Getenv("MARKETSTACK_TOKEN")
+	// Filters out stocks that don't match the given criteria
+	// ep.FilterStocks(apiKey)
+	// Simple backtest for one date
+	const backtestDate = "2025-03-12"
 
-	// Calculate previous trading day
-	previousDayStr := "2023-08-21"
-	previousDayMonth := "2023-08"
+	// Advanced backtest with custom config
+	config := ep.BacktestConfig{
+		TargetDate:     backtestDate,
+		MarketstackKey: marketStackKey,
+		TiingoKey:      tiingoKey,
+		LookbackDays:   1000,
+	}
+	err = ep.FilterStocksEpisodicPivotBacktest(config)
 
-	fmt.Println("Target date:", targetDate)
-	fmt.Println("Previous trading day:", previousDayStr)
+	// Multiple date backtesting
+	// dates := []string{"2023-01-15", "2023-02-15", "2023-03-15"}
+	// err = ep.RunMultipleDateBacktests(marketStackKey, dates)
+	// url := fmt.Sprintf("https://www.alphavantage.co/query?function=REALTIME_BULK_QUOTES&symbol=%sentitlement=realtime&apikey=%s",
+	// 	"AAPL,NVDA,IBM", apiKey)
 
-	// Get intraday data from Alpha Vantage
-	intradayData, err := getIntradayData(apiKey, targetDate[0:7], symbol)
+	// resp, err := http.Get(url)
+	// if err != nil {
+	// 	os.Exit(1)
+	// }
+
+	// body, err := io.ReadAll(resp.Body)
+	// resp.Body.Close()
+	// if err != nil {
+	// 	os.Exit(1)
+	// }
+
+	// var bulkResponse ep.BulkQuoteResponse
+	// err = json.Unmarshal(body, &bulkResponse)
+	// if err != nil {
+	// 	fmt.Printf("error parsing bulk quotes response: %v. Response: %s", err, string(body))
+	// 	os.Exit(1)
+	// }
+
+	// fmt.Printf("bulk response: %+v", bulkResponse.Data)
+
+	// Navigate to the directory and open the file
+	filePath := fmt.Sprintf("data/backtests/backtest_%s_results.json", strings.ReplaceAll(backtestDate, "-", ""))
+	file, err := os.Open(filePath)
 	if err != nil {
-		fmt.Printf("Error fetching intraday data: %v\n", err)
-		return
+		log.Fatalf("Error opening file: %v\n", err)
 	}
+	defer file.Close()
 
-	// Get intraday data from Alpha Vantage for previous day
-	previousDayData, err := getIntradayData(apiKey, previousDayMonth, symbol)
+	// Read the entire file content
+	fileContent, err := io.ReadAll(file)
 	if err != nil {
-		fmt.Printf("Error fetching previous day intraday data: %v\n", err)
-		return
+		log.Fatalf("Error reading file: %v\n", err)
 	}
 
-	// Get previous day's closing price at 4:00 PM
-	previousDayClose, err := getPreviousDayCloseAt4PM(previousDayData, previousDayStr)
+	// Slice to hold the parsed data
+	var report BacktestReport
+
+	// Unmarshal the JSON data into the report slice
+	err = json.Unmarshal(fileContent, &report)
 	if err != nil {
-		fmt.Printf("Error getting previous day close: %v\n", err)
-		return
+		log.Fatalf("Error unmarshalling JSON: %v\n", err)
+	}	
+
+	// Use a WaitGroup to wait for all goroutines to complete
+	var wg sync.WaitGroup
+
+	// gets the news info for the respective stock
+	for _, stock := range report.QualifyingStocks {
+		// Start the goroutine
+		wg.Add(1)
+		go ep.GetNewsAndEarnings(&wg, stock.Symbol, "2025-03-11")
 	}
 
-	fmt.Println(previousDayClose)
-
-	if previousDayClose == "" {
-		fmt.Printf("Couldn't find previous day's closing price at 4:00 PM\n")
-		return
-	}
-
-	// Get the opening minute quote
-	stockQuote, err := getOpeningMinuteQuote(intradayData, symbol, targetDate, previousDayClose)
-	if err != nil {
-		fmt.Printf("Error processing data: %v\n", err)
-		return
-	}
-
-	if stockQuote == nil {
-		fmt.Printf("No opening minute data found for date: %s\n", targetDate)
-		return
-	}
-
-	// Load existing data or create new data slice
-	var existingData []StockQuote
-	loadExistingData(outputFile, &existingData)
-
-	// Add new quote and save
-	updatedData := append(existingData, *stockQuote)
-	saveStockData(outputFile, updatedData)
-
-	fmt.Printf("Successfully processed opening minute quote for %s on %s and saved to %s\n",
-		symbol, targetDate, outputFile)
-}
-
-func getIntradayData(apiKey, month string, symbol string) (AlphaVantageIntradayResponse, error) {
-	var response AlphaVantageIntradayResponse
-
-	url := fmt.Sprintf(
-		"https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol=%s&extended_hours=true&interval=1min&month=%s&outputsize=full&apikey=%s",
-		symbol, month, apiKey)
-
-	resp, err := http.Get(url)
-	if err != nil {
-		return response, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return response, err
-	}
-
-	err = json.Unmarshal(body, &response)
-	if err != nil {
-		return response, err
-	}
-
-	return response, nil
-}
-
-func getPreviousDayCloseAt4PM(data AlphaVantageIntradayResponse, previousDayStr string) (string, error) {
-	// Look for the 4:00 PM entry (regular market close time)
-	targetTime := previousDayStr + " 16:00:00"
-
-	// Check if we have the exact 4:00 PM timestamp
-	if quote, found := data.TimeSeries[targetTime]; found {
-		return quote.Close, nil
-	}
-
-	// If not found at exact 4:00 PM, find the closest time to 4:00 PM
-	var closestTime string
-	minDiff := int64(86400) // Initialize with seconds in a day
-
-	for timestamp := range data.TimeSeries {
-		if strings.HasPrefix(timestamp, previousDayStr) {
-			timestampParts := strings.Split(timestamp, " ")
-			if len(timestampParts) != 2 {
-				continue
-			}
-
-			timeStr := timestampParts[1]
-			t1, err := time.Parse("15:04:05", timeStr)
-			if err != nil {
-				continue
-			}
-
-			// Parse 16:00:00
-			t2, _ := time.Parse("15:04:05", "16:00:00")
-
-			// Calculate difference in seconds
-			diff := t1.Sub(t2).Seconds()
-			absDiff := int64(diff)
-			if diff < 0 {
-				absDiff = -absDiff
-			}
-
-			if absDiff < minDiff {
-				minDiff = absDiff
-				closestTime = timestamp
-			}
-		}
-	}
-
-	if closestTime != "" {
-		return data.TimeSeries[closestTime].Close, nil
-	}
-
-	return "", fmt.Errorf("no close time found for previous day %s", previousDayStr)
-}
-
-func getOpeningMinuteQuote(data AlphaVantageIntradayResponse, symbol, targetDate, previousDayClose string) (*StockQuote, error) {
-	// Collect all timestamps for the target date
-	var timestamps []string
-	for timestamp := range data.TimeSeries {
-		if strings.HasPrefix(timestamp, targetDate) {
-			timestamps = append(timestamps, timestamp)
-		}
-	}
-
-	if len(timestamps) == 0 {
-		return nil, nil // No data for this date
-	}
-
-	// Sort timestamps to find the first minute of trading
-	sort.Strings(timestamps)
-
-	// Regular market hours typically start at 9:30 AM ET
-	marketOpenTime := " 09:29:00"
-	var openingTimestamp string
-
-	// Find the first timestamp at or after market open
-	for _, ts := range timestamps {
-		timeStr := ts[len(targetDate):]
-		if timeStr >= marketOpenTime {
-			openingTimestamp = ts
-			break
-		}
-	}
-
-	// If we didn't find a market opening time, try to get the first timestamp of the day
-	if openingTimestamp == "" && len(timestamps) > 0 {
-		openingTimestamp = timestamps[0]
-	}
-
-	if openingTimestamp == "" {
-		return nil, nil // No suitable timestamp found
-	}
-
-	// Get the quote for the opening minute
-	quote := data.TimeSeries[openingTimestamp]
-
-	// Calculate change and change percent (should be 0 as we're using same value for both)
-	change := 0.0
-	changePercent := 0.0
-
-	stockQuote := &StockQuote{
-		Symbol:                     symbol,
-		Timestamp:                  openingTimestamp,
-		Open:                       quote.Open,
-		High:                       quote.High,
-		Low:                        quote.Low,
-		Close:                      previousDayClose,    // Use previous day's close value
-		Volume:                     quote.Volume,
-		PreviousClose:              previousDayClose,    // Use previous day's close value
-		Change:                     fmt.Sprintf("%.4f", change),
-		ChangePercent:              fmt.Sprintf("%.4f", changePercent),
-		ExtendedHoursQuote:         "0",
-		ExtendedHoursChange:        "0",
-		ExtendedHoursChangePercent: "0",
-	}
-
-	return stockQuote, nil
-}
-
-func parseFloat(s string) (float64, error) {
-	var result float64
-	_, err := fmt.Sscanf(s, "%f", &result)
-	return result, err
-}
-
-func loadExistingData(filename string, stockData *[]StockQuote) {
-	// Check if file exists
-	if _, err := os.Stat(filename); os.IsNotExist(err) {
-		return // File doesn't exist, so we'll create a new one
-	}
-
-	// Read existing file
-	fileData, err := os.ReadFile(filename)
-	if err != nil {
-		fmt.Printf("Warning: Could not read existing file: %v\n", err)
-		return
-	}
-
-	// Empty file or invalid JSON
-	if len(fileData) == 0 {
-		return
-	}
-
-	// Try to unmarshal
-	err = json.Unmarshal(fileData, stockData)
-	if err != nil {
-		fmt.Printf("Warning: Could not parse existing file: %v\n", err)
-	}
-}
-
-func saveStockData(filename string, stockData []StockQuote) error {
-	jsonData, err := json.MarshalIndent(stockData, "", "    ")
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(filename, jsonData, 0644)
+	// Wait for all goroutines to finish
+	wg.Wait()
 }

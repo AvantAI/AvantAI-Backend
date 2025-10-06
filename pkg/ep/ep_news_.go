@@ -1,228 +1,415 @@
 package ep
 
-import (
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
-	"sync"
-	"time"
-)
+// import (
+// 	"encoding/json"
+// 	"fmt"
+// 	"io"
+// 	"net/http"
+// 	"os"
+// 	"path/filepath"
+// 	"strings"
+// 	"sync"
+// 	"time"
+// )
 
-// API response structs
-type AlphaVantageResponse struct {
-	Feed           []Article `json:"feed"`
-	Sentiment      string    `json:"overall_sentiment"`
-	SentimentScore float64   `json:"overall_sentiment_score"`
-}
+// // Polygon.io API response structs
+// type PolygonNewsResponse struct {
+// 	Status     string          `json:"status"`
+// 	RequestID  string          `json:"request_id"`
+// 	Count      int             `json:"count"`
+// 	NextURL    string          `json:"next_url,omitempty"`
+// 	Results    []PolygonArticle `json:"results"`
+// }
 
-type Article struct {
-	Title         string            `json:"title"`
-	URL           string            `json:"url"`
-	TimePublished string            `json:"time_published"`
-	Summary       string            `json:"summary"`
-	Source        string            `json:"source"`
-	Sentiment     string            `json:"overall_sentiment"`
-	Score         float64           `json:"overall_sentiment_score"`
-	Topics        []Topic           `json:"topics"`
-	TickerSent    []TickerSentiment `json:"ticker_sentiment"`
-}
+// type PolygonArticle struct {
+// 	ID             string            `json:"id"`
+// 	Publisher      Publisher         `json:"publisher"`
+// 	Title          string            `json:"title"`
+// 	Author         string            `json:"author"`
+// 	PublishedUTC   string            `json:"published_utc"`
+// 	ArticleURL     string            `json:"article_url"`
+// 	Tickers        []string          `json:"tickers"`
+// 	AmpURL         string            `json:"amp_url,omitempty"`
+// 	ImageURL       string            `json:"image_url,omitempty"`
+// 	Description    string            `json:"description"`
+// 	Keywords       []string          `json:"keywords"`
+// 	Insights       []Insight         `json:"insights,omitempty"`
+// }
 
-type Topic struct {
-	Topic     string `json:"topic"`
-	Relevance string `json:"relevance_score"`
-}
+// type PolygonEarningsData struct {
+// 	ID             string  `json:"id"`              // Unique identifier
+// 	Ticker         string  `json:"ticker"`          // Stock symbol (e.g., "AAPL")
+// 	Name           string  `json:"name"`            // Company name
+// 	ReportDate     string  `json:"report_date"`     // When earnings will be reported
+// 	ReportTime     string  `json:"report_time"`     // Time of day (e.g., "bmo", "amc")
+// 	Currency       string  `json:"currency"`        // Currency (usually "USD")
+// 	Period         string  `json:"period"`          // Reporting period (e.g., "Q1", "Q2")
+// 	CalendarDate   string  `json:"calendar_date"`   // Calendar date
+// 	CalendarYear   int     `json:"calendar_year"`   // Year (e.g., 2025)
+// 	CalendarQuarter int    `json:"calendar_quarter"` // Quarter number (1, 2, 3, 4)
+// 	Updated        string  `json:"updated"`         // Last update timestamp
+// }
 
-type TickerSentiment struct {
-	Ticker    string `json:"ticker"`
-	Sentiment string `json:"ticker_sentiment"`
-	Score     string `json:"ticker_sentiment_score"`
-	Relevance string `json:"relevance_score"`
-}
+// type PolygonFinancialsData struct {
+// 	CompanyName      string            `json:"company_name"`    // Company name
+// 	CIK              string            `json:"cik"`             // SEC Central Index Key
+// 	FiscalPeriod     string            `json:"fiscal_period"`   // Fiscal period
+// 	FiscalYear       string            `json:"fiscal_year"`     // Fiscal year
+// 	EndDate          string            `json:"end_date"`        // Period end date
+// 	StartDate        string            `json:"start_date"`      // Period start date
+// 	FilingDate       string            `json:"filing_date"`     // When filed with SEC
+// 	TimeFrame        string            `json:"timeframe"`       // "annual", "quarterly"
+// 	Financials       FinancialMetrics  `json:"financials"`      // Actual financial data
+// }
 
-func GetNews(wg *sync.WaitGroup, apiKey string, ticker string, timestamp string) {
-	defer wg.Done() // Decrement the counter when the goroutine completes
+// type FinancialMetrics struct {
+// 	IncomeStatement    map[string]FinancialValue `json:"income_statement"`
+// 	BalanceSheet       map[string]FinancialValue `json:"balance_sheet"`  
+// 	CashFlowStatement  map[string]FinancialValue `json:"cash_flow_statement"`
+// 	ComprehensiveIncome map[string]FinancialValue `json:"comprehensive_income"`
+// }
 
-	// Get current and previous day's date
-	// now := time.Now()
-	// yesterday := now.AddDate(0, 0, -1)
-	// timeFrom := yesterday.Format("20060102T0000")
-	// timeTo := now.Format("20060102T2359")
+// type FinancialValue struct {
+// 	Value float64 `json:"value"`  // The actual dollar amount or number
+// 	Unit  string  `json:"unit"`   // The unit of measurement 
+// 	Label string  `json:"label"`  // Human-readable description
+// 	Order int     `json:"order"`  // Display order in the financial statement
+// }
 
-	// timeFrom := "20250203T0000"
-	// timeTo := "20250204T0000"
+// type Publisher struct {
+// 	Name        string `json:"name"`
+// 	HomepageURL string `json:"homepage_url"`
+// 	LogoURL     string `json:"logo_url,omitempty"`
+// 	FaviconURL  string `json:"favicon_url,omitempty"`
+// }
 
-	timeFrom, timeTo := getTime(timestamp)
+// type Insight struct {
+// 	Ticker    string `json:"ticker"`
+// 	Sentiment string `json:"sentiment"`
+// 	Score     float64 `json:"sentiment_reasoning_score"`
+// }
 
-	fmt.Println("Time from:", timeFrom)
-	fmt.Println("Time to:", timeTo)
+// func GetNews(wg *sync.WaitGroup, apiKey string, ticker string, timestamp string) {
+// 	defer wg.Done() // Decrement the counter when the goroutine completes
 
-	// Fetch data from Alpha Vantage
-	url := fmt.Sprintf("https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=%s&apikey=%s&limit=10&time_from=%s&time_to=%s&sort=RELEVANCE",
-		ticker, apiKey, timeFrom, timeTo)
+// 	// Parse the date and format for Polygon API
+// 	targetDate := parseDate(timestamp)
+	
+// 	fmt.Printf("Fetching news for %s on date: %s\n", ticker, targetDate)
 
-	fmt.Printf("Fetching news sentiment data for %s...\n", ticker)
-	response, err := http.Get(url)
-	if err != nil {
-		fmt.Printf("Error making HTTP request: %v\n", err)
-		os.Exit(1)
-	}
-	defer response.Body.Close()
+// 	// Build Polygon.io API URL
+// 	// Format: https://api.polygon.io/v2/reference/news?ticker=AAPL&published_utc.gte=2025-03-12&published_utc.lt=2025-03-13&limit=50&apikey=YOUR_API_KEY
+// 	url := fmt.Sprintf("https://api.polygon.io/v2/reference/news?ticker=%s&published_utc.gte=%s&published_utc.lt=%s&limit=50&order=desc&sort=published_utc&apikey=%s",
+// 		ticker, targetDate, getNextDay(targetDate), apiKey)
 
-	if response.StatusCode != http.StatusOK {
-		fmt.Printf("API request failed with status code: %d\n", response.StatusCode)
-		os.Exit(1)
-	}
+// 	fmt.Printf("Fetching news data for %s...\n", ticker)
+// 	response, err := http.Get(url)
+// 	if err != nil {
+// 		fmt.Printf("Error making HTTP request: %v\n", err)
+// 		return
+// 	}
+// 	defer response.Body.Close()
 
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		fmt.Printf("Error reading response body: %v\n", err)
-		os.Exit(1)
-	}
+// 	if response.StatusCode != http.StatusOK {
+// 		fmt.Printf("API request failed with status code: %d\n", response.StatusCode)
+// 		body, _ := io.ReadAll(response.Body)
+// 		fmt.Printf("Response body: %s\n", string(body))
+// 		return
+// 	}
 
-	var result AlphaVantageResponse
-	if err := json.Unmarshal(body, &result); err != nil {
-		fmt.Printf("Error parsing JSON: %v\n", err)
-		os.Exit(1)
-	}
+// 	body, err := io.ReadAll(response.Body)
+// 	if err != nil {
+// 		fmt.Printf("Error reading response body: %v\n", err)
+// 		return
+// 	}
 
-	fmt.Println(result.Sentiment)
+// 	var result PolygonNewsResponse
+// 	if err := json.Unmarshal(body, &result); err != nil {
+// 		fmt.Printf("Error parsing JSON: %v\n", err)
+// 		fmt.Printf("Raw response: %s\n", string(body))
+// 		return
+// 	}
 
-	// Create folders
-	dataDir := "data"
-	stockDir := filepath.Join(dataDir, ticker)
+// 	if result.Status != "OK" {
+// 		fmt.Printf("API returned error status: %s\n", result.Status)
+// 		return
+// 	}
 
-	if err := os.MkdirAll(stockDir, 0755); err != nil {
-		fmt.Printf("Error creating directories: %v\n", err)
-		os.Exit(1)
-	}
+// 	fmt.Printf("Found %d articles for %s\n", result.Count, ticker)
 
-	// Separate regular news and earnings reports
-	var newsArticles []Article
-	var earningsReports []Article
+// 	// Create folders
+// 	dataDir := "data"
+// 	stockDir := filepath.Join(dataDir, ticker)
 
-	for _, article := range result.Feed {
-		isEarningsReport := false
+// 	if err := os.MkdirAll(stockDir, 0755); err != nil {
+// 		fmt.Printf("Error creating directories: %v\n", err)
+// 		return
+// 	}
 
-		// Check topics for earnings related content
-		for _, topic := range article.Topics {
-			if topic.Topic == "Earnings" || topic.Topic == "Earnings Report" || topic.Topic == "Earnings Call" {
-				isEarningsReport = true
-				break
-			}
-		}
+// 	// Separate regular news and earnings reports
+// 	var newsArticles []PolygonArticle
+// 	var earningsReports []PolygonArticle
 
-		// Also check the title and summary for earnings mentions
-		title := article.Title
-		summary := article.Summary
-		if contains(title, "earnings") || contains(title, "quarterly results") ||
-			contains(summary, "earnings report") || contains(summary, "quarterly earnings") {
-			isEarningsReport = true
-		}
+// 	for _, article := range result.Results {
+// 		isEarningsReport := false
 
-		if isEarningsReport {
-			earningsReports = append(earningsReports, article)
-		} else {
-			newsArticles = append(newsArticles, article)
-		}
-	}
+// 		// Check keywords for earnings related content
+// 		for _, keyword := range article.Keywords {
+// 			if strings.Contains(strings.ToLower(keyword), "earnings") ||
+// 				strings.Contains(strings.ToLower(keyword), "quarterly") ||
+// 				strings.Contains(strings.ToLower(keyword), "results") {
+// 				isEarningsReport = true
+// 				break
+// 			}
+// 		}
 
-	// Write news reports to file
-	newsReportPath := filepath.Join(stockDir, "news_report.txt")
-	if err := writeArticlesToFile(newsReportPath, newsArticles, ticker); err != nil {
-		fmt.Printf("Error writing news report: %v\n", err)
-	} else {
-		fmt.Printf("News report written to %s\n", newsReportPath)
-	}
+// 		// Also check the title and description for earnings mentions
+// 		title := strings.ToLower(article.Title)
+// 		description := strings.ToLower(article.Description)
+// 		if strings.Contains(title, "earnings") || 
+// 			strings.Contains(title, "quarterly results") ||
+// 			strings.Contains(title, "q1") || strings.Contains(title, "q2") || 
+// 			strings.Contains(title, "q3") || strings.Contains(title, "q4") ||
+// 			strings.Contains(description, "earnings report") || 
+// 			strings.Contains(description, "quarterly earnings") ||
+// 			strings.Contains(description, "financial results") {
+// 			isEarningsReport = true
+// 		}
 
-	// Write earnings reports to file
-	earningsReportPath := filepath.Join(stockDir, "earnings_report.txt")
-	if err := writeArticlesToFile(earningsReportPath, earningsReports, ticker); err != nil {
-		fmt.Printf("Error writing earnings report: %v\n", err)
-	} else {
-		fmt.Printf("Earnings report written to %s\n", earningsReportPath)
-	}
-}
+// 		if isEarningsReport {
+// 			earningsReports = append(earningsReports, article)
+// 		} else {
+// 			newsArticles = append(newsArticles, article)
+// 		}
+// 	}
 
-// Helper function to check if a string contains a substring (case insensitive)
-func contains(s, substr string) bool {
-	s = strings.ToLower(s)
-	substr = strings.ToLower(substr)
-	return strings.Contains(s, substr)
-}
+// 	// Write news reports to file
+// 	newsReportPath := filepath.Join(stockDir, "news_report.txt")
+// 	if err := writePolygonArticlesToFile(newsReportPath, newsArticles, ticker); err != nil {
+// 		fmt.Printf("Error writing news report: %v\n", err)
+// 	} else {
+// 		fmt.Printf("News report written to %s (%d articles)\n", newsReportPath, len(newsArticles))
+// 	}
 
-// Write articles to a file
-func writeArticlesToFile(filePath string, articles []Article, ticker string) error {
-	f, err := os.Create(filePath)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
+// 	// Write earnings reports to file
+// 	earningsReportPath := filepath.Join(stockDir, "earnings_report.txt")
+// 	if err := writePolygonArticlesToFile(earningsReportPath, earningsReports, ticker); err != nil {
+// 		fmt.Printf("Error writing earnings report: %v\n", err)
+// 	} else {
+// 		fmt.Printf("Earnings report written to %s (%d articles)\n", earningsReportPath, len(earningsReports))
+// 	}
+// }
 
-	// Write header
-	fmt.Fprintf(f, "NEWS SENTIMENT REPORT FOR %s\n", ticker)
-	fmt.Fprintf(f, "Generated on: %s\n", time.Now().Format("2006-01-02 15:04:05"))
-	fmt.Fprintf(f, "Total articles: %d\n\n", len(articles))
-	fmt.Fprintf(f, "%s\n\n", strings.Repeat("-", 80))
+// // Parse date from various formats and return YYYY-MM-DD format
+// func parseDate(timestamp string) string {
+// 	if timestamp == "" {
+// 		// Default to yesterday if no timestamp provided
+// 		return time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+// 	}
 
-	// Write each article
-	for i, article := range articles {
-		fmt.Fprintf(f, "ARTICLE %d\n", i+1)
-		fmt.Fprintf(f, "Title: %s\n", article.Title)
-		fmt.Fprintf(f, "Source: %s\n", article.Source)
-		fmt.Fprintf(f, "Published: %s\n", article.TimePublished)
-		fmt.Fprintf(f, "URL: %s\n", article.URL)
-		fmt.Fprintf(f, "Sentiment: %s (Score: %.2f)\n", article.Sentiment, article.Score)
+// 	// Handle different input formats
+// 	if len(timestamp) >= 10 {
+// 		// Extract first 10 characters for date part
+// 		dateStr := timestamp[0:10]
+		
+// 		// Try to parse and validate the date
+// 		if t, err := time.Parse("2006-01-02", dateStr); err == nil {
+// 			return t.Format("2006-01-02")
+// 		}
+		
+// 		// Try alternative format
+// 		if t, err := time.Parse("2006/01/02", dateStr); err == nil {
+// 			return t.Format("2006-01-02")
+// 		}
+// 	}
 
-		// Write ticker-specific sentiment
-		for _, ts := range article.TickerSent {
-			if ts.Ticker == ticker {
-				fmt.Fprintf(f, "%s Sentiment: %s (Score: %s, Relevance: %s)\n",
-					ts.Ticker, ts.Sentiment, ts.Score, ts.Relevance)
-				break
-			}
-		}
+// 	// If parsing fails, default to yesterday
+// 	fmt.Printf("Warning: Could not parse timestamp '%s', using yesterday\n", timestamp)
+// 	return time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+// }
 
-		fmt.Fprintf(f, "\nSummary:\n%s\n", article.Summary)
+// // Get the next day in YYYY-MM-DD format for the lt parameter
+// func getNextDay(dateStr string) string {
+// 	t, err := time.Parse("2006-01-02", dateStr)
+// 	if err != nil {
+// 		return dateStr // fallback to same date
+// 	}
+// 	return t.AddDate(0, 0, 1).Format("2006-01-02")
+// }
 
-		if len(article.Topics) > 0 {
-			fmt.Fprintf(f, "\nTopics:\n")
-			for _, topic := range article.Topics {
-				fmt.Fprintf(f, "- %s (Relevance: %s)\n", topic.Topic, topic.Relevance)
-			}
-		}
+// // Write Polygon articles to a file
+// func writePolygonArticlesToFile(filePath string, articles []PolygonArticle, ticker string) error {
+// 	f, err := os.Create(filePath)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	defer f.Close()
 
-		fmt.Fprintf(f, "\n%s\n\n", strings.Repeat("-", 80))
-	}
+// 	// Write header
+// 	fmt.Fprintf(f, "NEWS REPORT FOR %s\n", ticker)
+// 	fmt.Fprintf(f, "Generated on: %s\n", time.Now().Format("2006-01-02 15:04:05"))
+// 	fmt.Fprintf(f, "Total articles: %d\n\n", len(articles))
+// 	fmt.Fprintf(f, "%s\n\n", strings.Repeat("-", 80))
 
-	return nil
-}
+// 	// Write each article
+// 	for i, article := range articles {
+// 		fmt.Fprintf(f, "ARTICLE %d\n", i+1)
+// 		fmt.Fprintf(f, "Title: %s\n", article.Title)
+// 		fmt.Fprintf(f, "Publisher: %s\n", article.Publisher.Name)
+// 		fmt.Fprintf(f, "Author: %s\n", article.Author)
+// 		fmt.Fprintf(f, "Published: %s\n", article.PublishedUTC)
+// 		fmt.Fprintf(f, "URL: %s\n", article.ArticleURL)
+		
+// 		if len(article.Tickers) > 0 {
+// 			fmt.Fprintf(f, "Tickers: %s\n", strings.Join(article.Tickers, ", "))
+// 		}
 
-func getTime(timestamp string) (string, string) {
-	// Get current and previous day's date
-	now := time.Now()
-	yesterday := now.AddDate(0, 0, -1)
-	timeFrom := yesterday.Format("20060102T0000")
-	timeTo := now.Format("20060102T2359")
+// 		// Write sentiment insights if available
+// 		if len(article.Insights) > 0 {
+// 			fmt.Fprintf(f, "Sentiment Insights:\n")
+// 			for _, insight := range article.Insights {
+// 				if insight.Ticker == ticker {
+// 					fmt.Fprintf(f, "- %s: %s (Score: %.2f)\n", 
+// 						insight.Ticker, insight.Sentiment, insight.Score)
+// 				}
+// 			}
+// 		}
 
-	fmt.Println(timestamp)
+// 		fmt.Fprintf(f, "\nDescription:\n%s\n", article.Description)
 
-	if (timestamp != "") {
-		// Parse the timestamp
-		t, err := time.Parse("2006-01-02", timestamp[0:10])
-		if err != nil {
-			fmt.Printf("Error parsing timestamp: %v\n", err)
-			return timeFrom, timeTo
-		}
+// 		if len(article.Keywords) > 0 {
+// 			fmt.Fprintf(f, "\nKeywords:\n")
+// 			for _, keyword := range article.Keywords {
+// 				fmt.Fprintf(f, "- %s\n", keyword)
+// 			}
+// 		}
 
-		// Format the time to the required format
-		y := t.AddDate(0, 0, -1)
-		timeFrom = y.Format("20060102T0000")
-		timeTo = t.Format("20060102T0000")
-	}
+// 		fmt.Fprintf(f, "\n%s\n\n", strings.Repeat("-", 80))
+// 	}
 
-	return timeFrom, timeTo
-}
+// 	return nil
+// }
+
+// // Write earnings data to file
+// func writeEarningsToFile(filePath string, earnings []PolygonEarningsData, ticker string) error {
+// 	f, err := os.Create(filePath)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	defer f.Close()
+
+// 	// Write header
+// 	fmt.Fprintf(f, "EARNINGS SCHEDULE FOR %s\n", ticker)
+// 	fmt.Fprintf(f, "Generated on: %s\n", time.Now().Format("2006-01-02 15:04:05"))
+// 	fmt.Fprintf(f, "Total records: %d\n\n", len(earnings))
+// 	fmt.Fprintf(f, "%s\n\n", strings.Repeat("-", 80))
+
+// 	// Write each earnings record
+// 	for i, earning := range earnings {
+// 		fmt.Fprintf(f, "EARNINGS RECORD %d\n", i+1)
+// 		fmt.Fprintf(f, "Ticker: %s\n", earning.Ticker)
+// 		fmt.Fprintf(f, "Company: %s\n", earning.Name)
+// 		fmt.Fprintf(f, "Report Date: %s\n", earning.ReportDate)
+// 		fmt.Fprintf(f, "Report Time: %s\n", earning.ReportTime)
+// 		fmt.Fprintf(f, "Period: %s\n", earning.Period)
+// 		fmt.Fprintf(f, "Calendar Date: %s\n", earning.CalendarDate)
+// 		fmt.Fprintf(f, "Calendar Year: %d\n", earning.CalendarYear)
+// 		fmt.Fprintf(f, "Calendar Quarter: %d\n", earning.CalendarQuarter)
+// 		fmt.Fprintf(f, "Currency: %s\n", earning.Currency)
+// 		fmt.Fprintf(f, "Last Updated: %s\n", earning.Updated)
+// 		fmt.Fprintf(f, "\n%s\n\n", strings.Repeat("-", 80))
+// 	}
+
+// 	return nil
+// }
+
+// // Write financials data to file
+// func writeFinancialsToFile(filePath string, financials []PolygonFinancialsData, ticker string) error {
+// 	f, err := os.Create(filePath)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	defer f.Close()
+
+// 	// Write header
+// 	fmt.Fprintf(f, "FINANCIAL REPORTS FOR %s\n", ticker)
+// 	fmt.Fprintf(f, "Generated on: %s\n", time.Now().Format("2006-01-02 15:04:05"))
+// 	fmt.Fprintf(f, "Total records: %d\n\n", len(financials))
+// 	fmt.Fprintf(f, "%s\n\n", strings.Repeat("-", 80))
+
+// 	// Write each financial record
+// 	for i, financial := range financials {
+// 		fmt.Fprintf(f, "FINANCIAL REPORT %d\n", i+1)
+// 		fmt.Fprintf(f, "Company: %s\n", financial.CompanyName)
+// 		fmt.Fprintf(f, "CIK: %s\n", financial.CIK)
+// 		fmt.Fprintf(f, "Fiscal Period: %s\n", financial.FiscalPeriod)
+// 		fmt.Fprintf(f, "Fiscal Year: %s\n", financial.FiscalYear)
+// 		fmt.Fprintf(f, "Time Frame: %s\n", financial.TimeFrame)
+// 		fmt.Fprintf(f, "Start Date: %s\n", financial.StartDate)
+// 		fmt.Fprintf(f, "End Date: %s\n", financial.EndDate)
+// 		fmt.Fprintf(f, "Filing Date: %s\n", financial.FilingDate)
+		
+// 		// Write Income Statement data
+// 		if len(financial.Financials.IncomeStatement) > 0 {
+// 			fmt.Fprintf(f, "\nINCOME STATEMENT:\n")
+// 			for key, value := range financial.Financials.IncomeStatement {
+// 				fmt.Fprintf(f, "- %s (%s): %s %s\n", value.Label, key, formatNumber(value.Value), value.Unit)
+// 			}
+// 		}
+		
+// 		// Write Balance Sheet data
+// 		if len(financial.Financials.BalanceSheet) > 0 {
+// 			fmt.Fprintf(f, "\nBALANCE SHEET:\n")
+// 			for key, value := range financial.Financials.BalanceSheet {
+// 				fmt.Fprintf(f, "- %s (%s): %s %s\n", value.Label, key, formatNumber(value.Value), value.Unit)
+// 			}
+// 		}
+		
+// 		// Write Cash Flow Statement data
+// 		if len(financial.Financials.CashFlowStatement) > 0 {
+// 			fmt.Fprintf(f, "\nCASH FLOW STATEMENT:\n")
+// 			for key, value := range financial.Financials.CashFlowStatement {
+// 				fmt.Fprintf(f, "- %s (%s): %s %s\n", value.Label, key, formatNumber(value.Value), value.Unit)
+// 			}
+// 		}
+		
+// 		// Write Comprehensive Income data
+// 		if len(financial.Financials.ComprehensiveIncome) > 0 {
+// 			fmt.Fprintf(f, "\nCOMPREHENSIVE INCOME:\n")
+// 			for key, value := range financial.Financials.ComprehensiveIncome {
+// 				fmt.Fprintf(f, "- %s (%s): %s %s\n", value.Label, key, formatNumber(value.Value), value.Unit)
+// 			}
+// 		}
+
+// 		fmt.Fprintf(f, "\n%s\n\n", strings.Repeat("-", 80))
+// 	}
+
+// 	return nil
+// }
+
+// // Helper function to format numbers with commas
+// func formatNumber(num float64) string {
+// 	if num == 0 {
+// 		return "0"
+// 	}
+	
+// 	// Convert to string with 2 decimal places for currency
+// 	str := fmt.Sprintf("%.0f", num)
+	
+// 	// Add commas for thousands
+// 	n := len(str)
+// 	if n <= 3 {
+// 		return str
+// 	}
+	
+// 	// Insert commas
+// 	result := ""
+// 	for i, char := range str {
+// 		if i > 0 && (n-i)%3 == 0 {
+// 			result += ","
+// 		}
+// 		result += string(char)
+// 	}
+	
+// 	return result
+// }

@@ -15,10 +15,16 @@ import (
 
 // Configuration
 const (
-	MARKETSTACK_API_URL = "http://api.marketstack.com/v1"
+	MARKETSTACK_API_URL = "https://api.marketstack.com/v2"
 	MIN_VOLUME          = 200000
 	MAX_CONCURRENT      = 5
-	DAYS_LOOKBACK       = 3650 // 3 years of trading days
+	DAYS_LOOKBACK       = 9131 // 25 years of trading days
+	MIN_GAIN_SHORT_TERM = 100.0  // 100% minimum for 64-252 days
+	MIN_GAIN_LONG_TERM  = 150.0  // 150% minimum for 252-504 days
+	MIN_DAYS_SHORT      = 64     // Minimum days for 100% moves
+	MAX_DAYS_SHORT      = 252    // Maximum days for 100% moves
+	MIN_DAYS_LONG       = 252    // Minimum days for 150% moves
+	MAX_DAYS_LONG       = 504    // Maximum days for 150% moves
 )
 
 // API Response structures
@@ -33,41 +39,51 @@ type MarketStackResponse struct {
 }
 
 type StockData struct {
-	Open     float64 `json:"open"`
-	High     float64 `json:"high"`
-	Low      float64 `json:"low"`
-	Close    float64 `json:"close"`
-	Volume   float64 `json:"volume"`
-	Date     string  `json:"date"`
-	Symbol   string  `json:"symbol"`
-	Exchange string  `json:"exchange"`
+	Open          float64 `json:"open"`
+	High          float64 `json:"high"`
+	Low           float64 `json:"low"`
+	Close         float64 `json:"close"`
+	Volume        float64 `json:"volume"`
+	AdjHigh       float64 `json:"adj_high"`
+	AdjLow        float64 `json:"adj_low"`
+	AdjClose      float64 `json:"adj_close"`
+	AdjOpen       float64 `json:"adj_open"`
+	AdjVolume     float64 `json:"adj_volume"`
+	SplitFactor   float64 `json:"split_factor"`
+	Dividend      float64 `json:"dividend"`
+	Date          string  `json:"date"`
+	Symbol        string  `json:"symbol"`
+	Exchange      string  `json:"exchange"`
+	Name          string  `json:"name"`
+	ExchangeCode  string  `json:"exchange_code"`
+	AssetType     string  `json:"asset_type"`
+	PriceCurrency string  `json:"price_currency"`
 }
 
 // Core data structures
 type GrowthMove struct {
-	Ticker         string
-	StartDate      time.Time
-	EndDate        time.Time
-	LOD            float64
-	PeakPrice      float64
-	PeakDate       time.Time
-	TotalGain      float64
-	DurationDays   int
-	IsGrowthStock  bool
-	IsSuperperform bool
-	Drawdowns      []Drawdown
-	Continuations  []Continuation
-	Status         string
-	EndReason      string
-	DaysSinceHigh  int
-	InDrawdown     bool
-	DrawdownStart  time.Time
-	DrawdownLow    float64
-
-	// New fields for continuation tracking
+	Ticker               string
+	StartDate            time.Time
+	EndDate              time.Time  // This should ALWAYS be the peak date for successful moves
+	LOD                  float64
+	PeakPrice            float64
+	PeakDate             time.Time  // The actual date of highest price
+	TotalGain            float64
+	DurationDays         int        // Days from start to PEAK, not to decline
+	IsGrowthStock        bool
+	IsSuperperform       bool
+	Drawdowns            []Drawdown
+	Continuations        []Continuation
+	Status               string
+	EndReason            string
+	DaysSinceHigh        int
+	InDrawdown           bool
+	DrawdownStart        time.Time
+	DrawdownLow          float64
 	PendingContinuation  bool
 	ContinuationDeadline time.Time
 	ContinuationLOD      float64
+	ActualEndDate        time.Time  // When the move actually ended (for tracking)
 }
 
 type Drawdown struct {
@@ -85,12 +101,12 @@ type Continuation struct {
 type Result struct {
 	Ticker           string
 	StartDate        string
-	EndDate          string
+	EndDate          string  // Should always be peak date for successful moves
 	Superperformance string
 	Drawdowns        string
 	Continuation     string
 	TotalGain        float64
-	DurationDays     int
+	DurationDays     int     // Days from start to peak
 }
 
 // API Client
@@ -100,79 +116,135 @@ type MarketStackClient struct {
 	RateLimit  chan struct{}
 }
 
-func (c *MarketStackClient) GetStockData(symbol string, dateFrom, dateTo string) ([]StockData, error) {
-	fmt.Printf("[DEBUG] Starting API request for %s from %s to %s\n", symbol, dateFrom, dateTo)
+func (c *MarketStackClient) GetStockData(symbol string, dateFrom, dateTo string, exchange string) ([]StockData, error) {
+	fmt.Printf("[DEBUG] Starting API request for %s from %s to %s on exchange %s\n", symbol, dateFrom, dateTo, exchange)
 
-	// Rate limiting: acquire token
-	<-c.RateLimit
-	fmt.Printf("[DEBUG] Rate limit token acquired for %s\n", symbol)
-	defer func() {
+	var allData []StockData
+	offset := 0
+	limit := 1000
+
+	for {
+		// Rate limiting: acquire token
+		<-c.RateLimit
+		fmt.Printf("[DEBUG] Rate limit token acquired for %s (offset: %d)\n", symbol, offset)
+
+		url := fmt.Sprintf("%s/eod?access_key=%s&symbols=%s&date_from=%s&date_to=%s&limit=%d&offset=%d",
+				MARKETSTACK_API_URL, c.APIKey, symbol, dateFrom, dateTo, limit, offset)
+
+		// Build API URL with pagination
+		if exchange != "" {
+			url = fmt.Sprintf("%s/eod?access_key=%s&symbols=%s&date_from=%s&date_to=%s&limit=%d&offset=%d&exchange=%s",
+				MARKETSTACK_API_URL, c.APIKey, symbol, dateFrom, dateTo, limit, offset, exchange)
+		}
+
+		fmt.Printf("[DEBUG] API URL constructed: %s\n", strings.Replace(url, c.APIKey, "***", -1))
+
+		// Make HTTP request
+		resp, err := c.HTTPClient.Get(url)
+		if err != nil {
+			// Release rate limit token
+			c.RateLimit <- struct{}{}
+			fmt.Printf("[ERROR] HTTP request failed for %s: %v\n", symbol, err)
+			return nil, fmt.Errorf("API request failed: %v", err)
+		}
+
+		fmt.Printf("[DEBUG] HTTP response received for %s with status: %d\n", symbol, resp.StatusCode)
+
+		// Check HTTP status
+		if resp.StatusCode != 200 {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			c.RateLimit <- struct{}{} // Release rate limit token
+
+			fmt.Printf("[ERROR] API returned non-200 status for %s: %d, body: %s\n", symbol, resp.StatusCode, string(body))
+
+			// Handle specific error cases
+			if resp.StatusCode == 429 {
+				return nil, fmt.Errorf("API rate limit exceeded for %s", symbol)
+			}
+			if resp.StatusCode == 404 {
+				return nil, fmt.Errorf("symbol %s not found", symbol)
+			}
+
+			return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
+		}
+
+		// Decode JSON response
+		var apiResp MarketStackResponse
+		if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+			resp.Body.Close()
+			c.RateLimit <- struct{}{} // Release rate limit token
+			fmt.Printf("[ERROR] Failed to decode JSON response for %s: %v\n", symbol, err)
+			return nil, fmt.Errorf("failed to decode response: %v", err)
+		}
+		resp.Body.Close()
+
+		// Release rate limit token after successful request
 		c.RateLimit <- struct{}{}
 		fmt.Printf("[DEBUG] Rate limit token released for %s\n", symbol)
-	}()
 
-	// Build API URL
-	url := fmt.Sprintf("%s/eod?access_key=%s&symbols=%s&date_from=%s&date_to=%s&limit=1000",
-		MARKETSTACK_API_URL, c.APIKey, symbol, dateFrom, dateTo)
-	fmt.Printf("[DEBUG] API URL constructed: %s\n", strings.Replace(url, c.APIKey, "***", -1))
+		fmt.Printf("[DEBUG] Successfully decoded %d data points for %s (offset: %d)\n", len(apiResp.Data), symbol, offset)
 
-	// Make HTTP request
-	fmt.Printf("[DEBUG] Making HTTP GET request for %s\n", symbol)
-	resp, err := c.HTTPClient.Get(url)
-	if err != nil {
-		fmt.Printf("[ERROR] HTTP request failed for %s: %v\n", symbol, err)
-		return nil, fmt.Errorf("API request failed: %v", err)
-	}
-	defer func() {
-		if closeErr := resp.Body.Close(); closeErr != nil {
-			fmt.Printf("[ERROR] Failed to close response body for %s: %v\n", symbol, closeErr)
+		// Add data to our collection
+		allData = append(allData, apiResp.Data...)
+
+		// Check if we have more data to fetch
+		if len(apiResp.Data) < limit {
+			fmt.Printf("[DEBUG] Reached end of data for %s (got %d records, expected %d)\n", symbol, len(apiResp.Data), limit)
+			break
 		}
-	}()
 
-	fmt.Printf("[DEBUG] HTTP response received for %s with status: %d\n", symbol, resp.StatusCode)
-
-	// Check HTTP status
-	if resp.StatusCode != 200 {
-		body, readErr := io.ReadAll(resp.Body)
-		if readErr != nil {
-			fmt.Printf("[ERROR] Failed to read error response body for %s: %v\n", symbol, readErr)
-			return nil, fmt.Errorf("API returned status %d and failed to read response", resp.StatusCode)
+		// Check pagination info
+		if apiResp.Pagination.Total > 0 && len(allData) >= apiResp.Pagination.Total {
+			fmt.Printf("[DEBUG] Fetched all available data for %s (%d records)\n", symbol, len(allData))
+			break
 		}
-		fmt.Printf("[ERROR] API returned non-200 status for %s: %d, body: %s\n", symbol, resp.StatusCode, string(body))
-		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
+
+		offset += limit
+		fmt.Printf("[DEBUG] Fetching next batch for %s (new offset: %d)\n", symbol, offset)
 	}
 
-	// Decode JSON response
-	fmt.Printf("[DEBUG] Decoding JSON response for %s\n", symbol)
-	var apiResp MarketStackResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-		fmt.Printf("[ERROR] Failed to decode JSON response for %s: %v\n", symbol, err)
-		return nil, fmt.Errorf("failed to decode response: %v", err)
-	}
-
-	fmt.Printf("[DEBUG] Successfully decoded %d data points for %s\n", len(apiResp.Data), symbol)
-
-	// Validate data
-	if len(apiResp.Data) == 0 {
+	// Validate data exists
+	if len(allData) == 0 {
 		fmt.Printf("[WARNING] No data returned for %s\n", symbol)
 		return nil, fmt.Errorf("no data returned for symbol %s", symbol)
 	}
 
-	// Sort by date (oldest first)
-	fmt.Printf("[DEBUG] Sorting data by date for %s\n", symbol)
-	sort.Slice(apiResp.Data, func(i, j int) bool {
-		dateI := parseStockDate(apiResp.Data[i].Date)
-		dateJ := parseStockDate(apiResp.Data[j].Date)
+	// Validate data quality - check for valid prices
+	validData := []StockData{}
+	for _, data := range allData {
+		if data.High > 0 && data.Low > 0 && data.Close > 0 && data.Volume >= 0 {
+			validData = append(validData, data)
+		} else {
+			fmt.Printf("[WARNING] Invalid data point for %s on %s: High=%.2f, Low=%.2f, Close=%.2f\n", 
+				symbol, data.Date, data.High, data.Low, data.Close)
+		}
+	}
 
+	if len(validData) == 0 {
+		return nil, fmt.Errorf("no valid price data for symbol %s", symbol)
+	}
+
+	// Sort by date (oldest first)
+	fmt.Printf("[DEBUG] Sorting %d valid data points by date for %s\n", len(validData), symbol)
+	sort.Slice(validData, func(i, j int) bool {
+		dateI := parseStockDate(validData[i].Date)
+		dateJ := parseStockDate(validData[j].Date)
 		if dateI.IsZero() || dateJ.IsZero() {
 			return false
 		}
-
 		return dateI.Before(dateJ)
 	})
 
-	fmt.Printf("[DEBUG] Successfully retrieved and sorted %d data points for %s\n", len(apiResp.Data), symbol)
-	return apiResp.Data, nil
+	// Log date range of retrieved data
+	if len(validData) > 0 {
+		firstDate := parseStockDate(validData[0].Date)
+		lastDate := parseStockDate(validData[len(validData)-1].Date)
+		fmt.Printf("[INFO] Retrieved valid data for %s from %s to %s (%d days)\n",
+			symbol, firstDate.Format("2006-01-02"), lastDate.Format("2006-01-02"), len(validData))
+	}
+
+	return validData, nil
 }
 
 // Helper function to parse various date formats from MarketStack
@@ -180,6 +252,7 @@ func parseStockDate(dateStr string) time.Time {
 	formats := []string{
 		"2006-01-02T15:04:05-0700",
 		"2006-01-02T15:04:05Z",
+		"2006-01-02T15:04:05+0000",
 		"2006-01-02T15:04:05",
 		"2006-01-02",
 	}
@@ -195,7 +268,7 @@ func parseStockDate(dateStr string) time.Time {
 }
 
 // Core algorithm functions
-func (c *MarketStackClient) AnalyzeStock(symbol string) ([]Result, error) {
+func (c *MarketStackClient) AnalyzeStock(symbol string, exchange string) ([]Result, error) {
 	fmt.Printf("[INFO] Starting analysis for %s\n", symbol)
 
 	// Validate input
@@ -204,23 +277,39 @@ func (c *MarketStackClient) AnalyzeStock(symbol string) ([]Result, error) {
 		return nil, fmt.Errorf("symbol cannot be empty")
 	}
 
-	// Get 3 years of historical data
+	// Get historical data - try different date ranges if 2000 fails
 	dateTo := time.Now().Format("2006-01-02")
-	dateFrom := time.Now().AddDate(-10, 0, 0).Format("2006-01-02")
-	fmt.Printf("[DEBUG] Fetching data for %s from %s to %s\n", symbol, dateFrom, dateTo)
 
-	stockData, err := c.GetStockData(symbol, dateFrom, dateTo)
-	if err != nil {
-		fmt.Printf("[ERROR] Failed to get data for %s: %v\n", symbol, err)
-		return nil, fmt.Errorf("failed to get data for %s: %v", symbol, err)
+	// Try multiple start dates in case 2000 is too far back
+	startDates := []string{
+		"2000-01-01", // 25+ years
+		"2005-01-01", // 20 years
+		"2010-01-01", // 15 years
+		"2015-01-01", // 10 years
 	}
 
-	// Validate sufficient data
-	if len(stockData) < 50 {
-		fmt.Printf("[WARNING] Insufficient data for %s: only %d days available\n", symbol, len(stockData))
-		return nil, fmt.Errorf("insufficient data for %s: only %d days available", symbol, len(stockData))
+	var stockData []StockData
+	var err error
+
+	for _, dateFrom := range startDates {
+		fmt.Printf("[DEBUG] Trying to fetch data for %s from %s to %s\n", symbol, dateFrom, dateTo)
+		stockData, err = c.GetStockData(symbol, dateFrom, dateTo, exchange)
+		if err == nil && len(stockData) >= 100 { // Increased minimum requirement
+			fmt.Printf("[INFO] Successfully retrieved %d days of data for %s starting from %s\n",
+				len(stockData), symbol, dateFrom)
+			break
+		}
+		fmt.Printf("[WARNING] Failed to get sufficient data from %s: %v\n", dateFrom, err)
 	}
-	fmt.Printf("[DEBUG] %s has sufficient data: %d days\n", symbol, len(stockData))
+
+	if err != nil || len(stockData) < 100 { // Increased minimum requirement
+		return nil, fmt.Errorf("failed to get sufficient data for %s: %v", symbol, err)
+	}
+
+	// Validate stock existed during the time period with meaningful trading
+	if !validateStockExistence(symbol, stockData) {
+		return nil, fmt.Errorf("%s does not appear to have valid trading history", symbol)
+	}
 
 	// Check volume requirement
 	fmt.Printf("[DEBUG] Checking volume requirements for %s\n", symbol)
@@ -230,39 +319,158 @@ func (c *MarketStackClient) AnalyzeStock(symbol string) ([]Result, error) {
 	}
 	fmt.Printf("[DEBUG] %s meets volume requirements\n", symbol)
 
-	// Find growth moves
-	fmt.Printf("[DEBUG] Searching for growth moves in %s\n", symbol)
-	results := findGrowthMoves(symbol, stockData)
-	fmt.Printf("[INFO] Found %d growth moves for %s\n", len(results), symbol)
+	// Find distinct growth moves
+	fmt.Printf("[DEBUG] Searching for distinct growth moves in %s\n", symbol)
+	results := findDistinctGrowthMoves(symbol, stockData)
+	fmt.Printf("[INFO] Found %d distinct growth moves for %s\n", len(results), symbol)
 
 	return results, nil
 }
 
-func meetsVolumeRequirement(data []StockData) bool {
-	fmt.Printf("[DEBUG] Checking volume requirements\n")
+// Add this near the top with other imports and constants
+var knownIPODates = map[string]string{
+	// Add known problematic cases that shouldn't have early data
+	"POWW": "2004-01-01", // Example - American Outdoor Brands went public around 2004
+	// Add more as needed
+}
 
+func validateStockExistence(symbol string, data []StockData) bool {
+	if len(data) < 100 {
+		return false
+	}
+
+	// Check against known IPO dates if available
+	if ipoDateStr, exists := knownIPODates[symbol]; exists {
+		ipoDate, err := time.Parse("2006-01-02", ipoDateStr)
+		if err == nil {
+			// Find earliest data point
+			var earliestDate time.Time
+			for _, day := range data {
+				dayDate := parseStockDate(day.Date)
+				if !dayDate.IsZero() && (earliestDate.IsZero() || dayDate.Before(earliestDate)) {
+					earliestDate = dayDate
+				}
+			}
+			
+			if !earliestDate.IsZero() && earliestDate.Before(ipoDate) {
+				fmt.Printf("[WARNING] %s has data before known IPO date: data from %s, IPO ~%s\n", 
+					symbol, earliestDate.Format("2006-01-02"), ipoDate.Format("2006-01-02"))
+				return false
+			}
+		}
+	}
+
+	// Check for reasonable price ranges (not just $0.0001 prices)
+	totalPrice := 0.0
+	validPrices := 0
+	firstValidDate := time.Time{}
+	
+	for _, day := range data {
+		if day.Close >= 0.01 { // At least 1 cent
+			totalPrice += day.Close
+			validPrices++
+			
+			// Track first valid trading date
+			dayDate := parseStockDate(day.Date)
+			if !dayDate.IsZero() && (firstValidDate.IsZero() || dayDate.Before(firstValidDate)) {
+				firstValidDate = dayDate
+			}
+		}
+	}
+
+	if validPrices < len(data)/2 { // At least 50% of days should have reasonable prices
+		fmt.Printf("[WARNING] %s has too many invalid price points\n", symbol)
+		return false
+	}
+
+	avgPrice := totalPrice / float64(validPrices)
+	if avgPrice < 0.01 { // Average price should be at least 1 cent
+		fmt.Printf("[WARNING] %s average price too low: %.4f\n", symbol, avgPrice)
+		return false
+	}
+
+	// Check for suspicious early trading patterns that might indicate pre-IPO data
+	if !firstValidDate.IsZero() {
+		// Look for signs of legitimate trading activity vs data artifacts
+		validTradingDays := 0
+		significantVolumedays := 0
+		
+		for _, day := range data {
+			dayDate := parseStockDate(day.Date)
+			if dayDate.IsZero() || day.Close < 0.01 {
+				continue
+			}
+			
+			validTradingDays++
+			
+			// Check for meaningful volume (indicates real trading)
+			if day.Volume > 10000 { // More than 10k shares traded
+				significantVolumedays++
+			}
+		}
+		
+		// If less than 25% of days have significant volume, might be pre-IPO or invalid data
+		volumeRatio := float64(significantVolumedays) / float64(validTradingDays)
+		if volumeRatio < 0.25 {
+			fmt.Printf("[WARNING] %s has insufficient trading volume history (%.1f%% meaningful volume days)\n", 
+				symbol, volumeRatio*100)
+			return false
+		}
+		
+		// Check for realistic price progression - IPO stocks typically don't start at pennies
+		// unless they're penny stocks or have had significant splits
+		firstYearData := []StockData{}
+		oneYearLater := firstValidDate.AddDate(1, 0, 0)
+		
+		for _, day := range data {
+			dayDate := parseStockDate(day.Date)
+			if !dayDate.IsZero() && dayDate.After(firstValidDate) && dayDate.Before(oneYearLater) {
+				firstYearData = append(firstYearData, day)
+			}
+		}
+		
+		if len(firstYearData) > 50 { // At least ~2 months of data in first year
+			firstYearAvgPrice := 0.0
+			for _, day := range firstYearData {
+				if day.Close >= 0.01 {
+					firstYearAvgPrice += day.Close
+				}
+			}
+			firstYearAvgPrice /= float64(len(firstYearData))
+			
+			// If average price in first year is extremely low (< $0.10) with low volume,
+			// this might be pre-IPO or invalid data
+			if firstYearAvgPrice < 0.10 && volumeRatio < 0.5 {
+				fmt.Printf("[WARNING] %s shows suspicious early trading pattern (avg price: $%.4f, volume ratio: %.1f%%)\n", 
+					symbol, firstYearAvgPrice, volumeRatio*100)
+				return false
+			}
+		}
+	}
+
+	fmt.Printf("[INFO] %s validated: First trading date ~%s, avg price: $%.2f\n", 
+		symbol, firstValidDate.Format("2006-01-02"), avgPrice)
+	
+	return true
+}
+
+func meetsVolumeRequirement(data []StockData) bool {
 	if len(data) < 20 {
-		fmt.Printf("[DEBUG] Not enough data for volume check: %d days\n", len(data))
 		return false
 	}
 
 	// Calculate average volume over last 20 days
 	totalVolume := 0.0
 	count := 0
-	validDays := 0
 
 	for i := len(data) - 20; i < len(data); i++ {
-		validDays++
 		if data[i].Volume > 0 {
 			totalVolume += data[i].Volume
 			count++
 		}
 	}
 
-	fmt.Printf("[DEBUG] Volume check: %d valid days out of %d, %d with volume data\n", count, validDays, count)
-
 	if count == 0 {
-		fmt.Printf("[DEBUG] No volume data available in last 20 days\n")
 		return false
 	}
 
@@ -272,13 +480,12 @@ func meetsVolumeRequirement(data []StockData) bool {
 	return avgVolume >= MIN_VOLUME
 }
 
-func findGrowthMoves(symbol string, data []StockData) []Result {
-	fmt.Printf("[DEBUG] Starting growth move detection for %s with %d data points\n", symbol, len(data))
+func findDistinctGrowthMoves(symbol string, data []StockData) []Result {
+	fmt.Printf("[DEBUG] Starting distinct growth move detection for %s with %d data points\n", symbol, len(data))
 
 	var results []Result
 	var activeMove *GrowthMove
-	movesFound := 0
-	potentialStarts := 0
+	lastMoveEndIndex := -1
 
 	for i := 0; i < len(data); i++ {
 		currentDay := data[i]
@@ -287,60 +494,54 @@ func findGrowthMoves(symbol string, data []StockData) []Result {
 			continue
 		}
 
-		// Process active move
+		// Process active move if one exists
 		if activeMove != nil {
-			fmt.Printf("[DEBUG] Updating active move for %s on %s (Day %d since start)\n",
-				symbol, currentDate.Format("2006-01-02"),
-				int(currentDate.Sub(activeMove.StartDate).Hours()/24))
-
-			endMove := updateActiveMove(activeMove, currentDay, currentDate)
+			endMove := processActiveMove(activeMove, currentDay, currentDate, i)
 			if endMove {
-				fmt.Printf("[DEBUG] Ending move for %s: %s on %s\n", symbol, activeMove.EndReason, currentDate.Format("2006-01-02"))
 				if result := finalizeGrowthMove(activeMove); result != nil {
 					results = append(results, *result)
-					movesFound++
-					fmt.Printf("[INFO] Completed growth move #%d for %s: %.2f%% gain over %d days\n",
-						movesFound, symbol, result.TotalGain, result.DurationDays)
 				}
 				activeMove = nil
+				lastMoveEndIndex = i
 			}
 			continue
 		}
 
-		// Look for new growth start
-		if newMove := checkForGrowthStart(symbol, data, i); newMove != nil {
-			potentialStarts++
-			activeMove = newMove
-			fmt.Printf("[INFO] New growth move started for %s on %s (potential start #%d)\n",
-				symbol, currentDate.Format("2006-01-02"), potentialStarts)
+		// Look for new growth start (with sufficient gap from last move)
+		if activeMove == nil && i > lastMoveEndIndex+30 {
+			if newMove := checkForGrowthStart(symbol, data, i); newMove != nil {
+				activeMove = newMove
+				fmt.Printf("[INFO] New growth move started for %s on %s (LOD: %.2f)\n",
+					symbol, currentDate.Format("2006-01-02"), newMove.LOD)
+			}
 		}
 	}
 
 	// Handle any remaining active move at end of data
 	if activeMove != nil {
-		fmt.Printf("[DEBUG] Finalizing remaining active move for %s\n", symbol)
-		// For moves that are still active at the end of data, use the last data point
 		if len(data) > 0 {
 			lastDay := data[len(data)-1]
 			lastDate := parseStockDate(lastDay.Date)
 			if !lastDate.IsZero() {
-				activeMove.EndDate = lastDate
+				// CRITICAL: For end of data, use peak date as end date
+				activeMove.EndDate = activeMove.PeakDate
+				activeMove.ActualEndDate = lastDate
 				activeMove.EndReason = "End of data"
-				// Make sure we have the correct ending state
-				fmt.Printf("[DEBUG] Setting end date to last data point: %s\n", lastDate.Format("2006-01-02"))
 			}
 		}
 
 		if result := finalizeGrowthMove(activeMove); result != nil {
 			results = append(results, *result)
-			movesFound++
-			fmt.Printf("[INFO] Final growth move for %s: %.2f%% gain over %d days\n",
-				symbol, result.TotalGain, result.DurationDays)
 		}
 	}
 
-	fmt.Printf("[DEBUG] Growth move detection complete for %s: %d potential starts, %d valid moves\n",
-		symbol, potentialStarts, len(results))
+	// Sort results by start date
+	sort.Slice(results, func(i, j int) bool {
+		dateI, _ := time.Parse("Jan 2, 2006", results[i].StartDate)
+		dateJ, _ := time.Parse("Jan 2, 2006", results[j].StartDate)
+		return dateI.Before(dateJ)
+	})
+
 	return results
 }
 
@@ -356,54 +557,60 @@ func checkForGrowthStart(symbol string, data []StockData, startIndex int) *Growt
 		return nil
 	}
 
-	fmt.Printf("[DEBUG] Checking growth start for %s on %s with LOD %.2f\n",
-		symbol, startDate.Format("2006-01-02"), potentialLOD)
+	// Ensure the potential LOD is reasonable (not a data artifact)
+	if potentialLOD <= 0.001 {
+		return nil
+	}
 
 	// Check for 5% confirmation within 5 days
-	for i := 1; i <= 5 && startIndex+i < len(data); i++ {
-		nextDay := data[startIndex+i]
-		nextDate := parseStockDate(nextDay.Date)
-		if nextDate.IsZero() {
+	confirmationFound := false
+	var confirmationHigh float64
+	var confirmationDate time.Time
+
+	for i := 0; i <= 5 && startIndex+i < len(data); i++ {
+		checkDay := data[startIndex+i]
+		checkDate := parseStockDate(checkDay.Date)
+		if checkDate.IsZero() {
 			continue
 		}
 
-		// Check if LOD is broken
-		if nextDay.Low < potentialLOD {
-			fmt.Printf("[DEBUG] LOD broken on day %d for %s: %.2f < %.2f\n",
-				i, symbol, nextDay.Low, potentialLOD)
+		// Check if LOD is broken (with small tolerance for data noise)
+		if checkDay.Low < potentialLOD*0.995 {
 			return nil
 		}
 
 		// Check for 5% gain confirmation
-		gain := (nextDay.High - potentialLOD) / potentialLOD
+		gain := (checkDay.High - potentialLOD) / potentialLOD
 		if gain >= 0.05 {
-			fmt.Printf("[INFO] Growth confirmed for %s on %s: %.2f%% gain in %d days\n",
-				symbol, nextDate.Format("2006-01-02"), gain*100, i)
-
-			return &GrowthMove{
-				Ticker:        symbol,
-				StartDate:     startDate,
-				LOD:           potentialLOD,
-				PeakPrice:     nextDay.High,
-				PeakDate:      nextDate,
-				Status:        "ACTIVE",
-				Drawdowns:     []Drawdown{},
-				Continuations: []Continuation{},
-			}
+			confirmationFound = true
+			confirmationHigh = checkDay.High
+			confirmationDate = checkDate
+			break
 		}
 	}
 
-	return nil
+	if !confirmationFound {
+		return nil
+	}
+
+	return &GrowthMove{
+		Ticker:        symbol,
+		StartDate:     startDate,
+		LOD:           potentialLOD,
+		PeakPrice:     confirmationHigh,
+		PeakDate:      confirmationDate,
+		EndDate:       confirmationDate, // Initially set to confirmation date
+		Status:        "ACTIVE",
+		Drawdowns:     []Drawdown{},
+		Continuations: []Continuation{},
+	}
 }
 
-func updateActiveMove(move *GrowthMove, currentDay StockData, currentDate time.Time) bool {
+func processActiveMove(move *GrowthMove, currentDay StockData, currentDate time.Time, dataIndex int) bool {
 	// Handle pending continuation check first
 	if move.PendingContinuation {
 		if currentDay.High > move.PeakPrice {
-			// Continuation successful - new high achieved
-			fmt.Printf("[INFO] Continuation successful for %s: new high %.2f > %.2f\n",
-				move.Ticker, currentDay.High, move.PeakPrice)
-
+			// Continuation successful
 			move.Continuations = append(move.Continuations, Continuation{
 				OldPeak:          move.PeakPrice,
 				ContinuationDate: currentDate,
@@ -413,31 +620,32 @@ func updateActiveMove(move *GrowthMove, currentDay StockData, currentDate time.T
 			move.LOD = move.ContinuationLOD
 			move.PeakPrice = currentDay.High
 			move.PeakDate = currentDate
+			move.EndDate = currentDate // Update end date to new peak
 			move.DaysSinceHigh = 0
 			move.PendingContinuation = false
 			move.Status = "ACTIVE"
 
+			fmt.Printf("[DEBUG] Continuation successful for %s: New peak %.2f on %s\n",
+				move.Ticker, currentDay.High, currentDate.Format("2006-01-02"))
+
 		} else if currentDate.After(move.ContinuationDeadline) {
-			// Continuation failed - deadline exceeded
-			fmt.Printf("[DEBUG] Continuation failed for %s: deadline exceeded on %s\n", move.Ticker, currentDate.Format("2006-01-02"))
-			move.EndDate = currentDate // Use current date, not deadline
+			// Continuation failed - end date should remain as the previous peak date
+			move.ActualEndDate = currentDate
 			move.EndReason = "Continuation failed"
 			return true
 		}
-		// Continue checking for continuation
 		return false
 	}
 
 	// Update peak if new high
 	if currentDay.High > move.PeakPrice {
-		oldPeak := move.PeakPrice
 		move.PeakPrice = currentDay.High
 		move.PeakDate = currentDate
+		move.EndDate = currentDate // CRITICAL: Always update end date to peak date
 		move.DaysSinceHigh = 0
 
-		gain := (move.PeakPrice - move.LOD) / move.LOD * 100
-		fmt.Printf("[DEBUG] New high for %s: %.2f -> %.2f (%.2f%% total gain)\n",
-			move.Ticker, oldPeak, move.PeakPrice, gain)
+		fmt.Printf("[DEBUG] New peak for %s: %.2f on %s\n",
+			move.Ticker, currentDay.High, currentDate.Format("2006-01-02"))
 	} else {
 		move.DaysSinceHigh++
 	}
@@ -445,63 +653,49 @@ func updateActiveMove(move *GrowthMove, currentDay StockData, currentDate time.T
 	// Check end conditions
 	endReason := checkEndConditions(move, currentDay, currentDate)
 	if endReason != "" {
-		// Special case: 30% drop might lead to continuation
 		if endReason == "30% decline" {
-			fmt.Printf("[DEBUG] 30%% drop detected for %s - checking for continuation possibility\n", move.Ticker)
-
 			// Set up continuation tracking
 			move.PendingContinuation = true
-			move.ContinuationDeadline = move.PeakDate.AddDate(0, 0, 90) // 90 trading days from peak, not current date
+			move.ContinuationDeadline = move.PeakDate.AddDate(0, 0, 90)
 			move.ContinuationLOD = currentDay.Low
 			move.Status = "PENDING_CONTINUATION"
-
-			fmt.Printf("[DEBUG] Continuation setup for %s: deadline %s, new LOD %.2f\n",
-				move.Ticker, move.ContinuationDeadline.Format("2006-01-02"), move.ContinuationLOD)
-
-			return false // Don't end yet, wait for continuation
+			// EndDate stays as peak date
+			fmt.Printf("[DEBUG] 30%% decline for %s, setting up continuation tracking\n", move.Ticker)
+			return false
 		}
 
-		// For all other end conditions, set the end date to current date
-		move.EndDate = currentDate
+		// For all other end reasons, end date should be peak date
+		// ActualEndDate tracks when the condition was triggered
+		move.ActualEndDate = currentDate
 		move.EndReason = endReason
-		fmt.Printf("[DEBUG] Move ended for %s on %s: %s\n", move.Ticker, currentDate.Format("2006-01-02"), endReason)
 		return true
 	}
 
 	// Check for drawdowns
 	checkDrawdownConditions(move, currentDay, currentDate)
-
 	return false
 }
 
 func checkEndConditions(move *GrowthMove, currentDay StockData, currentDate time.Time) string {
-	// Condition 1: 30% drop from peak
+	// 30% drop from peak
 	declineFromPeak := (move.PeakPrice - currentDay.Low) / move.PeakPrice
 	if declineFromPeak >= 0.30 {
-		fmt.Printf("[DEBUG] End condition check for %s: 30%% decline (%.2f%%)\n",
-			move.Ticker, declineFromPeak*100)
 		return "30% decline"
 	}
 
-	// Condition 2: Break below LOD
-	if currentDay.Low < move.LOD {
-		fmt.Printf("[DEBUG] End condition met for %s: LOD broken (%.2f < %.2f)\n",
-			move.Ticker, currentDay.Low, move.LOD)
+	// Break below LOD (with small tolerance for data noise)
+	if currentDay.Low < move.LOD*0.995 {
 		return "LOD broken"
 	}
 
-	// Condition 3: No new high in 30 days
+	// No new high in 30 days
 	if move.DaysSinceHigh >= 30 {
-		fmt.Printf("[DEBUG] End condition met for %s: No new high in %d days\n",
-			move.Ticker, move.DaysSinceHigh)
 		return "No new high in 30 days"
 	}
 
-	// Condition 4: Maximum time exceeded (504 days)
+	// Maximum time exceeded (504 days from start to current)
 	totalDays := int(currentDate.Sub(move.StartDate).Hours() / 24)
 	if totalDays >= 504 {
-		fmt.Printf("[DEBUG] End condition met for %s: Maximum time exceeded (%d days)\n",
-			move.Ticker, totalDays)
 		return "Maximum time exceeded"
 	}
 
@@ -514,34 +708,22 @@ func checkDrawdownConditions(move *GrowthMove, currentDay StockData, currentDate
 	// Check if in drawdown range (15-29.9%)
 	if declineFromPeak >= 0.15 && declineFromPeak < 0.30 {
 		if !move.InDrawdown {
-			// Start new drawdown
 			move.InDrawdown = true
 			move.DrawdownStart = currentDate
 			move.DrawdownLow = currentDay.Low
-			fmt.Printf("[DEBUG] Drawdown started for %s on %s: %.2f%% decline\n",
-				move.Ticker, currentDate.Format("2006-01-02"), declineFromPeak*100)
 		} else {
-			// Update drawdown low if necessary
 			if currentDay.Low < move.DrawdownLow {
-				fmt.Printf("[DEBUG] Drawdown deepened for %s: %.2f -> %.2f\n",
-					move.Ticker, move.DrawdownLow, currentDay.Low)
 				move.DrawdownLow = currentDay.Low
 			}
 		}
 	} else if move.InDrawdown && declineFromPeak < 0.15 {
 		// Drawdown recovery
-		fmt.Printf("[DEBUG] Drawdown recovery for %s: lasted from %s to %s\n",
-			move.Ticker, move.DrawdownStart.Format("2006-01-02"), currentDate.Format("2006-01-02"))
-
 		move.Drawdowns = append(move.Drawdowns, Drawdown{
 			StartDate: move.DrawdownStart,
 			EndDate:   currentDate,
 			LowPrice:  move.DrawdownLow,
 		})
 
-		// Update LOD to drawdown low
-		fmt.Printf("[DEBUG] LOD updated for %s: %.2f -> %.2f\n",
-			move.Ticker, move.LOD, move.DrawdownLow)
 		move.LOD = move.DrawdownLow
 		move.InDrawdown = false
 	}
@@ -550,58 +732,78 @@ func checkDrawdownConditions(move *GrowthMove, currentDay StockData, currentDate
 func finalizeGrowthMove(move *GrowthMove) *Result {
 	fmt.Printf("[DEBUG] Finalizing growth move for %s\n", move.Ticker)
 
-	// Ensure end date is properly set - this was the main bug
-	if move.EndDate.IsZero() {
-		// If no end date was set, use the peak date as fallback
+	// CRITICAL FIX: End date should ALWAYS be the peak date for successful moves
+	// This ensures we measure the successful portion, not the decline
+	if move.EndDate.IsZero() || move.EndDate.After(move.PeakDate) {
 		move.EndDate = move.PeakDate
-		move.EndReason = "Peak date used as end (no explicit end condition met)"
-		fmt.Printf("[DEBUG] Warning: No end date set for %s, using peak date %s\n", 
+		fmt.Printf("[DEBUG] Corrected end date for %s to peak date %s\n",
 			move.Ticker, move.PeakDate.Format("2006-01-02"))
 	}
 
-	// Calculate metrics using the correct dates
-	totalDays := int(move.EndDate.Sub(move.StartDate).Hours() / 24)
+	// CRITICAL FIX: Duration should be from start to PEAK, not to decline
+	totalDays := int(move.PeakDate.Sub(move.StartDate).Hours() / 24)
 	if totalDays <= 0 {
-		// Fallback calculation
-		totalDays = int(move.PeakDate.Sub(move.StartDate).Hours() / 24)
-		fmt.Printf("[DEBUG] Warning: Invalid duration calculated for %s, using peak-based calculation\n", move.Ticker)
-	}
-
-	totalGainPercent := (move.PeakPrice - move.LOD) / move.LOD * 100
-
-	move.TotalGain = totalGainPercent
-	move.DurationDays = totalDays
-
-	fmt.Printf("[DEBUG] Move metrics for %s: %.2f%% gain over %d days (Start: %s, End: %s, Peak: %s)\n",
-		move.Ticker, totalGainPercent, totalDays, 
-		move.StartDate.Format("2006-01-02"), 
-		move.EndDate.Format("2006-01-02"),
-		move.PeakDate.Format("2006-01-02"))
-
-	// Classify growth type - Fixed criteria
-	if (totalDays >= 64 && totalDays <= 252 && totalGainPercent >= 100) ||
-		(totalDays >= 252 && totalDays <= 504 && totalGainPercent >= 150) {
-		move.IsGrowthStock = true
-		fmt.Printf("[DEBUG] %s classified as growth stock\n", move.Ticker)
-	} else {
-		fmt.Printf("[DEBUG] %s does not qualify as growth stock (%.2f%% in %d days)\n",
-			move.Ticker, totalGainPercent, totalDays)
-	}
-
-	// Check superperformance - Fixed criteria
-	if (totalDays >= 64 && totalDays <= 252 && totalGainPercent >= 300) ||
-		(totalDays >= 252 && totalDays <= 504 && totalGainPercent >= 500) {
-		move.IsSuperperform = true
-		fmt.Printf("[INFO] %s is a SUPERPERFORMER! %.2f%% gain\n", move.Ticker, totalGainPercent)
-	}
-
-	// Only return growth stocks
-	if !move.IsGrowthStock {
-		fmt.Printf("[DEBUG] Excluding %s from results (not a growth stock)\n", move.Ticker)
+		fmt.Printf("[ERROR] Invalid duration calculated for %s: %d days\n", move.Ticker, totalDays)
 		return nil
 	}
 
-	// Format drawdowns
+	// Calculate gain from LOD to peak (the successful portion)
+	totalGainPercent := (move.PeakPrice - move.LOD) / move.LOD * 100
+	move.TotalGain = totalGainPercent
+	move.DurationDays = totalDays
+
+	fmt.Printf("[DEBUG] %s Move Stats: %.2f%% gain over %d days (Start: %s -> Peak: %s)\n",
+		move.Ticker, totalGainPercent, totalDays,
+		move.StartDate.Format("2006-01-02"),
+		move.PeakDate.Format("2006-01-02"))
+
+	// CRITICAL GROWTH STOCK CRITERIA CHECK
+	move.IsGrowthStock = false
+
+	if totalDays >= MIN_DAYS_SHORT && totalDays <= MAX_DAYS_SHORT {
+		// Short-term criteria: 100%+ gain in 64-252 days
+		if totalGainPercent >= MIN_GAIN_SHORT_TERM {
+			move.IsGrowthStock = true
+			fmt.Printf("[INFO] ✓ %s qualifies as GROWTH STOCK (Short-term): %.2f%% in %d days\n",
+				move.Ticker, totalGainPercent, totalDays)
+		} else {
+			fmt.Printf("[DEBUG] ✗ %s short-term move insufficient: %.2f%% < %.1f%% required\n",
+				move.Ticker, totalGainPercent, MIN_GAIN_SHORT_TERM)
+		}
+	} else if totalDays >= MIN_DAYS_LONG && totalDays <= MAX_DAYS_LONG {
+		// Long-term criteria: 150%+ gain in 252-504 days
+		if totalGainPercent >= MIN_GAIN_LONG_TERM {
+			move.IsGrowthStock = true
+			fmt.Printf("[INFO] ✓ %s qualifies as GROWTH STOCK (Long-term): %.2f%% in %d days\n",
+				move.Ticker, totalGainPercent, totalDays)
+		} else {
+			fmt.Printf("[DEBUG] ✗ %s long-term move insufficient: %.2f%% < %.1f%% required\n",
+				move.Ticker, totalGainPercent, MIN_GAIN_LONG_TERM)
+		}
+	} else {
+		fmt.Printf("[DEBUG] ✗ %s duration outside criteria: %d days (need %d-%d or %d-%d)\n",
+			move.Ticker, totalDays, MIN_DAYS_SHORT, MAX_DAYS_SHORT, MIN_DAYS_LONG, MAX_DAYS_LONG)
+	}
+
+	// Check superperformance (300%+ short-term, 500%+ long-term)
+	move.IsSuperperform = false
+	if totalDays >= MIN_DAYS_SHORT && totalDays <= MAX_DAYS_SHORT && totalGainPercent >= 300 {
+		move.IsSuperperform = true
+		fmt.Printf("[INFO] 🚀 %s is a SHORT-TERM SUPERPERFORMER! %.2f%% in %d days\n",
+			move.Ticker, totalGainPercent, totalDays)
+	} else if totalDays >= MIN_DAYS_LONG && totalDays <= MAX_DAYS_LONG && totalGainPercent >= 500 {
+		move.IsSuperperform = true
+		fmt.Printf("[INFO] 🚀 %s is a LONG-TERM SUPERPERFORMER! %.2f%% in %d days\n",
+			move.Ticker, totalGainPercent, totalDays)
+	}
+
+	// ONLY RETURN MOVES THAT MEET THE CRITICAL GROWTH CRITERIA
+	if !move.IsGrowthStock {
+		fmt.Printf("[INFO] Excluding %s from results - does not meet growth stock criteria\n", move.Ticker)
+		return nil
+	}
+
+	// Format output strings
 	drawdownStr := "none"
 	if len(move.Drawdowns) > 0 {
 		var drawdownDates []string
@@ -609,7 +811,6 @@ func finalizeGrowthMove(move *GrowthMove) *Result {
 			drawdownDates = append(drawdownDates, d.StartDate.Format("Jan 2, 2006"))
 		}
 		drawdownStr = strings.Join(drawdownDates, "; ")
-		fmt.Printf("[DEBUG] %s had %d drawdowns: %s\n", move.Ticker, len(move.Drawdowns), drawdownStr)
 	}
 
 	continuationStr := "none"
@@ -625,7 +826,7 @@ func finalizeGrowthMove(move *GrowthMove) *Result {
 	result := &Result{
 		Ticker:           move.Ticker,
 		StartDate:        move.StartDate.Format("Jan 2, 2006"),
-		EndDate:          move.EndDate.Format("Jan 2, 2006"),
+		EndDate:          move.EndDate.Format("Jan 2, 2006"), // This is now always the peak date
 		Superperformance: superperformStr,
 		Drawdowns:        drawdownStr,
 		Continuation:     continuationStr,
@@ -633,144 +834,74 @@ func finalizeGrowthMove(move *GrowthMove) *Result {
 		DurationDays:     totalDays,
 	}
 
-	fmt.Printf("[INFO] Growth move result created for %s: Start=%s, End=%s, Gain=%.2f%%, Days=%d\n", 
-		move.Ticker, result.StartDate, result.EndDate, result.TotalGain, result.DurationDays)
+	fmt.Printf("[INFO] ✓ GROWTH STOCK RESULT: %s gained %.2f%% over %d days (%s to %s) - End reason: %s\n",
+		result.Ticker, result.TotalGain, result.DurationDays,
+		result.StartDate, result.EndDate, move.EndReason)
+
 	return result
 }
 
-// Stock listing structures
-type TickerResponse struct {
-	Data       []TickerData `json:"data"`
-	Pagination struct {
-		Limit  int `json:"limit"`
-		Offset int `json:"offset"`
-		Count  int `json:"count"`
-		Total  int `json:"total"`
-	} `json:"pagination"`
-}
-
-type TickerData struct {
-	Name     string `json:"name"`
-	Symbol   string `json:"symbol"`
-	Exchange string `json:"exchange"`
-}
-
-// Utility functions - Simplified to only support CSV loading
+// Utility functions remain the same
 func LoadStocksFromCSV(filename string) ([]string, error) {
-	fmt.Printf("[DEBUG] Loading stock symbols from %s\n", filename)
-
-	// Check if file exists
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
-		fmt.Printf("[ERROR] CSV file does not exist: %s\n", filename)
 		return nil, fmt.Errorf("CSV file does not exist: %s", filename)
 	}
 
 	file, err := os.Open(filename)
 	if err != nil {
-		fmt.Printf("[ERROR] Failed to open CSV file %s: %v\n", filename, err)
 		return nil, fmt.Errorf("failed to open CSV file: %v", err)
 	}
-	defer func() {
-		if closeErr := file.Close(); closeErr != nil {
-			fmt.Printf("[ERROR] Failed to close CSV file: %v\n", closeErr)
-		}
-	}()
+	defer file.Close()
 
-	fmt.Printf("[DEBUG] CSV file opened successfully\n")
 	reader := csv.NewReader(file)
 	records, err := reader.ReadAll()
 	if err != nil {
-		fmt.Printf("[ERROR] Failed to read CSV file %s: %v\n", filename, err)
 		return nil, fmt.Errorf("failed to read CSV: %v", err)
 	}
 
-	fmt.Printf("[DEBUG] Read %d records from CSV\n", len(records))
-
 	var symbols []string
-	skippedRows := 0
-
 	for i, record := range records {
-		if i == 0 { // Skip header
-			fmt.Printf("[DEBUG] Skipping header row: %v\n", record)
+		if i == 0 || len(record) == 0 || record[0] == "" {
 			continue
 		}
-
-		if len(record) == 0 {
-			fmt.Printf("[WARNING] Empty record at row %d\n", i+1)
-			skippedRows++
-			continue
-		}
-
-		if record[0] == "" {
-			fmt.Printf("[WARNING] Empty symbol at row %d\n", i+1)
-			skippedRows++
-			continue
-		}
-
 		symbol := strings.TrimSpace(strings.ToUpper(record[0]))
 		symbols = append(symbols, symbol)
-		fmt.Printf("[DEBUG] Added symbol: %s\n", symbol)
 	}
 
-	fmt.Printf("[INFO] Loaded %d symbols from CSV (%d rows skipped)\n", len(symbols), skippedRows)
 	return symbols, nil
 }
 
 func SaveResultsToJSON(results []Result, filename string) error {
-	fmt.Printf("[DEBUG] Saving %d results to %s\n", len(results), filename)
-
-	// Create directory if it doesn't exist
 	if err := os.MkdirAll("superperformance_data", 0755); err != nil {
-		fmt.Printf("[ERROR] Failed to create output directory: %v\n", err)
 		return fmt.Errorf("failed to create output directory: %v", err)
 	}
 
 	file, err := os.Create(filename)
 	if err != nil {
-		fmt.Printf("[ERROR] Failed to create output file %s: %v\n", filename, err)
 		return fmt.Errorf("failed to create output file: %v", err)
 	}
-	defer func() {
-		if closeErr := file.Close(); closeErr != nil {
-			fmt.Printf("[ERROR] Failed to close output file: %v\n", closeErr)
-		}
-	}()
-
-	fmt.Printf("[DEBUG] Output file created successfully\n")
+	defer file.Close()
 
 	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ") // Pretty print with 2-space indentation
+	encoder.SetIndent("", "  ")
 
 	if err := encoder.Encode(results); err != nil {
-		fmt.Printf("[ERROR] Failed to encode JSON to %s: %v\n", filename, err)
 		return fmt.Errorf("failed to encode JSON: %v", err)
 	}
 
-	fmt.Printf("[INFO] Successfully saved %d results to %s\n", len(results), filename)
 	return nil
 }
 
 func SaveResultsToCSV(results []Result, filename string) error {
-	fmt.Printf("[DEBUG] Saving %d results to %s\n", len(results), filename)
-
-	// Create directory if it doesn't exist
 	if err := os.MkdirAll("superperformance_data", 0755); err != nil {
-		fmt.Printf("[ERROR] Failed to create output directory: %v\n", err)
 		return fmt.Errorf("failed to create output directory: %v", err)
 	}
 
 	file, err := os.Create(filename)
 	if err != nil {
-		fmt.Printf("[ERROR] Failed to create output file %s: %v\n", filename, err)
 		return fmt.Errorf("failed to create output file: %v", err)
 	}
-	defer func() {
-		if closeErr := file.Close(); closeErr != nil {
-			fmt.Printf("[ERROR] Failed to close output file: %v\n", closeErr)
-		}
-	}()
-
-	fmt.Printf("[DEBUG] Output file created successfully\n")
+	defer file.Close()
 
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
@@ -787,7 +918,6 @@ func SaveResultsToCSV(results []Result, filename string) error {
 		"DurationDays",
 	}
 	if err := writer.Write(header); err != nil {
-		fmt.Printf("[ERROR] Failed to write CSV header: %v\n", err)
 		return fmt.Errorf("failed to write CSV header: %v", err)
 	}
 
@@ -804,11 +934,9 @@ func SaveResultsToCSV(results []Result, filename string) error {
 			strconv.Itoa(result.DurationDays),
 		}
 		if err := writer.Write(record); err != nil {
-			fmt.Printf("[ERROR] Failed to write record for %s: %v\n", result.Ticker, err)
 			return fmt.Errorf("failed to write record for %s: %v", result.Ticker, err)
 		}
 	}
 
-	fmt.Printf("[INFO] Successfully saved %d results to %s\n", len(results), filename)
 	return nil
 }

@@ -92,7 +92,7 @@ func (s *SapienApi) ServeReqUrl(agentNamespace string, agentName string, version
 	if version != "" {
 		params = "?version=" + url.QueryEscape(version)
 	}
-	return s.Host + "/serve/v1/agents/generate/" + url.PathEscape(agentNamespace) + "/" + url.PathEscape(agentName) + params
+	return s.Host + "/serve/v2/agents/generate/" + url.PathEscape(agentNamespace) + "/" + url.PathEscape(agentName) + params
 }
 
 func (s *SapienApi) GenerateCompletion(agentNamespace string, agentName string, serverReq *ServeRequest) (int, string, *ServeResponse, error) {

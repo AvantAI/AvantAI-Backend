@@ -69,7 +69,9 @@ func main() {
 	fmt.Printf("   • Min Volume: 200,000+ shares daily average\n\n")
 
 	startTime := time.Now()
-	results := analyzeStocks(client, symbols)
+	resultsNASDAQ := analyzeStocks(client, symbols[:4329], "NASDAQ")
+	resultsNYSE := analyzeStocks(client, symbols[4329:], "NYSE")
+	results := append(resultsNASDAQ, resultsNYSE...)
 	duration := time.Since(startTime)
 
 	// Process and display results
@@ -179,7 +181,7 @@ func main() {
 	}
 }
 
-func analyzeStocks(client *superperformance.MarketStackClient, symbols []string) []AnalysisResult {
+func analyzeStocks(client *superperformance.MarketStackClient, symbols []string, exchange string) []AnalysisResult {
 	var wg sync.WaitGroup
 	resultsChan := make(chan AnalysisResult, len(symbols))
 
@@ -193,7 +195,7 @@ func analyzeStocks(client *superperformance.MarketStackClient, symbols []string)
 					index+1, len(symbols), float64(index+1)/float64(len(symbols))*100)
 			}
 
-			results, err := client.AnalyzeStock(sym)
+			results, err := client.AnalyzeStock(sym, exchange)
 			resultsChan <- AnalysisResult{
 				Symbol:  sym,
 				Results: results,

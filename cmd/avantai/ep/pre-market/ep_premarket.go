@@ -18,12 +18,11 @@ func main() {
 	}
 
 	// apiKey := os.Getenv("API_KEY")
-	apiKey := os.Getenv("API_KEY")
-	// tiingoKey := os.Getenv("TIINGO_KEY")
+	tiingoKey := os.Getenv("TIINGO_KEY")
 	marketStackKey := os.Getenv("MARKETSTACK_TOKEN")
 	// Filters out stocks that don't match the given criteria
 	// ep.FilterStocks(apiKey)
-	ep.FilterStocksEpisodicPivot(marketStackKey)
+	ep.FilterStocksEpisodicPivot(marketStackKey, tiingoKey)
 	// url := fmt.Sprintf("https://www.alphavantage.co/query?function=REALTIME_BULK_QUOTES&symbol=%sentitlement=realtime&apikey=%s",
 	// 	"AAPL,NVDA,IBM", apiKey)
 
@@ -77,7 +76,7 @@ func main() {
 	for _, stock := range stocks {
 		// Start the goroutine
 		wg.Add(1)
-		go ep.GetNews(&wg, apiKey, stock.Symbol, stock.StockInfo.Timestamp)
+		go ep.GetNewsAndEarnings(&wg, stock.Symbol, stock.StockInfo.Timestamp)
 	}
 
 	// Wait for all goroutines to finish
