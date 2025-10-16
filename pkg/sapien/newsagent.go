@@ -74,6 +74,8 @@ func NewsAgentReqInfo(wg *sync.WaitGroup, stock string) {
 	}
 	defer file.Close()
 
+	fmt.Println("Response:", agentRes.Response)
+
 	_, err = file.WriteString(agentRes.Response)
 	if err != nil {
 		fmt.Println("Error writing to file:", err)

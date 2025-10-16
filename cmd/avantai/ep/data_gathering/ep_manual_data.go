@@ -97,7 +97,7 @@ func main() {
 	// Filters out stocks that don't match the given criteria
 	// ep.FilterStocks(apiKey)
 	// Simple backtest for one date
-	const backtestDate = "2025-03-12"
+	const backtestDate = "2025-08-01"
 
 	// Advanced backtest with custom config
 	config := ep.BacktestConfig{
@@ -164,7 +164,7 @@ func main() {
 	for _, stock := range report.QualifyingStocks {
 		// Start the goroutine
 		wg.Add(1)
-		go ep.GetNewsAndEarnings(&wg, stock.Symbol, "2025-03-11")
+		go ep.GetNewsAndEarnings(&wg, stock.Symbol, "2025-07-31")
 	}
 
 	// Wait for all goroutines to finish

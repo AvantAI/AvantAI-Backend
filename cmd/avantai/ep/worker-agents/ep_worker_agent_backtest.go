@@ -85,7 +85,7 @@ type StockStats struct {
 
 func main() {
 
-	const backtestDate = "2025-03-12"
+	const backtestDate = "2025-08-01"
 
 	filePath := fmt.Sprintf("data/backtests/backtest_%s_results.json", strings.ReplaceAll(backtestDate, "-", ""))
 	file, err := os.Open(filePath)

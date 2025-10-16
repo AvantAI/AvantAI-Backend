@@ -149,7 +149,7 @@ func FilterStocksEpisodicPivot(apiKey string, tiingoKey string) {
 		log.Fatalf("❌ Error in Stage 1: %v", err)
 	}
 
-	fmt.Printf("✅ Stage 1 complete. Found %d stocks with 8%+ gap up.\n", len(gapUpStocks))
+	fmt.Printf("✅ Stage 1 complete. Found %d stocks with 8 percent gap up.\n", len(gapUpStocks))
 
 	if len(gapUpStocks) == 0 {
 		fmt.Println("⚠️ No stocks found with gap up criteria. Exiting.")
@@ -226,39 +226,53 @@ func stage1FilterByGapUpEP(apiKey string) ([]StockData, error) {
 			}
 			mu.Unlock()
 
-			currentData, previousData, err := getCurrentAndPreviousDataV2(apiKey, sym)
+			premarketData, eodData, err := getPremarketDataV2(apiKey, sym)
 			if err != nil {
+				fmt.Printf("⚠️ Error getting premarket data for %s: %v\n", sym, err)
 				return
 			}
 
-			if currentData == nil || previousData == nil {
+			if eodData == nil {
+				fmt.Printf("⚠️ No EOD data for %s\n", sym)
 				return
 			}
 
-			if previousData.Close <= 0 {
+			if premarketData == nil {
+				fmt.Printf("⚠️ No premarket data for %s\n", sym)
 				return
 			}
 
-			gapUp := ((currentData.Open - previousData.Close) / previousData.Close) * 100
+			if eodData == nil {
+				fmt.Printf("⚠️ No EOD data for %s\n", sym)
+				return
+			}
+
+			if premarketData.Close <= 0 {
+				fmt.Printf("⚠️ Invalid previous close for %s: %.2f\n", sym, premarketData.Close)
+				return
+			}
+
+			gapUp := ((premarketData.Open - eodData.Close) / eodData.Close) * 100
+			fmt.Println("Debug:", sym, "Current:", premarketData.Open, "Close:", eodData.Close, "Gap Up:", gapUp)
 
 			// Filter for 8%+ gap up
 			if gapUp >= MIN_GAP_UP_PERCENT {
 				stockData := StockData{
-					Symbol:                     currentData.Symbol,
-					Timestamp:                  currentData.Date,
-					Open:                       currentData.Open,
-					High:                       currentData.High,
-					Low:                        currentData.Low,
-					Close:                      currentData.Close,
-					Volume:                     int64(currentData.Volume),
-					PreviousClose:              previousData.Close,
-					Change:                     currentData.Close - previousData.Close,
+					Symbol:                     premarketData.Symbol,
+					Timestamp:                  premarketData.Date,
+					Open:                       premarketData.Open,
+					High:                       premarketData.High,
+					Low:                        premarketData.Low,
+					Close:                      eodData.Close,
+					Volume:                     int64(premarketData.Volume),
+					PreviousClose:              eodData.Close,
+					Change:                     premarketData.Open - eodData.Close,
 					ChangePercent:              gapUp,
-					ExtendedHoursQuote:         currentData.Close,
-					ExtendedHoursChange:        currentData.Close - previousData.Close,
+					ExtendedHoursQuote:         premarketData.Open,
+					ExtendedHoursChange:        premarketData.Open - eodData.Close,
 					ExtendedHoursChangePercent: gapUp,
-					Exchange:                   currentData.Exchange,
-					Name:                       currentData.Name,
+					Exchange:                   premarketData.Exchange,
+					Name:                       premarketData.Symbol,
 				}
 
 				mu.Lock()
@@ -651,18 +665,6 @@ func calculateEMA(data []MarketstackEODData, period int) float64 {
 	return ema
 }
 
-func calculateAvgVolume(data []MarketstackEODData) float64 {
-	if len(data) == 0 {
-		return 0
-	}
-
-	sum := 0.0
-	for _, day := range data {
-		sum += day.Volume
-	}
-	return sum / float64(len(data))
-}
-
 func calculateADRForPeriod(data []MarketstackEODData) float64 {
 	if len(data) == 0 {
 		return 0
@@ -715,9 +717,40 @@ func estimateMarketCapImproved(stock StockData, companyInfo *MarketstackTickerIn
 	return maxEstimate
 }
 
+// Marketstack Intraday Response Structures
+type MarketstackIntradayResponse struct {
+	Pagination struct {
+		Limit  int `json:"limit"`
+		Offset int `json:"offset"`
+		Count  int `json:"count"`
+		Total  int `json:"total"`
+	} `json:"pagination"`
+	Data []MarketstackIntradayData `json:"data"`
+}
+
+// Marketstack Intraday Data structure
+type MarketstackIntradayData struct {
+	Open            float64 `json:"open"`
+	High            float64 `json:"high"`
+	Low             float64 `json:"low"`
+	Close           float64 `json:"close"`
+	Volume          float64 `json:"volume"`
+	Mid             float64 `json:"mid"`
+	Last            float64 `json:"last"`
+	LastSize        float64 `json:"last_size"`
+	BidSize         float64 `json:"bid_size"`
+	BidPrice        float64 `json:"bid_price"`
+	AskPrice        float64 `json:"ask_price"`
+	AskSize         float64 `json:"ask_size"`
+	MarketstackLast float64 `json:"marketstack_last"`
+	Date            string  `json:"date"`
+	Symbol          string  `json:"symbol"`
+	Exchange        string  `json:"exchange"`
+}
+
 // Existing helper functions (unchanged)
-func getCurrentAndPreviousDataV2(apiKey string, symbol string) (*MarketstackEODData, *MarketstackEODData, error) {
-	url := fmt.Sprintf("https://api.marketstack.com/v2/eod?access_key=%s&symbols=%s&limit=3&sort=DESC",
+func getPremarketDataV2(apiKey string, symbol string) (*MarketstackIntradayData, *MarketstackEODData, error) {
+	url := fmt.Sprintf("https://api.marketstack.com/v2/intraday/latest?access_key=%s&interval=1min&symbols=%s&exchange=NYSE,NASDAQ&after_hours=true",
 		apiKey, symbol)
 
 	resp, err := http.Get(url)
@@ -731,19 +764,31 @@ func getCurrentAndPreviousDataV2(apiKey string, symbol string) (*MarketstackEODD
 		return nil, nil, fmt.Errorf("failed to read response: %v", err)
 	}
 
+	var intradayResponse MarketstackIntradayResponse
+	if err := json.Unmarshal(body, &intradayResponse); err != nil {
+		return nil, nil, fmt.Errorf("failed to parse JSON: %v", err)
+	}
+
+	url = fmt.Sprintf("https://api.marketstack.com/v2/eod/latest?access_key=%s&symbols=%s&exchange=NYSE,NASDAQ&limit=1",
+		apiKey, symbol)
+
+	resp, err = http.Get(url)
+	if err != nil {
+		return nil, nil, fmt.Errorf("HTTP request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read response: %v", err)
+	}
+
 	var eodResponse MarketstackEODResponse
 	if err := json.Unmarshal(body, &eodResponse); err != nil {
 		return nil, nil, fmt.Errorf("failed to parse JSON: %v", err)
 	}
 
-	if len(eodResponse.Data) < 2 {
-		return nil, nil, fmt.Errorf("insufficient data: only %d records", len(eodResponse.Data))
-	}
-
-	current := &eodResponse.Data[0]
-	previous := &eodResponse.Data[1]
-
-	return current, previous, nil
+	return &intradayResponse.Data[0], &eodResponse.Data[0], nil
 }
 
 func getHistoricalDataV2(apiKey string, symbol string, days int) ([]MarketstackEODData, error) {
@@ -974,13 +1019,6 @@ func checkmark(condition bool) string {
 		return "✅"
 	}
 	return "❌"
-}
-
-func boolToString(b bool) string {
-	if b {
-		return "Yes"
-	}
-	return "No"
 }
 
 func abs(x float64) float64 {

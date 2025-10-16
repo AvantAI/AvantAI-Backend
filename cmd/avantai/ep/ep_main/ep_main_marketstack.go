@@ -3,17 +3,23 @@ package main
 // import (
 // 	"avantai/pkg/ep"
 // 	"avantai/pkg/sapien"
+// 	"encoding/csv"
 // 	"encoding/json"
 // 	"fmt"
 // 	"io"
+//  "math"
 // 	"log"
 // 	"net/http"
 // 	"os"
 // 	"path/filepath"
+// 	"regexp"
+// 	"strconv"
+// 	"strings"
 // 	"sync"
 // 	"time"
 
 // 	"github.com/joho/godotenv"
+// 	"github.com/tidwall/pretty"
 // )
 
 // // ===== Strategy helpers (EP / Opening Range / VWAP / Consolidation) =====
@@ -53,7 +59,12 @@ package main
 // 	}
 
 // 	// Opening range 5 and 15 minutes (from regular session start)
-// 	limit := func(x, max int) int { if x > max { return max }; return x }
+// 	limit := func(x, max int) int {
+// 		if x > max {
+// 			return max
+// 		}
+// 		return x
+// 	}
 // 	or5 := bars[:limit(n, 5)]
 // 	or15 := bars[:limit(n, 15)]
 
@@ -216,19 +227,30 @@ package main
 // 	// Extract symbols and their session date (YYYY-MM-DD from StockInfo.Timestamp)
 // 	var symbols []string
 // 	var dates []string
+// 	var sentiment []string
 // 	for _, s := range stocks {
 // 		symbols = append(symbols, s.Symbol)
 // 		dates = append(dates, s.StockInfo.Timestamp[0:10])
+// 		sentimentData := map[string]interface{}{
+// 			"Stock_name": s.Symbol,
+// 			"Stock_info": s.StockInfo,
+// 		}
+// 		sentimentJSON, err := json.Marshal(sentimentData)
+// 		if err != nil {
+// 			log.Printf("Error marshaling sentiment for %s: %v", s.Symbol, err)
+// 			continue
+// 		}
+// 		sentiment = append(sentiment, string(sentimentJSON))
 // 	}
 
 // 	var wg sync.WaitGroup
 // 	fmt.Printf("Starting %d intraday workers…\n", len(symbols))
 // 	for i, symbol := range symbols {
 // 		wg.Add(1)
-// 		go func(idx int, sym, date string) {
+// 		go func(idx int, sym, date string, sent string) {
 // 			defer wg.Done()
-// 			intradayWorker(apiKey, sym, date, idx+1)
-// 		}(i, symbol, dates[i])
+// 			intradayWorker(apiKey, sym, date, sent, idx+1)
+// 		}(i, symbol, dates[i], sentiment[i])
 // 	}
 // 	wg.Wait()
 // 	fmt.Println("All workers finished. Done.")
@@ -236,7 +258,7 @@ package main
 
 // // Per-symbol minute worker: every minute, refresh bars since session open, recompute strategy metrics,
 // // and call runManagerAgent(&wg, bars, symbol, goroutineId)
-// func intradayWorker(apiKey, symbol, date string, goroutineId int) {
+// func intradayWorker(apiKey, symbol, date string, sentiment string, goroutineId int) {
 // 	fmt.Printf("[#%d:%s] worker started for %s\n", goroutineId, symbol, date)
 
 // 	openNY, closeNY, err := sessionWindow(date)
@@ -331,7 +353,7 @@ package main
 // 		// Call your manager with the latest slice (no trade logic here)
 // 		var wg sync.WaitGroup
 // 		wg.Add(1)
-// 		go runManagerAgent(&wg, epBars, symbol, goroutineId)
+// 		go runManagerAgent(&wg, epBars, symbol, sentiment, goroutineId)
 // 		wg.Wait()
 
 // 		// Gentle rate limit between symbols is inherent; per-symbol we tick every minute
@@ -390,10 +412,154 @@ package main
 // 	return out
 // }
 
+// // The format you provided
+// const timeFormat = "2006-01-02 15:04:00"
+
+// func getMinute(timestampStr string) (int, error) {
+// 	// 1. Parse the string into a time.Time object
+// 	t, err := time.Parse(timeFormat, timestampStr)
+// 	if err != nil {
+// 		return 0, err
+// 	}
+
+// 	// 2. Extract the minute component as an int
+// 	minute := t.Minute()
+
+// 	return minute, nil
+// }
+
+// // ===== Manager Agent Response Structure =====
+// type ManagerResponse struct {
+// 	Recommendation string `json:"Recommendation"`
+// 	EntryTime      string `json:"Entry Time,omitempty"`
+// 	EntryPrice     string `json:"Entry Price,omitempty"`
+// 	StopLoss       string `json:"Stop-Loss,omitempty"`
+// 	RiskPercent    string `json:"Risk %,omitempty"`
+// 	Reasoning      string `json:"Reasoning"`
+// }
+
+// // ===== Watchlist CSV Structure =====
+// type WatchlistEntry struct {
+// 	StockSymbol string
+// 	EntryPrice  string
+// 	StopLoss    string
+// 	Shares      string
+// }
+
+// func extractJSON(response string) (*ManagerResponse, error) {
+// 	// Look for JSON pattern in the response
+// 	jsonPattern := regexp.MustCompile(`\{[^{}]*"Recommendation"[^{}]*\}`)
+// 	match := jsonPattern.FindString(response)
+
+// 	if match == "" {
+// 		return nil, fmt.Errorf("no JSON found in response")
+// 	}
+
+// 	var managerResp ManagerResponse
+// 	err := json.Unmarshal([]byte(match), &managerResp)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
+// 	}
+
+// 	return &managerResp, nil
+// }
+
+// func saveJSONResponse(symbol string, minute int, response *ManagerResponse) error {
+// 	// Create directory if it doesn't exist
+// 	dir := filepath.Join("responses", symbol)
+// 	if err := os.MkdirAll(dir, 0755); err != nil {
+// 		return fmt.Errorf("failed to create directory: %w", err)
+// 	}
+
+// 	// Save JSON file with prettified formatting
+// 	filename := filepath.Join(dir, fmt.Sprintf("minute_%d_response.json", minute))
+// 	data, err := json.Marshal(response)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to marshal response: %w", err)
+// 	}
+
+// 	// Prettify the JSON
+// 	prettified := pretty.Pretty(data)
+
+// 	return os.WriteFile(filename, prettified, 0644)
+// }
+
+// func addToWatchlist(entry WatchlistEntry) error {
+// 	filename := "watchlist.csv"
+
+// 	// Read existing entries to check for duplicates
+// 	existingEntries := make(map[string]WatchlistEntry)
+// 	if file, err := os.Open(filename); err == nil {
+// 		defer file.Close()
+// 		reader := csv.NewReader(file)
+// 		records, err := reader.ReadAll()
+// 		if err != nil {
+// 			return fmt.Errorf("failed to read existing watchlist: %w", err)
+// 		}
+
+// 		// Skip header row if it exists
+// 		startIdx := 0
+// 		if len(records) > 0 && records[0][0] == "stock_symbol" {
+// 			startIdx = 1
+// 		}
+
+// 		// Build map of existing entries
+// 		for i := startIdx; i < len(records); i++ {
+// 			if len(records[i]) >= 4 {
+// 				key := fmt.Sprintf("%s|%s|%s|%s", records[i][0], records[i][1], records[i][2], records[i][3])
+// 				existingEntries[key] = WatchlistEntry{
+// 					StockSymbol: records[i][0],
+// 					EntryPrice:  records[i][1],
+// 					StopLoss:    records[i][2],
+// 					Shares:      records[i][3],
+// 				}
+// 			}
+// 		}
+// 	}
+
+// 	// Check if this entry already exists
+// 	entryKey := fmt.Sprintf("%s|%s|%s|%s", entry.StockSymbol, entry.EntryPrice, entry.StopLoss, entry.Shares)
+// 	if _, exists := existingEntries[entryKey]; exists {
+// 		return fmt.Errorf("duplicate entry: %s with entry price %s and stop loss %s already exists in watchlist",
+// 			entry.StockSymbol, entry.EntryPrice, entry.StopLoss)
+// 	}
+
+// 	// Check if file exists
+// 	fileExists := true
+// 	if _, err := os.Stat(filename); os.IsNotExist(err) {
+// 		fileExists = false
+// 	}
+
+// 	// Open file for append or create
+// 	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to open watchlist file: %w", err)
+// 	}
+// 	defer file.Close()
+
+// 	writer := csv.NewWriter(file)
+// 	defer writer.Flush()
+
+// 	// Write header if file is new
+// 	if !fileExists {
+// 		if err := writer.Write([]string{"stock_symbol", "entry_price", "stop_loss_price", "shares"}); err != nil {
+// 			return fmt.Errorf("failed to write CSV header: %w", err)
+// 		}
+// 	}
+
+// 	// Write the entry
+// 	record := []string{entry.StockSymbol, entry.EntryPrice, entry.StopLoss, entry.Shares}
+// 	if err := writer.Write(record); err != nil {
+// 		return fmt.Errorf("failed to write CSV record: %w", err)
+// 	}
+
+// 	return nil
+// }
+
 // // ===== Your existing runManagerAgent (unchanged) =====
 
-// func runManagerAgent(wg *sync.WaitGroup, stockdata []ep.StockData, symbol string, goroutineId int) {
-// 	fmt.Printf("\n[Goroutine %d] --- Starting runManagerAgent for %s ---\n", goroutineId, symbol)
+// func runManagerAgent(wg *sync.WaitGroup, stockdata []ep.StockData, symbol string, sentiment string, goroutineId int) {
+// 	fmt.Printf("\n[Goroutine %d] --- Starting runManagerAgent for %s (Sentiment: %s) ---\n", goroutineId, symbol, sentiment)
 // 	defer wg.Done()
 // 	defer fmt.Printf("[Goroutine %d] ✓ runManagerAgent completed for %s\n", goroutineId, symbol)
 
@@ -449,12 +615,84 @@ package main
 // 		}
 // 	}
 
-// 	fmt.Printf("[Goroutine %d] Calling ManagerAgentReqInfo for %s...\n", goroutineId, symbol)
-// 	resp, err := sapien.ManagerAgentReqInfo(stock_data, string(news), string(earnings))
+// 	fmt.Printf("[Goroutine %d] Calling ManagerAgentReqInfo for %s (Sentiment: %s)...\n", goroutineId, symbol, sentiment)
+// 	resp, err := sapien.ManagerAgentReqInfo(stock_data, string(news), string(earnings), sentiment)
 // 	if err != nil {
 // 		fmt.Printf("[Goroutine %d] ❌ ManagerAgentReqInfo error: %v\n", goroutineId, err)
 // 		return
 // 	}
-// 	fmt.Printf("[Goroutine %d] ✓ ManagerAgentReqInfo completed. Response (%d chars): %s\n",
-// 		goroutineId, len(resp.Response), resp.Response)
+
+// 	min, err := getMinute(stockdata[len(stockdata)-1].Timestamp)
+// 	if err != nil {
+// 		fmt.Printf("[Goroutine %d] ❌ Failed to parse minute from timestamp %s: %v\n",
+// 			goroutineId, stockdata[len(stockdata)-1].Timestamp, err)
+// 		return
+// 	}
+
+// 	currentMinute := min
+// 	// Extract JSON from response
+// 	managerResp, err := extractJSON(resp.Response)
+// 	if err != nil {
+// 		fmt.Printf("[Goroutine %d] ❌ Failed to extract JSON from response (minute %d): %v\n",
+// 			goroutineId, currentMinute, err)
+// 		return // Don't stop processing on JSON extraction errors
+// 	}
+
+// 	// Save JSON response to file
+// 	if err := saveJSONResponse(symbol, currentMinute, managerResp); err != nil {
+// 		fmt.Printf("[Goroutine %d] ❌ Failed to save JSON response (minute %d): %v\n",
+// 			goroutineId, currentMinute, err)
+// 	} else {
+// 		fmt.Printf("[Goroutine %d] ✓ JSON response saved for minute %d\n", goroutineId, currentMinute)
+// 	}
+
+// if err := godotenv.Load(); err != nil {
+// 	log.Fatal("Error loading .env file")
+// }
+
+// 	// Check if recommendation is "Buy" and add to watchlist
+// 	stringPercent := strings.TrimSpace(strings.TrimSuffix(managerResp.RiskPercent, "%"))
+// 	riskPercent, _ := strconv.ParseFloat(stringPercent, 64)
+
+// 	accSize, _ := strconv.ParseFloat(os.Getenv("ACCOUNT_SIZE"), 64)
+// 	entryPrice, _ := strconv.ParseFloat(strings.ReplaceAll(managerResp.EntryPrice, "$", ""), 64)
+// 	stopLoss, _ := strconv.ParseFloat(strings.ReplaceAll(managerResp.StopLoss, "$", ""), 64)
+
+// 	if strings.ToLower(strings.TrimSpace(managerResp.Recommendation)) == "buy" {
+// 		// Only add to watchlist if we have entry price and stop loss
+// 		if managerResp.EntryPrice != "" && managerResp.StopLoss != "" {
+// 			entry := WatchlistEntry{
+// 				StockSymbol: symbol,
+// 				EntryPrice:  managerResp.EntryPrice,
+// 				StopLoss:    managerResp.StopLoss,
+// 				Shares:      strconv.FormatFloat(float64(int(math.Round((((riskPercent/100)*accSize)*1.0)/(entryPrice-stopLoss)))), 'f', 2, 64),
+// 			}
+
+// 			if err := addToWatchlist(entry); err != nil {
+// 				if strings.Contains(err.Error(), "duplicate entry") {
+// 					fmt.Printf("[Goroutine %d] ⚠️ Duplicate watchlist entry for %s with entry price %s and stop loss %s (minute %d)\n",
+// 						goroutineId, symbol, entry.EntryPrice, entry.StopLoss, currentMinute)
+// 				} else {
+// 					fmt.Printf("[Goroutine %d] ❌ Failed to add %s to watchlist (minute %d): %v\n",
+// 						goroutineId, symbol, currentMinute, err)
+// 				}
+// 			} else {
+// 				fmt.Printf("[Goroutine %d] ✅ Added %s to watchlist with entry price %s and stop loss %s (minute %d)\n",
+// 					goroutineId, symbol, entry.EntryPrice, entry.StopLoss, currentMinute)
+// 			}
+
+// 			// Return true to signal that processing should stop for this stock
+// 			return
+// 		} else {
+// 			fmt.Printf("[Goroutine %d] ⚠️ Buy recommendation for %s but missing entry price or stop loss (minute %d)\n",
+// 				goroutineId, symbol, currentMinute)
+// 			// Continue processing even if Buy recommendation is incomplete
+// 			return
+// 		}
+// 	} else {
+// 		fmt.Printf("[Goroutine %d] 📊 Recommendation for %s: %s (minute %d)\n",
+// 			goroutineId, symbol, managerResp.Recommendation, currentMinute)
+// 		// Continue processing for non-Buy recommendations
+// 		return
+// 	}
 // }

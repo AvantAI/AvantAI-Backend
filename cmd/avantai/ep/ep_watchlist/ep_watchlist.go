@@ -10,43 +10,90 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/joho/godotenv"
 )
 
-// response models for Alpha Vantage Global Quote
-type GlobalQuoteResponse struct {
-	Quote GlobalQuote `json:"Global Quote"`
+const (
+	PORTFOLIO_RISK_PERCENT = 0.10 // 10% risk per trade
+	PROFIT_TAKE_PERCENT    = 0.30 // Take 30% profit (25-35% range)
+	MARKETSTACK_BASE_URL   = "http://api.marketstack.com/v2"
+)
+
+// Marketstack API response models
+type MarketstackRealtimeResponse struct {
+	Data MarketstackData `json:"data"`
 }
 
-type GlobalQuote struct {
-	Symbol           string `json:"01. symbol"`
-	Open             string `json:"02. open"`
-	High             string `json:"03. high"`
-	Low              string `json:"04. low"`
-	Price            string `json:"05. price"`
-	Volume           string `json:"06. volume"`
-	LatestTradingDay string `json:"07. latest trading day"`
-	PreviousClose    string `json:"08. previous close"`
-	Change           string `json:"09. change"`
-	ChangePercent    string `json:"10. change percent"`
+type MarketstackData struct {
+	Symbol    string  `json:"symbol"`
+	Open      float64 `json:"open"`
+	High      float64 `json:"high"`
+	Low       float64 `json:"low"`
+	Last      float64 `json:"last"`
+	Close     float64 `json:"close"`
+	Volume    float64 `json:"volume"`
+	Date      string  `json:"date"`
+	Exchange  string  `json:"exchange"`
+}
+
+type MarketstackEODResponse struct {
+	Data []MarketstackEODData `json:"data"`
+}
+
+type MarketstackEODData struct {
+	Symbol string  `json:"symbol"`
+	Open   float64 `json:"open"`
+	High   float64 `json:"high"`
+	Low    float64 `json:"low"`
+	Close  float64 `json:"close"`
+	Volume float64 `json:"volume"`
+	Date   string  `json:"date"`
+}
+
+type MarketstackIntradayResponse struct {
+	Data []MarketstackIntradayData `json:"data"`
+}
+
+type MarketstackIntradayData struct {
+	Symbol string  `json:"symbol"`
+	Open   float64 `json:"open"`
+	High   float64 `json:"high"`
+	Low    float64 `json:"low"`
+	Last   float64 `json:"last"`
+	Close  float64 `json:"close"`
+	Volume float64 `json:"volume"`
+	Date   string  `json:"date"`
+}
+
+// Position represents a stock position in our watchlist
+// CSV format: Symbol,PurchasePrice,StopLoss,Shares,DaysHeld,Status
+type Position struct {
+	Symbol        string
+	PurchasePrice float64
+	StopLoss      float64
+	Shares        float64
+	DaysHeld      int
+	Status        string // "HOLDING", "PROFIT_TAKEN", "MONITORING"
 }
 
 func main() {
 	err := godotenv.Load()
 	if err != nil {
 		log.Println("Error loading .env file, checking for environment variable")
-		// Continue anyway, API_KEY might be set directly in the environment
 	}
 
-	apiKey := os.Getenv("API_KEY")
-	if apiKey == "" {
-		log.Fatal("API_KEY not found in environment or .env file")
+	apiToken := os.Getenv("MARKETSTACK_TOKEN")
+	if apiToken == "" {
+		log.Fatal("MARKETSTACK_TOKEN not found in environment or .env file")
 	}
+
+	// Get account size for position sizing
+	accountSize := getAccountSize()
 
 	file, err := os.Open("watchlist.csv")
 	if err != nil {
-		// Try alternate path if the first one fails
 		file, err = os.Open("cmd\\avantai\\ep\\ep_watchlist\\watchlist.csv")
 		if err != nil {
 			log.Fatal("Error opening watchlist file:", err)
@@ -57,12 +104,12 @@ func main() {
 	reader := csv.NewReader(file)
 	var wg sync.WaitGroup
 
-	// Skip header row if it exists
-	// Uncomment the following if your CSV has a header
-	// _, err = reader.Read()
-	// if err != nil {
-	//     log.Fatal("Error reading header row:", err)
-	// }
+	// Skip header if exists
+	header, err := reader.Read()
+	if err != nil {
+		log.Fatal("Error reading header:", err)
+	}
+	log.Println("CSV Header:", header)
 
 	for {
 		row, err := reader.Read()
@@ -74,61 +121,292 @@ func main() {
 			break
 		}
 
-		if len(row) != 3 {
-			log.Println("Skipping malformed row:", row)
-			continue
-		}
-
-		symbol := row[0]
-		entry, err1 := strconv.ParseFloat(row[1], 64)
-		stop, err2 := strconv.ParseFloat(row[2], 64)
-		if err1 != nil || err2 != nil {
-			log.Println("Skipping row with invalid numbers:", row)
+		position := parsePosition(row)
+		if position == nil {
 			continue
 		}
 
 		wg.Add(1)
-		go ComparePrice(&wg, apiKey, symbol, entry, stop)
-
+		go MonitorPosition(&wg, apiToken, position, accountSize)
+		time.Sleep(500 * time.Millisecond) // Rate limiting for free tier
 	}
 
 	wg.Wait()
 }
 
-func CalculateMoveStopLossPrice(entry, stop float64) float64 {
-	return entry + (entry-stop)*3
-}
+func parsePosition(row []string) *Position {
+	if len(row) < 6 {
+		log.Println("Skipping malformed row:", row)
+		return nil
+	}
 
-func MoveStopLoss(symbol string, entryPrice float64) {
-	fmt.Printf("[%s] 🚨 Moving stop loss to entry price!\n", symbol)
+	purchasePrice, err1 := strconv.ParseFloat(row[1], 64)
+	stopLoss, err2 := strconv.ParseFloat(row[2], 64)
+	shares, err3 := strconv.ParseFloat(row[3], 64)
+	daysHeld, err4 := strconv.Atoi(row[4])
 
-	// Set the new stop loss to the current entry price
-	newStopLoss := entryPrice
+	if err1 != nil || err2 != nil || err3 != nil || err4 != nil {
+		log.Println("Skipping row with invalid data:", row)
+		return nil
+	}
 
-	// Set the new entry price to the new stop loss plus 10%
-	newEntryPrice := newStopLoss + (newStopLoss * 0.1)
-
-	// Format to 2 decimal places for better readability in CSV
-	newStopLossStr := fmt.Sprintf("%.2f", newStopLoss)
-	newEntryPriceStr := fmt.Sprintf("%.2f", newEntryPrice)
-
-	// Update the CSV file
-	err := UpdateStockInCSV("cmd\\avantai\\ep\\ep_watchlist\\watchlist.csv", symbol, 1, newEntryPriceStr, 2, newStopLossStr)
-	if err != nil {
-		log.Printf("[%s] Error updating stop loss in CSV: %v", symbol, err)
-	} else {
-		log.Printf("[%s] Successfully updated stop loss to %.2f and entry price to %.2f",
-			symbol, newStopLoss, newEntryPrice)
+	return &Position{
+		Symbol:        row[0],
+		PurchasePrice: purchasePrice,
+		StopLoss:      stopLoss,
+		Shares:        shares,
+		DaysHeld:      daysHeld,
+		Status:        row[5],
 	}
 }
 
-func UpdateStockInCSV(filePath string, symbol string, entryColumnIndex int, newEntryValue string,
-	stopColumnIndex int, newStopValue string) error {
+func getAccountSize() float64 {
+	accountSizeStr := os.Getenv("ACCOUNT_SIZE")
+	if accountSizeStr == "" {
+		log.Println("ACCOUNT_SIZE not set, using default $10,000")
+		return 10000.0
+	}
+	size, err := strconv.ParseFloat(accountSizeStr, 64)
+	if err != nil {
+		log.Println("Invalid ACCOUNT_SIZE, using default $10,000")
+		return 10000.0
+	}
+	return size
+}
 
-	// Try to locate the CSV file
+// CalculatePositionSize calculates shares to buy based on risk management
+func CalculatePositionSize(accountSize, purchasePrice, stopLoss float64) float64 {
+	riskPerShare := purchasePrice - stopLoss
+	if riskPerShare <= 0 {
+		log.Println("Invalid risk calculation: stop loss must be below purchase price")
+		return 0
+	}
+
+	totalRiskAmount := accountSize * PORTFOLIO_RISK_PERCENT
+	shares := totalRiskAmount / riskPerShare
+
+	log.Printf("Position Sizing - Account: $%.2f, Risk: $%.2f, Risk/Share: $%.2f, Shares: %.0f",
+		accountSize, totalRiskAmount, riskPerShare, shares)
+
+	return shares
+}
+
+func MonitorPosition(wg *sync.WaitGroup, apiToken string, pos *Position, accountSize float64) {
+	defer wg.Done()
+
+	// Fetch current price
+	currentPrice := fetchCurrentPrice(apiToken, pos.Symbol)
+	if currentPrice == 0 {
+		return
+	}
+
+	log.Printf("[%s] Status: %s | Price: $%.2f | Entry: $%.2f | Stop: $%.2f | Shares: %.0f | Days: %d",
+		pos.Symbol, pos.Status, currentPrice, pos.PurchasePrice, pos.StopLoss, pos.Shares, pos.DaysHeld)
+
+	// Check if we should move stop to breakeven (after 3-5 days and profit taken)
+	if pos.Status == "HOLDING" && pos.DaysHeld >= 3 {
+		if currentPrice > pos.PurchasePrice {
+			TakeProfitAndMoveToBreakeven(pos)
+		}
+	}
+
+	// Check if we hit stop loss
+	if currentPrice <= pos.StopLoss {
+		StopOut(pos, currentPrice)
+		return
+	}
+
+	// Check 10 EMA for momentum exit (only in last 10 minutes of trading day)
+	if pos.Status == "MONITORING" && isLastTenMinutes() {
+		ema10 := calculate10EMA(apiToken, pos.Symbol)
+		if ema10 > 0 && currentPrice < ema10 {
+			ExitPosition(pos, currentPrice, "10 EMA momentum loss")
+		}
+	}
+}
+
+func fetchCurrentPrice(apiToken, symbol string) float64 {
+	// Try realtime endpoint first (for paid plans)
+	url := fmt.Sprintf("%s/tickers/%s/realtime?access_key=%s", 
+		MARKETSTACK_BASE_URL, symbol, apiToken)
+	
+	resp, err := http.Get(url)
+	if err != nil {
+		log.Printf("[%s] error fetching realtime data: %v", symbol, err)
+		// Fallback to EOD latest
+		return fetchLatestEODPrice(apiToken, symbol)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("[%s] error reading response: %v", symbol, err)
+		return fetchLatestEODPrice(apiToken, symbol)
+	}
+
+	var result MarketstackRealtimeResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		log.Printf("[%s] error parsing JSON, trying EOD: %v", symbol, err)
+		return fetchLatestEODPrice(apiToken, symbol)
+	}
+
+	// Use 'last' price if available, otherwise 'close'
+	if result.Data.Last > 0 {
+		return result.Data.Last
+	}
+	if result.Data.Close > 0 {
+		return result.Data.Close
+	}
+
+	return fetchLatestEODPrice(apiToken, symbol)
+}
+
+func fetchLatestEODPrice(apiToken, symbol string) float64 {
+	url := fmt.Sprintf("%s/eod/latest?access_key=%s&symbols=%s&limit=1",
+		MARKETSTACK_BASE_URL, apiToken, symbol)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		log.Printf("[%s] error fetching EOD data: %v", symbol, err)
+		return 0
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("[%s] error reading EOD response: %v", symbol, err)
+		return 0
+	}
+
+	var result MarketstackEODResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		log.Printf("[%s] error parsing EOD JSON: %v", symbol, err)
+		return 0
+	}
+
+	if len(result.Data) == 0 || result.Data[0].Close == 0 {
+		log.Printf("[%s] no EOD price data available", symbol)
+		return 0
+	}
+
+	return result.Data[0].Close
+}
+
+func TakeProfitAndMoveToBreakeven(pos *Position) {
+	fmt.Printf("[%s] 🎯 Taking %.0f%% profit and moving stop to breakeven!\n", 
+		pos.Symbol, PROFIT_TAKE_PERCENT*100)
+
+	sharesToSell := pos.Shares * PROFIT_TAKE_PERCENT
+	remainingShares := pos.Shares - sharesToSell
+
+	log.Printf("[%s] Selling %.0f shares (%.0f%% of position), keeping %.0f shares",
+		pos.Symbol, sharesToSell, PROFIT_TAKE_PERCENT*100, remainingShares)
+
+	// Update position
+	newStopLoss := pos.PurchasePrice // Move to breakeven
+	newShares := remainingShares
+	newStatus := "MONITORING"
+
+	err := UpdatePositionInCSV("watchlist.csv", pos.Symbol, newShares, newStopLoss, pos.DaysHeld, newStatus)
+	if err != nil {
+		log.Printf("[%s] Error updating CSV: %v", pos.Symbol, err)
+	} else {
+		log.Printf("[%s] ✅ Stop moved to breakeven at $%.2f, %.0f shares remaining",
+			pos.Symbol, newStopLoss, newShares)
+	}
+}
+
+func StopOut(pos *Position, currentPrice float64) {
+	loss := (pos.StopLoss - pos.PurchasePrice) * pos.Shares
+	fmt.Printf("[%s] 🛑 STOPPED OUT at $%.2f | Loss: $%.2f\n", 
+		pos.Symbol, currentPrice, loss)
+
+	// Remove from watchlist or mark as closed
+	err := RemoveFromCSV("watchlist.csv", pos.Symbol)
+	if err != nil {
+		log.Printf("[%s] Error removing from CSV: %v", pos.Symbol, err)
+	}
+}
+
+func ExitPosition(pos *Position, currentPrice float64, reason string) {
+	profit := (currentPrice - pos.PurchasePrice) * pos.Shares
+	fmt.Printf("[%s] 📤 EXITING at $%.2f | Reason: %s | Profit: $%.2f\n",
+		pos.Symbol, currentPrice, reason, profit)
+
+	err := RemoveFromCSV("watchlist.csv", pos.Symbol)
+	if err != nil {
+		log.Printf("[%s] Error removing from CSV: %v", pos.Symbol, err)
+	}
+}
+
+func calculate10EMA(apiToken, symbol string) float64 {
+	// Get intraday data for EMA calculation
+	url := fmt.Sprintf("%s/intraday?access_key=%s&symbols=%s&interval=1hour&limit=10",
+		MARKETSTACK_BASE_URL, apiToken, symbol)
+	
+	resp, err := http.Get(url)
+	if err != nil {
+		log.Printf("[%s] error fetching intraday data: %v", symbol, err)
+		return 0
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0
+	}
+
+	var result MarketstackIntradayResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		log.Printf("[%s] error parsing intraday JSON: %v", symbol, err)
+		return 0
+	}
+
+	if len(result.Data) < 10 {
+		log.Printf("[%s] insufficient data for EMA calculation (got %d periods)", symbol, len(result.Data))
+		return 0
+	}
+
+	// Get last 10 closing prices
+	var closes []float64
+	for i := 0; i < 10 && i < len(result.Data); i++ {
+		close := result.Data[i].Close
+		if close == 0 {
+			close = result.Data[i].Last
+		}
+		if close > 0 {
+			closes = append(closes, close)
+		}
+	}
+
+	if len(closes) < 10 {
+		return 0
+	}
+
+	// Calculate 10-period EMA
+	multiplier := 2.0 / 11.0
+	ema := closes[0]
+	for i := 1; i < 10; i++ {
+		ema = (closes[i] * multiplier) + (ema * (1 - multiplier))
+	}
+
+	log.Printf("[%s] 10 EMA: $%.2f", symbol, ema)
+	return ema
+}
+
+func isLastTenMinutes() bool {
+	now := time.Now()
+	// Market closes at 4:00 PM ET, check if it's after 3:50 PM
+	// Note: Adjust timezone as needed for your location
+	closeTime := time.Date(now.Year(), now.Month(), now.Day(), 15, 50, 0, 0, now.Location())
+	endTime := time.Date(now.Year(), now.Month(), now.Day(), 16, 0, 0, 0, now.Location())
+	
+	return now.After(closeTime) && now.Before(endTime)
+}
+
+func UpdatePositionInCSV(filePath string, symbol string, newShares, newStopLoss float64, daysHeld int, status string) error {
 	file, err := os.Open(filePath)
 	if err != nil {
-		// Try alternate path if the first one fails
 		file, err = os.Open("cmd\\avantai\\ep\\ep_watchlist\\watchlist.csv")
 		if err != nil {
 			return fmt.Errorf("error opening file: %v", err)
@@ -136,39 +414,30 @@ func UpdateStockInCSV(filePath string, symbol string, entryColumnIndex int, newE
 	}
 	defer file.Close()
 
-	// Parse the CSV content
 	reader := csv.NewReader(file)
 	records, err := reader.ReadAll()
 	if err != nil {
 		return fmt.Errorf("error reading CSV: %v", err)
 	}
 
-	// Find the row with the matching symbol
 	rowFound := false
 	for i, row := range records {
 		if len(row) > 0 && row[0] == symbol {
-			// Check if the columns exist
-			if entryColumnIndex >= len(row) || stopColumnIndex >= len(row) {
-				return fmt.Errorf("column index out of bounds, row has %d columns", len(row))
-			}
-
-			// Update the values
-			records[i][entryColumnIndex] = newEntryValue
-			records[i][stopColumnIndex] = newStopValue
+			records[i][2] = fmt.Sprintf("%.2f", newStopLoss)
+			records[i][3] = fmt.Sprintf("%.2f", newShares)
+			records[i][4] = strconv.Itoa(daysHeld)
+			records[i][5] = status
 			rowFound = true
 			break
 		}
 	}
 
 	if !rowFound {
-		return fmt.Errorf("symbol %s not found in CSV", symbol)
+		return fmt.Errorf("symbol %s not found", symbol)
 	}
 
-	// Open the file for writing (this will truncate the file)
-	// First try the original path
 	file, err = os.Create(filePath)
 	if err != nil {
-		// If that fails, try the alternate path
 		file, err = os.Create("cmd\\avantai\\ep\\ep_watchlist\\watchlist.csv")
 		if err != nil {
 			return fmt.Errorf("error opening file for writing: %v", err)
@@ -176,7 +445,6 @@ func UpdateStockInCSV(filePath string, symbol string, entryColumnIndex int, newE
 	}
 	defer file.Close()
 
-	// Write the modified records back to the file
 	writer := csv.NewWriter(file)
 	err = writer.WriteAll(records)
 	if err != nil {
@@ -187,54 +455,44 @@ func UpdateStockInCSV(filePath string, symbol string, entryColumnIndex int, newE
 	return nil
 }
 
-func ComparePrice(wg *sync.WaitGroup, apiKey, symbol string, entry, stop float64) {
-	defer wg.Done()
-
-	// fetch
-	url := fmt.Sprintf(
-		"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&entitlement=realtime&symbol=%s&apikey=%s",
-		symbol, apiKey,
-	)
-	resp, err := http.Get(url)
+func RemoveFromCSV(filePath string, symbol string) error {
+	file, err := os.Open(filePath)
 	if err != nil {
-		log.Printf("[%s] error fetching data: %v", symbol, err)
-		return
+		file, err = os.Open("cmd\\avantai\\ep\\ep_watchlist\\watchlist.csv")
+		if err != nil {
+			return fmt.Errorf("error opening file: %v", err)
+		}
 	}
-	defer resp.Body.Close()
+	defer file.Close()
 
-	// read & unmarshal
-	body, err := io.ReadAll(resp.Body)
+	reader := csv.NewReader(file)
+	records, err := reader.ReadAll()
 	if err != nil {
-		log.Printf("[%s] error reading response: %v", symbol, err)
-		return
+		return fmt.Errorf("error reading CSV: %v", err)
 	}
 
-	var result GlobalQuoteResponse
-	if err := json.Unmarshal(body, &result); err != nil {
-		log.Printf("[%s] error parsing JSON: %v", symbol, err)
-		return
+	var newRecords [][]string
+	for _, row := range records {
+		if len(row) > 0 && row[0] != symbol {
+			newRecords = append(newRecords, row)
+		}
 	}
 
-	// Check if price is empty before parsing
-	if result.Quote.Price == "" {
-		log.Printf("[%s] price data is empty, API may be rate limited or symbol may be invalid", symbol)
-		return
-	}
-
-	// convert price to float
-	price, err := strconv.ParseFloat(result.Quote.Price, 64)
+	file, err = os.Create(filePath)
 	if err != nil {
-		log.Printf("[%s] invalid price format: %v", symbol, err)
-		return
+		file, err = os.Create("cmd\\avantai\\ep\\ep_watchlist\\watchlist.csv")
+		if err != nil {
+			return fmt.Errorf("error opening file for writing: %v", err)
+		}
 	}
+	defer file.Close()
 
-	// Log the current price and target price for debugging
-	moveStopPrice := CalculateMoveStopLossPrice(entry, stop)
-	log.Printf("[%s] Current price: %.2f, Entry: %.2f, Stop: %.2f, Move Stop Target: %.2f",
-		symbol, price, entry, stop, moveStopPrice)
-
-	// compare
-	if price >= moveStopPrice {
-		MoveStopLoss(symbol, entry)
+	writer := csv.NewWriter(file)
+	err = writer.WriteAll(newRecords)
+	if err != nil {
+		return fmt.Errorf("error writing CSV: %v", err)
 	}
+	writer.Flush()
+
+	return nil
 }

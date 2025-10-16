@@ -607,8 +607,8 @@ func calculateTechnicalIndicatorsBacktest(historicalData []MarketstackEODData, s
 		IsExtended:        distanceFrom50EMA > MAX_EXTENSION_ADR,
 		IsTooExtended:     distanceFrom50EMA > TOO_EXTENDED_ADR,
 		// VolumeDriedUp:     volumeDriedUp,
-		IsNearEMA1020:     isNearEMA1020,
-		BreaksResistance:  breaksResistance,
+		IsNearEMA1020:    isNearEMA1020,
+		BreaksResistance: breaksResistance,
 	}
 
 	fmt.Printf("📊 Technical indicators calculated for %s on %s\n", symbol, targetDate)
@@ -948,6 +948,18 @@ func processIntradayDataForPremarket(candles []struct {
 	return avgPremarketVol, avgDailyVol, nil
 }
 
+func calculateAvgVolume(data []MarketstackEODData) float64 {
+	if len(data) == 0 {
+		return 0
+	}
+
+	sum := 0.0
+	for _, day := range data {
+		sum += day.Volume
+	}
+	return sum / float64(len(data))
+}
+
 // Simulate premarket analysis for backtesting
 func simulatePremarketAnalysisBacktest(historicalData []MarketstackEODData, dolVol float64) *PremarketAnalysis {
 	// For backtesting, we simulate premarket activity based on historical patterns
@@ -1073,6 +1085,13 @@ func outputBacktestCSVSummary(stocks []BacktestResult, dir, dateStr string) erro
 
 	fmt.Printf("CSV backtest summary written to %s\n", filename)
 	return nil
+}
+
+func boolToString(b bool) string {
+	if b {
+		return "Yes"
+	}
+	return "No"
 }
 
 // Helper functions for backtest calculations
