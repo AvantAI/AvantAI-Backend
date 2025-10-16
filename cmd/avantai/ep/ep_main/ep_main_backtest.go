@@ -5,6 +5,7 @@ import (
 	"avantai/pkg/sapien"
 	"encoding/csv"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -23,8 +24,7 @@ import (
 )
 
 // ===== Configuration =====
-const backtestDate = "2025-08-01" // YYYY-MM-DD format - change this to your desired date (must be historical, not future)
-const maxIterations = 15          // Stop after 15 minutes
+const maxIterations = 15 // Stop after 15 minutes
 
 // ===== Manager Agent Response Structure =====
 type ManagerResponse struct {
@@ -419,6 +419,9 @@ func addToWatchlist(entry WatchlistEntry) error {
 }
 
 func main() {
+	backtestDate := *flag.String("date", "2025-08-01", "a string for the date") // YYYY-MM-DD format - change this to your desired date (must be historical, not future)
+	flag.Parse()
+
 	fmt.Printf("=== EP Historical Intraday Collector (Per-Minute Manager Calls) for %s ===\n", backtestDate)
 	fmt.Printf("=== Processing will stop after %d minutes ===\n", maxIterations)
 
@@ -474,7 +477,7 @@ func main() {
 		wg.Add(1)
 		go func(idx int, sym string) {
 			defer wg.Done()
-			historicalIntradayWorker(apiKey, sym, backtestDate, sentiment[idx], idx+1)
+			historicalIntradayWorker(apiKey, sym, backtestDate, sentiment[idx], idx+1, backtestDate)
 		}(i, symbol)
 	}
 	wg.Wait()
@@ -482,7 +485,7 @@ func main() {
 }
 
 // Historical intraday worker: fetches complete day's data and processes each minute sequentially
-func historicalIntradayWorker(apiKey, symbol, date string, sentiment string, goroutineId int) {
+func historicalIntradayWorker(apiKey, symbol, date string, sentiment string, goroutineId int, backtestDate string) {
 	fmt.Printf("[#%d:%s] historical worker started for %s\n", goroutineId, symbol, date)
 
 	openNY, closeNY, err := sessionWindow(date)
@@ -537,13 +540,13 @@ func historicalIntradayWorker(apiKey, symbol, date string, sentiment string, gor
 	fmt.Printf("[#%d:%s] filtered to %d bars within session hours\n", goroutineId, symbol, len(bars))
 
 	// Process each minute sequentially, calling manager agent after each bar
-	processMinuteByMinute(bars, symbol, sentiment, goroutineId)
+	processMinuteByMinute(bars, symbol, sentiment, goroutineId, backtestDate)
 
 	fmt.Printf("[#%d:%s] completed processing all minutes for %s\n", goroutineId, symbol, date)
 }
 
 // Process bars minute by minute, calling manager agent after each minute
-func processMinuteByMinute(allBars []MinuteBar, symbol string, sentiment string, goroutineId int) {
+func processMinuteByMinute(allBars []MinuteBar, symbol string, sentiment string, goroutineId int, backtestDate string) {
 	fmt.Printf("[#%d:%s] Starting minute-by-minute processing (limited to %d minutes or until Buy recommendation)\n",
 		goroutineId, symbol, maxIterations)
 
@@ -573,7 +576,7 @@ func processMinuteByMinute(allBars []MinuteBar, symbol string, sentiment string,
 
 		// Call manager agent with data up to this minute (synchronously within this stock's goroutine)
 		// runManagerAgent now returns true if we should stop processing (Buy recommendation)
-		shouldStop := runManagerAgent(epBars, symbol, goroutineId, i, sentiment, maxMinutes)
+		shouldStop := runManagerAgent(epBars, symbol, goroutineId, i, sentiment, maxMinutes, backtestDate)
 
 		if shouldStop {
 			fmt.Printf("[#%d:%s] 🛑 Stopping processing after minute %d due to Buy recommendation\n",
@@ -628,7 +631,7 @@ func convertToEP(symbol string, bars []MinuteBar) []ep.StockData {
 
 // ===== Modified runManagerAgent with JSON processing and watchlist management =====
 
-func runManagerAgent(stockdata []ep.StockData, symbol string, goroutineId int, currentMinute int, sentiment string, totalMinutes int) bool {
+func runManagerAgent(stockdata []ep.StockData, symbol string, goroutineId int, currentMinute int, sentiment string, totalMinutes int, backtestDate string) bool {
 	fmt.Printf("\n[Goroutine %d] --- Starting runManagerAgent for %s (minute %d/%d) ---\n",
 		goroutineId, symbol, currentMinute, totalMinutes)
 	defer fmt.Printf("[Goroutine %d] ✓ runManagerAgent completed for %s (minute %d/%d)\n",

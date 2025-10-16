@@ -3,6 +3,7 @@ package main
 import (
 	"avantai/pkg/sapien"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -85,7 +86,8 @@ type StockStats struct {
 
 func main() {
 
-	const backtestDate = "2025-08-01"
+	backtestDate := *flag.String("date", "2025-08-01", "a string for the date") // YYYY-MM-DD format - change this to your desired date (must be historical, not future)
+	flag.Parse()
 
 	filePath := fmt.Sprintf("data/backtests/backtest_%s_results.json", strings.ReplaceAll(backtestDate, "-", ""))
 	file, err := os.Open(filePath)

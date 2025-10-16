@@ -3,12 +3,14 @@ package main
 import (
 	"avantai/pkg/ep"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -29,18 +31,18 @@ type BacktestConfig struct {
 }
 
 type BacktestSummary struct {
-	AvgGapUp               float64           `json:"avg_gap_up"`
-	AvgMarketCap           float64           `json:"avg_market_cap"`
-	DataQualityDistribution map[string]int   `json:"data_quality_distribution"`
-	TotalCandidates        int              `json:"total_candidates"`
+	AvgGapUp                float64        `json:"avg_gap_up"`
+	AvgMarketCap            float64        `json:"avg_market_cap"`
+	DataQualityDistribution map[string]int `json:"data_quality_distribution"`
+	TotalCandidates         int            `json:"total_candidates"`
 }
 
 type FilterCriteria struct {
-	MaxExtensionAdr          float64 `json:"max_extension_adr"`
-	MinDollarVolume          int64   `json:"min_dollar_volume"`
-	MinGapUpPercent          float64 `json:"min_gap_up_percent"`
-	MinMarketCap             int64   `json:"min_market_cap"`
-	MinPremarketVolumeRatio  float64 `json:"min_premarket_volume_ratio"`
+	MaxExtensionAdr         float64 `json:"max_extension_adr"`
+	MinDollarVolume         int64   `json:"min_dollar_volume"`
+	MinGapUpPercent         float64 `json:"min_gap_up_percent"`
+	MinMarketCap            int64   `json:"min_market_cap"`
+	MinPremarketVolumeRatio float64 `json:"min_premarket_volume_ratio"`
 }
 
 type BacktestResult struct {
@@ -57,32 +59,32 @@ type FilteredStock struct {
 }
 
 type StockStats struct {
-	Timestamp               string  `json:"timestamp"`
-	MarketCap              float64 `json:"market_cap"`
-	Dolvol                 float64 `json:"dolvol"`
-	GapUp                  float64 `json:"gap_up"`
-	Adr                    float64 `json:"adr"`
-	Name                   string  `json:"name"`
-	Exchange               string  `json:"exchange"`
-	Sector                 string  `json:"sector"`
-	Industry               string  `json:"industry"`
-	PremarketVolume        float64 `json:"premarket_volume"`
-	AvgPremarketVolume     float64 `json:"avg_premarket_volume"`
-	PremarketVolumeRatio   float64 `json:"premarket_volume_ratio"`
-	PremarketVolPercent    int     `json:"premarket_vol_percent"`
-	Sma200                 float64 `json:"sma_200"`
-	Ema200                 float64 `json:"ema_200"`
-	Ema50                  float64 `json:"ema_50"`
-	Ema20                  float64 `json:"ema_20"`
-	Ema10                  float64 `json:"ema_10"`
-	IsAbove200Ema          bool    `json:"is_above_200_ema"`
-	DistanceFrom50Ema      float64 `json:"distance_from_50_ema"`
-	IsExtended             bool    `json:"is_extended"`
-	IsTooExtended          bool    `json:"is_too_extended"`
-	VolumeDriedUp          bool    `json:"volume_dried_up"`
-	IsNearEma1020          bool    `json:"is_near_ema_10_20"`
-	BreaksResistance       bool    `json:"breaks_resistance"`
-	PreviousEarningsReaction string `json:"previous_earnings_reaction"`
+	Timestamp                string  `json:"timestamp"`
+	MarketCap                float64 `json:"market_cap"`
+	Dolvol                   float64 `json:"dolvol"`
+	GapUp                    float64 `json:"gap_up"`
+	Adr                      float64 `json:"adr"`
+	Name                     string  `json:"name"`
+	Exchange                 string  `json:"exchange"`
+	Sector                   string  `json:"sector"`
+	Industry                 string  `json:"industry"`
+	PremarketVolume          float64 `json:"premarket_volume"`
+	AvgPremarketVolume       float64 `json:"avg_premarket_volume"`
+	PremarketVolumeRatio     float64 `json:"premarket_volume_ratio"`
+	PremarketVolPercent      int     `json:"premarket_vol_percent"`
+	Sma200                   float64 `json:"sma_200"`
+	Ema200                   float64 `json:"ema_200"`
+	Ema50                    float64 `json:"ema_50"`
+	Ema20                    float64 `json:"ema_20"`
+	Ema10                    float64 `json:"ema_10"`
+	IsAbove200Ema            bool    `json:"is_above_200_ema"`
+	DistanceFrom50Ema        float64 `json:"distance_from_50_ema"`
+	IsExtended               bool    `json:"is_extended"`
+	IsTooExtended            bool    `json:"is_too_extended"`
+	VolumeDriedUp            bool    `json:"volume_dried_up"`
+	IsNearEma1020            bool    `json:"is_near_ema_10_20"`
+	BreaksResistance         bool    `json:"breaks_resistance"`
+	PreviousEarningsReaction string  `json:"previous_earnings_reaction"`
 }
 
 func main() {
@@ -97,7 +99,8 @@ func main() {
 	// Filters out stocks that don't match the given criteria
 	// ep.FilterStocks(apiKey)
 	// Simple backtest for one date
-	const backtestDate = "2025-08-01"
+	backtestDate := *flag.String("date", "2025-08-01", "a string for the date") // YYYY-MM-DD format - change this to your desired date (must be historical, not future)
+	flag.Parse()
 
 	// Advanced backtest with custom config
 	config := ep.BacktestConfig{
@@ -155,16 +158,21 @@ func main() {
 	err = json.Unmarshal(fileContent, &report)
 	if err != nil {
 		log.Fatalf("Error unmarshalling JSON: %v\n", err)
-	}	
+	}
 
 	// Use a WaitGroup to wait for all goroutines to complete
 	var wg sync.WaitGroup
+
+	t, err := time.Parse("2006-01-02", backtestDate)
+	if err != nil {
+		log.Fatalf("Error parsing date: %v\n", err)
+	}
 
 	// gets the news info for the respective stock
 	for _, stock := range report.QualifyingStocks {
 		// Start the goroutine
 		wg.Add(1)
-		go ep.GetNewsAndEarnings(&wg, stock.Symbol, "2025-07-31")
+		go ep.GetNewsAndEarnings(&wg, stock.Symbol, t.AddDate(0, 0, -1).Format("2006-01-02"))
 	}
 
 	// Wait for all goroutines to finish
