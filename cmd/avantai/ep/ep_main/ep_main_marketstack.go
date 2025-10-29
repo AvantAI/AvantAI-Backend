@@ -149,8 +149,8 @@ package main
 
 // func fetchIntraday(apiKey, symbol string) (MarketstackIntradayResponse, error) {
 // 	url := fmt.Sprintf(
-// 		"https://api.marketstack.com/v2/intraday?access_key=%s&symbols=%s&interval=1min&limit=1000",
-// 		apiKey, symbol,
+// 		"https://api.marketstack.com/v2/intraday?access_key=%s&symbols=%s&date_from=%s&date_to=%s&interval=1min&limit=1000&sort=ASC",
+//      apiKey, symbol, dateStr, dateStr,
 // 	)
 // 	resp, err := http.Get(url)
 // 	if err != nil {

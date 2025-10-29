@@ -1,0 +1,2 @@
+Symbol,EntryPrice,ExitPrice,Shares,InitialRisk,ProfitLoss,RiskReward,EntryDate,ExitDate,ExitReason,IsWinner,AccountSize
+APP,54.73,60.03,10.80,2.51,57.24,2.11,2024-02-15,2024-03-11,Trailing Stop Hit (Profit Protected),true,10094.25

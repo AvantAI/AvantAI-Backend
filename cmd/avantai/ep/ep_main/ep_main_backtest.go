@@ -171,13 +171,11 @@ type MarketstackIntradayResponse struct {
 }
 
 func fetchIntradayForDate(apiKey, symbol, dateStr string) (MarketstackIntradayResponse, error) {
-	// Use the /intraday/[date] endpoint format for specific historical dates
 	url := fmt.Sprintf(
-		"https://api.marketstack.com/v2/intraday/%s?access_key=%s&symbols=%s&interval=1min&limit=1000&sort=ASC",
-		dateStr, apiKey, symbol,
+		"https://api.marketstack.com/v2/intraday?access_key=%s&symbols=%s&date_from=%s&date_to=%s&interval=1min&limit=1000&sort=ASC",
+		apiKey, symbol, dateStr, dateStr,
 	)
 
-	fmt.Printf("Making API request: %s\n", url)
 	resp, err := http.Get(url)
 	if err != nil {
 		return MarketstackIntradayResponse{}, fmt.Errorf("http get: %w", err)
@@ -188,7 +186,6 @@ func fetchIntradayForDate(apiKey, symbol, dateStr string) (MarketstackIntradayRe
 		return MarketstackIntradayResponse{}, fmt.Errorf("read body: %w", err)
 	}
 
-	fmt.Printf("API Response status: %s, Body length: %d\n", resp.Status, len(body))
 	if resp.StatusCode != 200 {
 		return MarketstackIntradayResponse{}, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
 	}
@@ -197,7 +194,169 @@ func fetchIntradayForDate(apiKey, symbol, dateStr string) (MarketstackIntradayRe
 	if err := json.Unmarshal(body, &out); err != nil {
 		return MarketstackIntradayResponse{}, fmt.Errorf("unmarshal: %w; body=%s", err, string(body))
 	}
+
 	return out, nil
+}
+
+// ===== Polygon.io client =====
+
+type PolygonAggregatesResponse struct {
+	Ticker       string       `json:"ticker"`
+	QueryCount   int          `json:"queryCount"`
+	ResultsCount int          `json:"resultsCount"`
+	Adjusted     bool         `json:"adjusted"`
+	Results      []PolygonBar `json:"results"`
+	Status       string       `json:"status"`
+	RequestID    string       `json:"request_id"`
+}
+
+type PolygonBar struct {
+	V  int64   `json:"v"`  // Volume
+	VW float64 `json:"vw"` // Volume weighted average price
+	O  float64 `json:"o"`  // Open
+	C  float64 `json:"c"`  // Close
+	H  float64 `json:"h"`  // High
+	L  float64 `json:"l"`  // Low
+	T  int64   `json:"t"`  // Timestamp (milliseconds)
+	N  int     `json:"n"`  // Number of transactions
+}
+
+// ===== Rate Limiter =====
+
+type RateLimiter struct {
+	mu        sync.Mutex
+	maxPerMin int
+	callCount int
+	lastReset time.Time
+}
+
+func NewRateLimiter(maxPerMin int) *RateLimiter {
+	return &RateLimiter{
+		maxPerMin: maxPerMin,
+		callCount: 0,
+		lastReset: time.Now(),
+	}
+}
+
+func (rl *RateLimiter) Wait() {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	// Reset counter every minute
+	if time.Since(rl.lastReset) >= time.Minute {
+		rl.callCount = 0
+		rl.lastReset = time.Now()
+	}
+
+	// If we've hit the limit, wait until next minute
+	if rl.callCount >= rl.maxPerMin {
+		waitTime := time.Until(rl.lastReset.Add(time.Minute))
+		fmt.Printf("⚠️  Polygon rate limit reached (%d/%d). Waiting %v...\n",
+			rl.callCount, rl.maxPerMin, waitTime)
+		time.Sleep(waitTime)
+		rl.callCount = 0
+		rl.lastReset = time.Now()
+	}
+
+	rl.callCount++
+}
+
+func fetchPolygonIntraday(apiKey, symbol, dateStr string, rateLimiter *RateLimiter) (PolygonAggregatesResponse, error) {
+	rateLimiter.Wait()
+
+	url := fmt.Sprintf(
+		"https://api.polygon.io/v2/aggs/ticker/%s/range/1/minute/%s/%s?adjusted=true&sort=asc&limit=50000&apiKey=%s",
+		symbol, dateStr, dateStr, apiKey,
+	)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return PolygonAggregatesResponse{}, fmt.Errorf("http get: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return PolygonAggregatesResponse{}, fmt.Errorf("read body: %w", err)
+	}
+
+	if resp.StatusCode != 200 {
+		return PolygonAggregatesResponse{}, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
+	}
+
+	var out PolygonAggregatesResponse
+	if err := json.Unmarshal(body, &out); err != nil {
+		return PolygonAggregatesResponse{}, fmt.Errorf("unmarshal: %w", err)
+	}
+
+	return out, nil
+}
+
+func polygonToMinuteBars(resp PolygonAggregatesResponse) []MinuteBar {
+	var bars []MinuteBar
+
+	for _, bar := range resp.Results {
+		t := time.Unix(bar.T/1000, (bar.T%1000)*1000000).In(locNY)
+		bars = append(bars, MinuteBar{
+			T: t,
+			O: bar.O,
+			H: bar.H,
+			L: bar.L,
+			C: bar.C,
+			V: bar.V,
+		})
+	}
+
+	return bars
+}
+
+// ===== Unified Data Fetcher with Fallback =====
+
+func fetchIntradayWithFallback(marketstackKey, polygonKey, symbol, dateStr string, rateLimiter *RateLimiter) ([]MinuteBar, string, error) {
+	var bars []MinuteBar
+
+	// Try Marketstack first
+	fmt.Printf("🔍 [%s] Trying Marketstack first...\n", symbol)
+	msResp, err := fetchIntradayForDate(marketstackKey, symbol, dateStr)
+	if err == nil && len(msResp.Data) > 0 {
+		fmt.Printf("✅ [%s] Got %d bars from Marketstack\n", symbol, len(msResp.Data))
+
+		for _, d := range msResp.Data {
+			tu, err := parseMarketstackTimeUTC(d.Date)
+			if err != nil {
+				continue
+			}
+			tNY := tu.In(locNY)
+			bars = append(bars, MinuteBar{
+				T: tNY,
+				O: d.Open,
+				H: d.High,
+				L: d.Low,
+				C: d.Close,
+				V: int64(d.Volume),
+			})
+		}
+		return bars, "Marketstack", nil
+	}
+
+	// Marketstack failed or returned no data, try Polygon
+	if polygonKey == "" {
+		return nil, "", fmt.Errorf("no data from Marketstack and no Polygon API key configured")
+	}
+
+	fmt.Printf("⚠️  [%s] Marketstack returned no data. Falling back to Polygon...\n", symbol)
+	polyResp, err := fetchPolygonIntraday(polygonKey, symbol, dateStr, rateLimiter)
+	if err != nil {
+		return nil, "", fmt.Errorf("both Marketstack and Polygon failed: %w", err)
+	}
+
+	if len(polyResp.Results) == 0 {
+		return nil, "", fmt.Errorf("no data available from either Marketstack or Polygon")
+	}
+
+	fmt.Printf("✅ [%s] Got %d bars from Polygon (fallback)\n", symbol, len(polyResp.Results))
+	bars = polygonToMinuteBars(polyResp)
+	return bars, "Polygon", nil
 }
 
 // ===== Session utilities =====
@@ -206,7 +365,6 @@ var (
 	locNY, _ = time.LoadLocation("America/New_York")
 )
 
-// Returns regular session open/close for a given YYYY-MM-DD (New York time).
 func sessionWindow(date string) (openNY, closeNY time.Time, err error) {
 	d, err := time.ParseInLocation("2006-01-02", date, locNY)
 	if err != nil {
@@ -217,18 +375,12 @@ func sessionWindow(date string) (openNY, closeNY time.Time, err error) {
 	return
 }
 
-func toISOUTC(t time.Time) string {
-	return t.UTC().Format("2006-01-02T15:04:05")
-}
-
 func parseMarketstackTimeUTC(s string) (time.Time, error) {
-	// Marketstack returns e.g. "2025-08-29T13:31:00+0000"
 	return time.Parse("2006-01-02T15:04:05-0700", s)
 }
 
-// ===== App wiring =====
+// ===== Backtest structures =====
 
-// Top-level structure that matches your JSON
 type BacktestReport struct {
 	BacktestConfig   BacktestConfig   `json:"backtest_config"`
 	BacktestDate     string           `json:"backtest_date"`
@@ -256,11 +408,6 @@ type FilterCriteria struct {
 	MinGapUpPercent         float64 `json:"min_gap_up_percent"`
 	MinMarketCap            int64   `json:"min_market_cap"`
 	MinPremarketVolumeRatio float64 `json:"min_premarket_volume_ratio"`
-}
-
-type StockDataList struct {
-	Symbol    string         `json:"symbol"`
-	StockData []ep.StockData `json:"stock_data"`
 }
 
 type StockStats struct {
@@ -308,7 +455,6 @@ type BacktestResult struct {
 // ===== JSON Extraction and CSV Management =====
 
 func extractJSON(response string) (*ManagerResponse, error) {
-	// Look for JSON pattern in the response
 	jsonPattern := regexp.MustCompile(`\{[^{}]*"Recommendation"[^{}]*\}`)
 	match := jsonPattern.FindString(response)
 
@@ -326,29 +472,24 @@ func extractJSON(response string) (*ManagerResponse, error) {
 }
 
 func saveJSONResponse(symbol string, minute int, response *ManagerResponse) error {
-	// Create directory if it doesn't exist
 	dir := filepath.Join("responses", symbol)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	// Save JSON file with prettified formatting
 	filename := filepath.Join(dir, fmt.Sprintf("minute_%d_response.json", minute))
 	data, err := json.Marshal(response)
 	if err != nil {
 		return fmt.Errorf("failed to marshal response: %w", err)
 	}
 
-	// Prettify the JSON
 	prettified := pretty.Pretty(data)
-
 	return os.WriteFile(filename, prettified, 0644)
 }
 
 func addToWatchlist(entry WatchlistEntry) error {
 	filename := "watchlist.csv"
 
-	// Read existing entries to check for duplicates
 	existingEntries := make(map[string]WatchlistEntry)
 	if file, err := os.Open(filename); err == nil {
 		defer file.Close()
@@ -358,13 +499,11 @@ func addToWatchlist(entry WatchlistEntry) error {
 			return fmt.Errorf("failed to read existing watchlist: %w", err)
 		}
 
-		// Skip header row if it exists
 		startIdx := 0
 		if len(records) > 0 && records[0][0] == "stock_symbol" {
 			startIdx = 1
 		}
 
-		// Build map of existing entries
 		for i := startIdx; i < len(records); i++ {
 			if len(records[i]) >= 5 {
 				key := fmt.Sprintf("%s|%s|%s|%s|%s", records[i][0], records[i][1], records[i][2], records[i][3], records[i][4])
@@ -379,20 +518,17 @@ func addToWatchlist(entry WatchlistEntry) error {
 		}
 	}
 
-	// Check if this entry already exists
 	entryKey := fmt.Sprintf("%s|%s|%s|%s|%s", entry.StockSymbol, entry.EntryPrice, entry.StopLoss, entry.Shares, entry.Date)
 	if _, exists := existingEntries[entryKey]; exists {
 		return fmt.Errorf("duplicate entry: %s with entry price %s, stop loss %s, shares %s already exists in watchlist",
 			entry.StockSymbol, entry.EntryPrice, entry.StopLoss, entry.Shares)
 	}
 
-	// Check if file exists
 	fileExists := true
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
 		fileExists = false
 	}
 
-	// Open file for append or create
 	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open watchlist file: %w", err)
@@ -402,14 +538,12 @@ func addToWatchlist(entry WatchlistEntry) error {
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
 
-	// Write header if file is new
 	if !fileExists {
 		if err := writer.Write([]string{"stock_symbol", "entry_price", "stop_loss_price", "shares", "date"}); err != nil {
 			return fmt.Errorf("failed to write CSV header: %w", err)
 		}
 	}
 
-	// Write the entry
 	record := []string{entry.StockSymbol, entry.EntryPrice, entry.StopLoss, entry.Shares, entry.Date}
 	if err := writer.Write(record); err != nil {
 		return fmt.Errorf("failed to write CSV record: %w", err)
@@ -419,8 +553,9 @@ func addToWatchlist(entry WatchlistEntry) error {
 }
 
 func main() {
-	backtestDate := *flag.String("date", "2025-08-01", "a string for the date") // YYYY-MM-DD format - change this to your desired date (must be historical, not future)
+	backtestDatePtr := flag.String("date", "", "a string for the date")
 	flag.Parse()
+	backtestDate := *backtestDatePtr
 
 	fmt.Printf("=== EP Historical Intraday Collector (Per-Minute Manager Calls) for %s ===\n", backtestDate)
 	fmt.Printf("=== Processing will stop after %d minutes ===\n", maxIterations)
@@ -428,10 +563,20 @@ func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Fatal("Error loading .env file")
 	}
-	apiKey := os.Getenv("MARKETSTACK_TOKEN")
-	if apiKey == "" {
+	
+	marketstackKey := os.Getenv("MARKETSTACK_TOKEN")
+	polygonKey := os.Getenv("POLYGON_KEY")
+	
+	if marketstackKey == "" {
 		log.Fatal("MARKETSTACK_TOKEN not found")
 	}
+	
+	if polygonKey == "" {
+		log.Println("⚠️  WARNING: POLYGON_API_KEY not found. Fallback will not be available.")
+	}
+
+	// Create rate limiter for Polygon (5 calls/minute on free tier)
+	polygonRateLimiter := NewRateLimiter(5)
 
 	// Load symbols from backtest results file
 	backtestFileName := fmt.Sprintf("data/backtests/backtest_%s_results.json", strings.ReplaceAll(backtestDate, "-", ""))
@@ -440,7 +585,6 @@ func main() {
 		log.Fatalf("open %s: %v", backtestFileName, err)
 	}
 
-	// Slice to hold the parsed data
 	var backtestReport BacktestReport
 	if err := json.Unmarshal(raw, &backtestReport); err != nil {
 		log.Fatalf("unmarshal backtest results: %v", err)
@@ -453,11 +597,9 @@ func main() {
 
 	fmt.Printf("Loaded %d symbols from backtest results\n", len(backtestResults))
 
-	// Extract symbols for the specific backtest date
 	var symbols []string
 	var sentiment []string
 	for _, result := range backtestResults {
-		// Create sentiment string in the desired format
 		sentimentData := map[string]interface{}{
 			"Stock_name": result.Symbol,
 			"Stock_info": result.FilteredStock.StockInfo,
@@ -472,21 +614,27 @@ func main() {
 	}
 
 	var wg sync.WaitGroup
-	fmt.Printf("Starting %d historical intraday workers for date %s…\n", len(symbols), backtestDate)
+	fmt.Printf("Starting %d historical intraday workers for date %s (Marketstack with Polygon fallback)...\n", 
+		len(symbols), backtestDate)
+	
 	for i, symbol := range symbols {
 		wg.Add(1)
 		go func(idx int, sym string) {
 			defer wg.Done()
-			historicalIntradayWorker(apiKey, sym, backtestDate, sentiment[idx], idx+1, backtestDate)
+			historicalIntradayWorkerWithFallback(marketstackKey, polygonKey, sym, backtestDate, 
+				sentiment[idx], idx+1, backtestDate, polygonRateLimiter)
 		}(i, symbol)
 	}
 	wg.Wait()
 	fmt.Println("All workers finished. Done.")
 }
 
-// Historical intraday worker: fetches complete day's data and processes each minute sequentially
-func historicalIntradayWorker(apiKey, symbol, date string, sentiment string, goroutineId int, backtestDate string) {
-	fmt.Printf("[#%d:%s] historical worker started for %s\n", goroutineId, symbol, date)
+// Historical intraday worker with fallback
+func historicalIntradayWorkerWithFallback(marketstackKey, polygonKey, symbol, date string,
+	sentiment string, goroutineId int, backtestDate string, rateLimiter *RateLimiter) {
+
+	fmt.Printf("\n[#%d:%s] ============================================\n", goroutineId, symbol)
+	fmt.Printf("[#%d:%s] Historical worker started for %s\n", goroutineId, symbol, date)
 
 	openNY, closeNY, err := sessionWindow(date)
 	if err != nil {
@@ -494,38 +642,22 @@ func historicalIntradayWorker(apiKey, symbol, date string, sentiment string, gor
 		return
 	}
 
-	fmt.Printf("[#%d:%s] fetching historical data for date %s (session: %s to %s NY time)\n",
-		goroutineId, symbol, date, openNY.Format("15:04"), closeNY.Format("15:04"))
-
-	// Use the new date-specific endpoint
-	resp, err := fetchIntradayForDate(apiKey, symbol, date)
+	// Fetch data with automatic fallback
+	allBars, source, err := fetchIntradayWithFallback(marketstackKey, polygonKey, symbol, date, rateLimiter)
 	if err != nil {
-		log.Printf("[#%d:%s] fetchIntradayForDate error: %v", goroutineId, symbol, err)
-		return
-	}
-	if len(resp.Data) == 0 {
-		fmt.Printf("[#%d:%s] no intraday data found for %s\n", goroutineId, symbol, date)
+		log.Printf("[#%d:%s] ❌ Failed to fetch data: %v", goroutineId, symbol, err)
 		return
 	}
 
-	fmt.Printf("[#%d:%s] received %d data points from API\n", goroutineId, symbol, len(resp.Data))
+	fmt.Printf("[#%d:%s] 📊 Using data from: %s\n", goroutineId, symbol, source)
 
-	// Transform + filter to regular session minutes in NY time
+	// Filter to regular session hours
 	var bars []MinuteBar
-	for _, d := range resp.Data {
-		tu, err := parseMarketstackTimeUTC(d.Date)
-		if err != nil {
-			fmt.Printf("[#%d:%s] error parsing time %s: %v\n", goroutineId, symbol, d.Date, err)
+	for _, bar := range allBars {
+		if bar.T.Before(openNY) || bar.T.After(closeNY) {
 			continue
 		}
-		tNY := tu.In(locNY)
-		// keep only [open, close] during regular session hours
-		if tNY.Before(openNY) || tNY.After(closeNY) {
-			continue
-		}
-		bars = append(bars, MinuteBar{
-			T: tNY, O: d.Open, H: d.High, L: d.Low, C: d.Close, V: int64(d.Volume),
-		})
+		bars = append(bars, bar)
 	}
 
 	if len(bars) == 0 {
@@ -534,15 +666,14 @@ func historicalIntradayWorker(apiKey, symbol, date string, sentiment string, gor
 		return
 	}
 
-	// Sort ascending by time (API should return in ASC order but let's be safe)
 	sortMinuteBarsAsc(bars)
+	fmt.Printf("[#%d:%s] ✓ Filtered to %d bars within session hours\n", goroutineId, symbol, len(bars))
 
-	fmt.Printf("[#%d:%s] filtered to %d bars within session hours\n", goroutineId, symbol, len(bars))
-
-	// Process each minute sequentially, calling manager agent after each bar
+	// Process minute by minute
 	processMinuteByMinute(bars, symbol, sentiment, goroutineId, backtestDate)
 
-	fmt.Printf("[#%d:%s] completed processing all minutes for %s\n", goroutineId, symbol, date)
+	fmt.Printf("[#%d:%s] ✅ Completed processing all minutes\n", goroutineId, symbol)
+	fmt.Printf("[#%d:%s] ============================================\n\n", goroutineId, symbol)
 }
 
 // Process bars minute by minute, calling manager agent after each minute
@@ -550,18 +681,15 @@ func processMinuteByMinute(allBars []MinuteBar, symbol string, sentiment string,
 	fmt.Printf("[#%d:%s] Starting minute-by-minute processing (limited to %d minutes or until Buy recommendation)\n",
 		goroutineId, symbol, maxIterations)
 
-	// Limit iterations to maxIterations
 	maxMinutes := len(allBars)
 	if maxMinutes > maxIterations {
 		maxMinutes = maxIterations
 	}
 
 	for i := 1; i <= maxMinutes; i++ {
-		// Get bars up to current minute (inclusive)
 		currentBars := allBars[:i]
 		currentTime := currentBars[i-1].T
 
-		// Compute strategy state up to this point
 		state := StrategyState{}
 		state.Recompute(currentBars)
 
@@ -571,11 +699,7 @@ func processMinuteByMinute(allBars []MinuteBar, symbol string, sentiment string,
 			state.VWAP, state.IsTight5, state.IsTight10,
 		)
 
-		// Convert current bars to EP format
 		epBars := convertToEP(symbol, currentBars)
-
-		// Call manager agent with data up to this minute (synchronously within this stock's goroutine)
-		// runManagerAgent now returns true if we should stop processing (Buy recommendation)
 		shouldStop := runManagerAgent(epBars, symbol, goroutineId, i, sentiment, maxMinutes, backtestDate)
 
 		if shouldStop {
@@ -583,17 +707,12 @@ func processMinuteByMinute(allBars []MinuteBar, symbol string, sentiment string,
 				goroutineId, symbol, i)
 			break
 		}
-
-		// Optional: Add a small delay to simulate real-time processing
-		// time.Sleep(100 * time.Millisecond)
 	}
 
-	fmt.Printf("[#%d:%s] ✓ Completed minute-by-minute processing\n",
-		goroutineId, symbol)
+	fmt.Printf("[#%d:%s] ✓ Completed minute-by-minute processing\n", goroutineId, symbol)
 }
 
 func sortMinuteBarsAsc(b []MinuteBar) {
-	// simple insertion sort (n is tiny per pull); replace with sort.Slice if you prefer
 	for i := 1; i < len(b); i++ {
 		j := i
 		for j > 0 && b[j-1].T.After(b[j].T) {
@@ -611,17 +730,15 @@ func convertToEP(symbol string, bars []MinuteBar) []ep.StockData {
 			prevClose = b.O
 		}
 		s := ep.StockData{
-			Symbol:    symbol,
-			Timestamp: b.T.Format("2006-01-02 15:04:00"),
-			Open:      b.O,
-			High:      b.H,
-			Low:       b.L,
-			Close:     b.C,
-			Volume:    b.V,
+			Symbol:        symbol,
+			Timestamp:     b.T.Format("2006-01-02 15:04:00"),
+			Open:          b.O,
+			High:          b.H,
+			Low:           b.L,
+			Close:         b.C,
+			Volume:        b.V,
+			PreviousClose: prevClose,
 		}
-		// If your ep.StockData has PreviousClose, populate it (keeps your runManagerAgent logs consistent).
-		// If not, this no-op won't compile, so comment it out.
-		s.PreviousClose = prevClose
 
 		out = append(out, s)
 		prevClose = b.C
@@ -629,7 +746,7 @@ func convertToEP(symbol string, bars []MinuteBar) []ep.StockData {
 	return out
 }
 
-// ===== Modified runManagerAgent with JSON processing and watchlist management =====
+// ===== Manager Agent Integration =====
 
 func runManagerAgent(stockdata []ep.StockData, symbol string, goroutineId int, currentMinute int, sentiment string, totalMinutes int, backtestDate string) bool {
 	fmt.Printf("\n[Goroutine %d] --- Starting runManagerAgent for %s (minute %d/%d) ---\n",
@@ -644,7 +761,7 @@ func runManagerAgent(stockdata []ep.StockData, symbol string, goroutineId int, c
 	for i, stockdataPoint := range stockdata {
 		stock_data += fmt.Sprintf("%d min - Open: %v Close: %v High: %v Low: %v\n",
 			i+1, stockdataPoint.Open, stockdataPoint.PreviousClose, stockdataPoint.High, stockdataPoint.Low)
-		if i < 3 || i == len(stockdata)-1 { // Show first 3 and last data point
+		if i < 3 || i == len(stockdata)-1 {
 			fmt.Printf("[Goroutine %d]   Data %d: O:%.2f C:%.2f H:%.2f L:%.2f\n",
 				goroutineId, i+1, stockdataPoint.Open, stockdataPoint.PreviousClose, stockdataPoint.High, stockdataPoint.Low)
 		}
@@ -694,11 +811,10 @@ func runManagerAgent(stockdata []ep.StockData, symbol string, goroutineId int, c
 	fmt.Printf("[Goroutine %d] Calling ManagerAgentReqInfo for %s (minute %d/%d)...\n",
 		goroutineId, symbol, currentMinute, totalMinutes)
 
-	// sentiment is already a JSON string, so we can pass it directly
 	resp, err := sapien.ManagerAgentReqInfo(stock_data, string(news), string(earnings), sentiment)
 	if err != nil {
 		fmt.Printf("[Goroutine %d] ❌ ManagerAgentReqInfo error (minute %d): %v\n", goroutineId, currentMinute, err)
-		return false // Don't stop processing on API errors
+		return false
 	}
 	fmt.Printf("[Goroutine %d] ✓ ManagerAgentReqInfo completed for minute %d. Response (%d chars): %s\n",
 		goroutineId, currentMinute, len(resp.Response), resp.Response)
@@ -708,8 +824,10 @@ func runManagerAgent(stockdata []ep.StockData, symbol string, goroutineId int, c
 	if err != nil {
 		fmt.Printf("[Goroutine %d] ❌ Failed to extract JSON from response (minute %d): %v\n",
 			goroutineId, currentMinute, err)
-		return false // Don't stop processing on JSON extraction errors
+		return false
 	}
+
+	fmt.Println("Response:", resp.Response)
 
 	// Save JSON response to file
 	if err := saveJSONResponse(symbol, currentMinute, managerResp); err != nil {
@@ -723,27 +841,20 @@ func runManagerAgent(stockdata []ep.StockData, symbol string, goroutineId int, c
 	stringPercent := strings.TrimSpace(strings.TrimSuffix(managerResp.RiskPercent, "%"))
 	riskPercent, _ := strconv.ParseFloat(stringPercent, 64)
 
-	if err := godotenv.Load(); err != nil {
-		log.Fatal("Error loading .env file")
-	}
-
 	accSize, _ := strconv.ParseFloat(os.Getenv("ACCOUNT_SIZE"), 64)
+	riskPerTrade, _ := strconv.ParseFloat(os.Getenv("RISK_PER_TRADE"), 64)
 	entryPrice, _ := strconv.ParseFloat(strings.ReplaceAll(managerResp.EntryPrice, "$", ""), 64)
-	fmt.Println("Entry Price: ", entryPrice)
 	stopLoss, _ := strconv.ParseFloat(strings.ReplaceAll(managerResp.StopLoss, "$", ""), 64)
-	fmt.Println("Stop Loss: ", stopLoss)
-
-	fmt.Println("Shares: ", (((riskPercent/100)*accSize)*1.0)/(entryPrice-stopLoss))
-	fmt.Println("EntryPrice - StopLoss: ", (entryPrice - stopLoss))
 
 	if strings.ToLower(strings.TrimSpace(managerResp.Recommendation)) == "buy" {
-		// Only add to watchlist if we have entry price and stop loss
 		if managerResp.EntryPrice != "" && managerResp.StopLoss != "" {
+			shares := math.Round((((riskPercent / 100) * (riskPerTrade * accSize)) * 1.0) / (entryPrice - stopLoss))
+			
 			entry := WatchlistEntry{
 				StockSymbol: symbol,
 				EntryPrice:  managerResp.EntryPrice,
 				StopLoss:    managerResp.StopLoss,
-				Shares:      strconv.FormatFloat(float64(int(math.Round((((riskPercent/100)*accSize)*1.0)/(entryPrice-stopLoss)))), 'f', 2, 64),
+				Shares:      strconv.FormatFloat(shares, 'f', 0, 64),
 				Date:        backtestDate,
 			}
 
@@ -760,18 +871,15 @@ func runManagerAgent(stockdata []ep.StockData, symbol string, goroutineId int, c
 					goroutineId, symbol, entry.EntryPrice, entry.StopLoss, currentMinute)
 			}
 
-			// Return true to signal that processing should stop for this stock
 			return true
 		} else {
 			fmt.Printf("[Goroutine %d] ⚠️ Buy recommendation for %s but missing entry price or stop loss (minute %d)\n",
 				goroutineId, symbol, currentMinute)
-			// Continue processing even if Buy recommendation is incomplete
 			return false
 		}
 	} else {
 		fmt.Printf("[Goroutine %d] 📊 Recommendation for %s: %s (minute %d)\n",
 			goroutineId, symbol, managerResp.Recommendation, currentMinute)
-		// Continue processing for non-Buy recommendations
 		return false
 	}
 }

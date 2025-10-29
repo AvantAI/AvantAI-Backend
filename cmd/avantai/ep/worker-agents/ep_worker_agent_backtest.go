@@ -86,8 +86,9 @@ type StockStats struct {
 
 func main() {
 
-	backtestDate := *flag.String("date", "2025-08-01", "a string for the date") // YYYY-MM-DD format - change this to your desired date (must be historical, not future)
+	backtestDatePtr := flag.String("date", "", "a string for the date")
 	flag.Parse()
+	backtestDate := *backtestDatePtr  // Now dereference after parsing
 
 	filePath := fmt.Sprintf("data/backtests/backtest_%s_results.json", strings.ReplaceAll(backtestDate, "-", ""))
 	file, err := os.Open(filePath)

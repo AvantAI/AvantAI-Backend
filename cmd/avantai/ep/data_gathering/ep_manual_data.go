@@ -99,8 +99,9 @@ func main() {
 	// Filters out stocks that don't match the given criteria
 	// ep.FilterStocks(apiKey)
 	// Simple backtest for one date
-	backtestDate := *flag.String("date", "2025-08-01", "a string for the date") // YYYY-MM-DD format - change this to your desired date (must be historical, not future)
+	backtestDatePtr := flag.String("date", "", "a string for the date")
 	flag.Parse()
+	backtestDate := *backtestDatePtr  // Now dereference after parsing
 
 	// Advanced backtest with custom config
 	config := ep.BacktestConfig{

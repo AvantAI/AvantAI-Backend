@@ -1,0 +1,60 @@
+{
+  "backtest_config": {
+    "lookback_days": 1000,
+    "target_date": "2024-02-15"
+  },
+  "backtest_date": "2024-02-15",
+  "backtest_summary": {
+    "avg_gap_up": 16.673778536377224,
+    "avg_market_cap": 94199888250,
+    "data_quality_distribution": {
+      "Good": 1
+    },
+    "total_candidates": 1
+  },
+  "filter_criteria": {
+    "max_extension_adr": 5,
+    "min_dollar_volume": 10000000,
+    "min_gap_up_percent": 8,
+    "min_market_cap": 200000000,
+    "min_premarket_volume_ratio": 5
+  },
+  "generated_at": "2025-10-26T22:14:27-07:00",
+  "qualifying_stocks": [
+    {
+      "symbol": "APP",
+      "stock_info": {
+        "timestamp": "2024-02-15T00:00:00+0000",
+        "market_cap": 94199888250,
+        "dolvol": 213658547.9004762,
+        "gap_up": 16.673778536377224,
+        "adr": 5.2933788040634004,
+        "name": "AppLovin Corporation",
+        "exchange": "XNAS",
+        "sector": "Technology",
+        "industry": "Software—Application",
+        "premarket_volume": 3606968.625,
+        "avg_premarket_volume": 554918.25,
+        "premarket_volume_ratio": 6.5,
+        "premarket_vol_percent": 25,
+        "sma_200": 35.242749999999994,
+        "ema_200": 34.83320217479251,
+        "ema_50": 43.136792603202295,
+        "ema_20": 46.00023932600732,
+        "ema_10": 48.164789246662195,
+        "is_above_200_ema": true,
+        "distance_from_50_ema": 4.961272177577646,
+        "is_extended": false,
+        "is_too_extended": false,
+        "volume_dried_up": false,
+        "is_near_ema_10_20": false,
+        "breaks_resistance": true,
+        "previous_earnings_reaction": ""
+      },
+      "backtest_date": "2024-02-15",
+      "data_quality": "Good",
+      "historical_days_available": 334,
+      "validation_notes": []
+    }
+  ]
+}
