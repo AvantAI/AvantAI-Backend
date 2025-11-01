@@ -657,15 +657,18 @@ package main
 // 	accSize, _ := strconv.ParseFloat(os.Getenv("ACCOUNT_SIZE"), 64)
 // 	entryPrice, _ := strconv.ParseFloat(strings.ReplaceAll(managerResp.EntryPrice, "$", ""), 64)
 // 	stopLoss, _ := strconv.ParseFloat(strings.ReplaceAll(managerResp.StopLoss, "$", ""), 64)
+//  initialRisk, _ := strconv.ParseFloat(strings.ReplaceAll(managerResp.RiskPercent, "$", ""), 64)
 
 // 	if strings.ToLower(strings.TrimSpace(managerResp.Recommendation)) == "buy" {
 // 		// Only add to watchlist if we have entry price and stop loss
 // 		if managerResp.EntryPrice != "" && managerResp.StopLoss != "" {
+			// shares := math.Round((((riskPercent) * (riskPerTrade * accSize)) * 1.0) / (entryPrice - stopLoss))
 // 			entry := WatchlistEntry{
 // 				StockSymbol: symbol,
 // 				EntryPrice:  managerResp.EntryPrice,
 // 				StopLoss:    managerResp.StopLoss,
-// 				Shares:      strconv.FormatFloat(float64(int(math.Round((((riskPercent/100)*accSize)*1.0)/(entryPrice-stopLoss)))), 'f', 2, 64),
+// 				Shares:      strconv.FormatFloat(float64(int(shares)), 'f', 2, 64),
+// 				InitialRisk: strconv.FormatFloat(initialRisk, 'f', 2, 64),
 // 			}
 
 // 			if err := addToWatchlist(entry); err != nil {

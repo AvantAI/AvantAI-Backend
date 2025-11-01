@@ -42,8 +42,135 @@ type WatchlistEntry struct {
 	EntryPrice  string
 	StopLoss    string
 	Shares      string
+	InitialRisk string
 	Date        string
 }
+
+// ===== Watchlist Manager with Mutex Protection =====
+type WatchlistManager struct {
+	mu       sync.Mutex
+	filename string
+	entries  map[string]WatchlistEntry // key: "symbol|entryPrice|stopLoss|shares|initialRisk|date"
+}
+
+func NewWatchlistManager(filename string) *WatchlistManager {
+	wm := &WatchlistManager{
+		filename: filename,
+		entries:  make(map[string]WatchlistEntry),
+	}
+	wm.loadExistingEntries()
+	return wm
+}
+
+func (wm *WatchlistManager) loadExistingEntries() {
+	file, err := os.Open(wm.filename)
+	if err != nil {
+		// File doesn't exist yet, that's okay
+		return
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	records, err := reader.ReadAll()
+	if err != nil {
+		log.Printf("⚠️  Warning: Failed to read existing watchlist: %v", err)
+		return
+	}
+
+	startIdx := 0
+	if len(records) > 0 && records[0][0] == "stock_symbol" {
+		startIdx = 1
+	}
+
+	for i := startIdx; i < len(records); i++ {
+		if len(records[i]) >= 6 {
+			entry := WatchlistEntry{
+				StockSymbol: records[i][0],
+				EntryPrice:  records[i][1],
+				StopLoss:    records[i][2],
+				Shares:      records[i][3],
+				InitialRisk: records[i][4],
+				Date:        records[i][5],
+			}
+			key := wm.makeKey(entry)
+			wm.entries[key] = entry
+		}
+	}
+
+	fmt.Printf("📋 Loaded %d existing watchlist entries\n", len(wm.entries))
+}
+
+func (wm *WatchlistManager) makeKey(entry WatchlistEntry) string {
+	return fmt.Sprintf("%s|%s|%s|%s|%s|%s",
+		entry.StockSymbol, entry.EntryPrice, entry.StopLoss, entry.Shares, entry.InitialRisk, entry.Date)
+}
+
+func (wm *WatchlistManager) AddEntry(entry WatchlistEntry) error {
+	wm.mu.Lock()
+	defer wm.mu.Unlock()
+
+	key := wm.makeKey(entry)
+	
+	// Check for duplicate
+	if _, exists := wm.entries[key]; exists {
+		return fmt.Errorf("duplicate entry: %s with entry price %s, stop loss %s, shares %s, initial risk %s already exists in watchlist",
+			entry.StockSymbol, entry.EntryPrice, entry.StopLoss, entry.Shares, entry.InitialRisk)
+	}
+
+	// Add to in-memory map
+	wm.entries[key] = entry
+
+	// Write entire file atomically
+	return wm.writeAllEntries()
+}
+
+func (wm *WatchlistManager) writeAllEntries() error {
+	// Create a temporary file
+	tempFile := wm.filename + ".tmp"
+	file, err := os.Create(tempFile)
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+
+	writer := csv.NewWriter(file)
+
+	// Write header
+	if err := writer.Write([]string{"stock_symbol", "entry_price", "stop_loss_price", "shares", "initial_risk", "date"}); err != nil {
+		file.Close()
+		os.Remove(tempFile)
+		return fmt.Errorf("failed to write CSV header: %w", err)
+	}
+
+	// Write all entries
+	for _, entry := range wm.entries {
+		record := []string{entry.StockSymbol, entry.EntryPrice, entry.StopLoss, entry.Shares, entry.InitialRisk, entry.Date}
+		if err := writer.Write(record); err != nil {
+			file.Close()
+			os.Remove(tempFile)
+			return fmt.Errorf("failed to write CSV record: %w", err)
+		}
+	}
+
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		file.Close()
+		os.Remove(tempFile)
+		return fmt.Errorf("CSV writer error: %w", err)
+	}
+
+	file.Close()
+
+	// Atomically replace the old file with the new one
+	if err := os.Rename(tempFile, wm.filename); err != nil {
+		os.Remove(tempFile)
+		return fmt.Errorf("failed to replace watchlist file: %w", err)
+	}
+
+	return nil
+}
+
+// Global watchlist manager
+var watchlistManager *WatchlistManager
 
 // ===== Strategy helpers (EP / Opening Range / VWAP / Consolidation) =====
 
@@ -53,7 +180,7 @@ type MinuteBar struct {
 	H float64
 	L float64
 	C float64
-	V int64
+	V float64
 }
 
 type StrategyState struct {
@@ -211,7 +338,7 @@ type PolygonAggregatesResponse struct {
 }
 
 type PolygonBar struct {
-	V  int64   `json:"v"`  // Volume
+	V  float64 `json:"v"`  // Volume
 	VW float64 `json:"vw"` // Volume weighted average price
 	O  float64 `json:"o"`  // Open
 	C  float64 `json:"c"`  // Close
@@ -333,7 +460,7 @@ func fetchIntradayWithFallback(marketstackKey, polygonKey, symbol, dateStr strin
 				H: d.High,
 				L: d.Low,
 				C: d.Close,
-				V: int64(d.Volume),
+				V: d.Volume,
 			})
 		}
 		return bars, "Marketstack", nil
@@ -487,71 +614,6 @@ func saveJSONResponse(symbol string, minute int, response *ManagerResponse) erro
 	return os.WriteFile(filename, prettified, 0644)
 }
 
-func addToWatchlist(entry WatchlistEntry) error {
-	filename := "watchlist.csv"
-
-	existingEntries := make(map[string]WatchlistEntry)
-	if file, err := os.Open(filename); err == nil {
-		defer file.Close()
-		reader := csv.NewReader(file)
-		records, err := reader.ReadAll()
-		if err != nil {
-			return fmt.Errorf("failed to read existing watchlist: %w", err)
-		}
-
-		startIdx := 0
-		if len(records) > 0 && records[0][0] == "stock_symbol" {
-			startIdx = 1
-		}
-
-		for i := startIdx; i < len(records); i++ {
-			if len(records[i]) >= 5 {
-				key := fmt.Sprintf("%s|%s|%s|%s|%s", records[i][0], records[i][1], records[i][2], records[i][3], records[i][4])
-				existingEntries[key] = WatchlistEntry{
-					StockSymbol: records[i][0],
-					EntryPrice:  records[i][1],
-					StopLoss:    records[i][2],
-					Shares:      records[i][3],
-					Date:        records[i][4],
-				}
-			}
-		}
-	}
-
-	entryKey := fmt.Sprintf("%s|%s|%s|%s|%s", entry.StockSymbol, entry.EntryPrice, entry.StopLoss, entry.Shares, entry.Date)
-	if _, exists := existingEntries[entryKey]; exists {
-		return fmt.Errorf("duplicate entry: %s with entry price %s, stop loss %s, shares %s already exists in watchlist",
-			entry.StockSymbol, entry.EntryPrice, entry.StopLoss, entry.Shares)
-	}
-
-	fileExists := true
-	if _, err := os.Stat(filename); os.IsNotExist(err) {
-		fileExists = false
-	}
-
-	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to open watchlist file: %w", err)
-	}
-	defer file.Close()
-
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
-
-	if !fileExists {
-		if err := writer.Write([]string{"stock_symbol", "entry_price", "stop_loss_price", "shares", "date"}); err != nil {
-			return fmt.Errorf("failed to write CSV header: %w", err)
-		}
-	}
-
-	record := []string{entry.StockSymbol, entry.EntryPrice, entry.StopLoss, entry.Shares, entry.Date}
-	if err := writer.Write(record); err != nil {
-		return fmt.Errorf("failed to write CSV record: %w", err)
-	}
-
-	return nil
-}
-
 func main() {
 	backtestDatePtr := flag.String("date", "", "a string for the date")
 	flag.Parse()
@@ -574,6 +636,9 @@ func main() {
 	if polygonKey == "" {
 		log.Println("⚠️  WARNING: POLYGON_API_KEY not found. Fallback will not be available.")
 	}
+
+	// Initialize global watchlist manager
+	watchlistManager = NewWatchlistManager("watchlist.csv")
 
 	// Create rate limiter for Polygon (5 calls/minute on free tier)
 	polygonRateLimiter := NewRateLimiter(5)
@@ -736,7 +801,7 @@ func convertToEP(symbol string, bars []MinuteBar) []ep.StockData {
 			High:          b.H,
 			Low:           b.L,
 			Close:         b.C,
-			Volume:        b.V,
+			Volume:        int64(b.V),
 			PreviousClose: prevClose,
 		}
 
@@ -845,20 +910,26 @@ func runManagerAgent(stockdata []ep.StockData, symbol string, goroutineId int, c
 	riskPerTrade, _ := strconv.ParseFloat(os.Getenv("RISK_PER_TRADE"), 64)
 	entryPrice, _ := strconv.ParseFloat(strings.ReplaceAll(managerResp.EntryPrice, "$", ""), 64)
 	stopLoss, _ := strconv.ParseFloat(strings.ReplaceAll(managerResp.StopLoss, "$", ""), 64)
+	initialRisk, _ := strconv.ParseFloat(strings.ReplaceAll(managerResp.RiskPercent, "%", ""), 64)
+
+	fmt.Println("Shares (rounded): ", math.Round((((riskPercent) * (riskPerTrade * accSize)) * 1.0) / (entryPrice - stopLoss)))
+	fmt.Println("Shares: ", (((riskPercent) * (riskPerTrade * accSize)) * 1.0) / (entryPrice - stopLoss))
 
 	if strings.ToLower(strings.TrimSpace(managerResp.Recommendation)) == "buy" {
 		if managerResp.EntryPrice != "" && managerResp.StopLoss != "" {
-			shares := math.Round((((riskPercent / 100) * (riskPerTrade * accSize)) * 1.0) / (entryPrice - stopLoss))
+			shares := math.Round((((riskPercent) * (riskPerTrade * accSize)) * 1.0) / (entryPrice - stopLoss))
 			
 			entry := WatchlistEntry{
 				StockSymbol: symbol,
 				EntryPrice:  managerResp.EntryPrice,
 				StopLoss:    managerResp.StopLoss,
 				Shares:      strconv.FormatFloat(shares, 'f', 0, 64),
+				InitialRisk: strconv.FormatFloat(initialRisk, 'f', 2, 64),
 				Date:        backtestDate,
 			}
 
-			if err := addToWatchlist(entry); err != nil {
+			// Use the thread-safe watchlist manager
+			if err := watchlistManager.AddEntry(entry); err != nil {
 				if strings.Contains(err.Error(), "duplicate entry") {
 					fmt.Printf("[Goroutine %d] ⚠️ Duplicate watchlist entry for %s with entry price %s and stop loss %s (minute %d)\n",
 						goroutineId, symbol, entry.EntryPrice, entry.StopLoss, currentMinute)

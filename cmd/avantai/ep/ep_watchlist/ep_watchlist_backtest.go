@@ -99,6 +99,7 @@ var (
 	apiToken         string
 	lastModTime      time.Time
 	historicalCache  = make(map[string][]MarketstackEODData)
+	watchlistPath    string
 )
 
 func main() {
@@ -183,6 +184,8 @@ func checkAndProcessWatchlist() {
 		}
 	}
 
+	watchlistPath = filePath
+
 	if fileInfo.ModTime().After(lastModTime) {
 		lastModTime = fileInfo.ModTime()
 		log.Println("📋 Watchlist updated, processing new entries...")
@@ -220,14 +223,36 @@ func processWatchlist(filePath string) {
 		return positions[i].PurchaseDate.Before(positions[j].PurchaseDate)
 	})
 
+	// Group positions by date
+	dateGroups := make(map[string][]*Position)
 	for _, pos := range positions {
-		if shouldStartPosition(pos) {
+		dateKey := pos.PurchaseDate.Format("2006-01-02")
+		dateGroups[dateKey] = append(dateGroups[dateKey], pos)
+	}
+
+	// Process each date group
+	for _, datePositions := range dateGroups {
+		if len(datePositions) == 0 {
+			continue
+		}
+
+		// Check if any position in this group should start
+		shouldStart := shouldStartPositionGroup(datePositions[0])
+		if !shouldStart {
+			continue
+		}
+
+		// Scale positions to fit account if needed
+		scaledPositions := scalePositionsToFit(datePositions)
+
+		// Start all positions in the group
+		for _, pos := range scaledPositions {
 			startPosition(pos)
 		}
 	}
 }
 
-func shouldStartPosition(newPos *Position) bool {
+func shouldStartPositionGroup(newPos *Position) bool {
 	if len(activePositions) == 0 {
 		return true
 	}
@@ -240,6 +265,101 @@ func shouldStartPosition(newPos *Position) bool {
 	}
 
 	return false
+}
+
+func recalculateShares(pos *Position, currentAccountSize float64) *Position {
+	// Recalculate shares based on current account size and risk parameters
+	// Formula: round((riskPercent * (riskPerTrade * accSize) * 1.0) / (entryPrice - stopLoss))
+	
+	riskPercent := pos.InitialRisk
+	dollarRisk := riskPerTrade * currentAccountSize
+	riskPerShare := pos.EntryPrice - pos.StopLoss
+	
+	if riskPerShare <= 0 {
+		log.Printf("[%s] ⚠️  Invalid risk calculation, cannot recalculate shares", pos.Symbol)
+		return pos
+	}
+	
+	// Your exact formula: round((riskPercent * (riskPerTrade * accSize) * 1.0) / (entryPrice - stopLoss))
+	newShares := math.Round(((riskPercent * dollarRisk * 1.0) / riskPerShare))
+	
+	if newShares != pos.Shares {
+		log.Printf("[%s] 📊 Recalculated shares based on current account size: %.0f -> %.0f shares (Account: $%.2f, DollarRisk: $%.2f, RiskPerShare: $%.2f, RiskPercent: %.2f)",
+			pos.Symbol, pos.Shares, newShares, currentAccountSize, dollarRisk, riskPerShare, riskPercent)
+		pos.Shares = newShares
+	}
+	
+	return pos
+}
+
+func scalePositionsToFit(positions []*Position) []*Position {
+	// Recalculate shares for each position based on current account size
+	recalculatedPositions := make([]*Position, len(positions))
+	
+	for i, pos := range positions {
+		recalculatedPos := *pos // Create a copy
+		recalculatedPositions[i] = recalculateShares(&recalculatedPos, accountSize)
+	}
+	
+	return recalculatedPositions
+}
+
+func removeFromWatchlist(symbol string) {
+	if watchlistPath == "" {
+		log.Printf("[%s] ⚠️  Cannot remove from watchlist: path not set", symbol)
+		return
+	}
+
+	file, err := os.Open(watchlistPath)
+	if err != nil {
+		log.Printf("[%s] ⚠️  Cannot open watchlist for removal: %v", symbol, err)
+		return
+	}
+
+	reader := csv.NewReader(file)
+	records, err := reader.ReadAll()
+	file.Close()
+
+	if err != nil {
+		log.Printf("[%s] ⚠️  Cannot read watchlist: %v", symbol, err)
+		return
+	}
+
+	// Filter out the symbol
+	var newRecords [][]string
+	removed := false
+	for i, record := range records {
+		if i == 0 {
+			// Keep header
+			newRecords = append(newRecords, record)
+		} else if len(record) > 0 && strings.TrimSpace(record[0]) != symbol {
+			// Keep all other records
+			newRecords = append(newRecords, record)
+		} else {
+			removed = true
+		}
+	}
+
+	if !removed {
+		return
+	}
+
+	// Write back to file
+	file, err = os.Create(watchlistPath)
+	if err != nil {
+		log.Printf("[%s] ⚠️  Cannot create watchlist file: %v", symbol, err)
+		return
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	err = writer.WriteAll(newRecords)
+	if err != nil {
+		log.Printf("[%s] ⚠️  Cannot write watchlist: %v", symbol, err)
+		return
+	}
+
+	log.Printf("[%s] 🗑️  Removed from watchlist", symbol)
 }
 
 func calculateATR(symbol string, endDate time.Time, period int) float64 {
@@ -346,7 +466,10 @@ func startPosition(pos *Position) {
 		return
 	}
 
-	// Calculate position size
+	// Recalculate shares based on CURRENT account size before purchase
+	pos = recalculateShares(pos, accountSize)
+
+	// Calculate position size with recalculated shares
 	dollarRisk := accountSize * riskPerTrade
 	riskPerShare := pos.InitialRisk
 
@@ -371,7 +494,7 @@ func startPosition(pos *Position) {
 	activePositions[pos.Symbol] = pos
 	processedSymbols[pos.Symbol] = true
 
-	log.Printf("[%s] 🟢 OPENED POSITION | Shares: %.2f @ $%.2f | Total: $%.2f | Stop: $%.2f | Risk: $%.2f (%.2f%%) | ATR: $%.2f | Date: %s",
+	log.Printf("[%s] 🟢 OPENED POSITION | Shares: %.0f @ $%.2f | Total: $%.2f | Stop: $%.2f | Risk: $%.2f (%.2f%%) | ATR: $%.2f | Date: %s",
 		pos.Symbol, pos.Shares, pos.EntryPrice, positionCost, pos.StopLoss, dollarRisk, (pos.InitialRisk/pos.EntryPrice)*100,
 		atr, pos.PurchaseDate.Format("2006-01-02"))
 }
@@ -756,6 +879,9 @@ func stopOut(pos *Position, currentPrice float64, date time.Time) {
 		AccountSize: accountSize,
 	})
 
+	// Remove from watchlist after closing
+	removeFromWatchlist(pos.Symbol)
+
 	printCurrentStats()
 }
 
@@ -785,6 +911,9 @@ func exitPosition(pos *Position, currentPrice float64, date time.Time, reason st
 		IsWinner:    profit > 0,
 		AccountSize: accountSize,
 	})
+
+	// Remove from watchlist after closing
+	removeFromWatchlist(pos.Symbol)
 
 	printCurrentStats()
 }
