@@ -110,8 +110,8 @@ func main() {
 		TiingoKey:      tiingoKey,
 		LookbackDays:   1000,
 	}
+	start := time.Now()
 	err = ep.FilterStocksEpisodicPivotBacktest(config)
-
 	// Multiple date backtesting
 	// dates := []string{"2023-01-15", "2023-02-15", "2023-03-15"}
 	// err = ep.RunMultipleDateBacktests(marketStackKey, dates)
@@ -178,4 +178,6 @@ func main() {
 
 	// Wait for all goroutines to finish
 	wg.Wait()
+	duration := time.Since(start)
+	log.Printf("Filtering algorithm completed in %v\n", duration)
 }

@@ -110,7 +110,7 @@ func (wm *WatchlistManager) AddEntry(entry WatchlistEntry) error {
 	defer wm.mu.Unlock()
 
 	key := wm.makeKey(entry)
-	
+
 	// Check for duplicate
 	if _, exists := wm.entries[key]; exists {
 		return fmt.Errorf("duplicate entry: %s with entry price %s, stop loss %s, shares %s, initial risk %s already exists in watchlist",
@@ -625,14 +625,14 @@ func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Fatal("Error loading .env file")
 	}
-	
+
 	marketstackKey := os.Getenv("MARKETSTACK_TOKEN")
 	polygonKey := os.Getenv("POLYGON_KEY")
-	
+
 	if marketstackKey == "" {
 		log.Fatal("MARKETSTACK_TOKEN not found")
 	}
-	
+
 	if polygonKey == "" {
 		log.Println("⚠️  WARNING: POLYGON_API_KEY not found. Fallback will not be available.")
 	}
@@ -679,14 +679,14 @@ func main() {
 	}
 
 	var wg sync.WaitGroup
-	fmt.Printf("Starting %d historical intraday workers for date %s (Marketstack with Polygon fallback)...\n", 
+	fmt.Printf("Starting %d historical intraday workers for date %s (Marketstack with Polygon fallback)...\n",
 		len(symbols), backtestDate)
-	
+
 	for i, symbol := range symbols {
 		wg.Add(1)
 		go func(idx int, sym string) {
 			defer wg.Done()
-			historicalIntradayWorkerWithFallback(marketstackKey, polygonKey, sym, backtestDate, 
+			historicalIntradayWorkerWithFallback(marketstackKey, polygonKey, sym, backtestDate,
 				sentiment[idx], idx+1, backtestDate, polygonRateLimiter)
 		}(i, symbol)
 	}
@@ -912,13 +912,13 @@ func runManagerAgent(stockdata []ep.StockData, symbol string, goroutineId int, c
 	stopLoss, _ := strconv.ParseFloat(strings.ReplaceAll(managerResp.StopLoss, "$", ""), 64)
 	initialRisk, _ := strconv.ParseFloat(strings.ReplaceAll(managerResp.RiskPercent, "%", ""), 64)
 
-	fmt.Println("Shares (rounded): ", math.Round((((riskPercent) * (riskPerTrade * accSize)) * 1.0) / (entryPrice - stopLoss)))
-	fmt.Println("Shares: ", (((riskPercent) * (riskPerTrade * accSize)) * 1.0) / (entryPrice - stopLoss))
+	fmt.Println("Shares (rounded): ", math.Round((((riskPercent)*(riskPerTrade*accSize))*1.0)/(entryPrice-stopLoss)))
+	fmt.Println("Shares: ", (((riskPercent)*(riskPerTrade*accSize))*1.0)/(entryPrice-stopLoss))
 
 	if strings.ToLower(strings.TrimSpace(managerResp.Recommendation)) == "buy" {
 		if managerResp.EntryPrice != "" && managerResp.StopLoss != "" {
-			shares := math.Round((((riskPercent) * (riskPerTrade * accSize)) * 1.0) / (entryPrice - stopLoss))
-			
+			shares := math.Round(((riskPerTrade * accSize) * 1.0) / (entryPrice - stopLoss))
+
 			entry := WatchlistEntry{
 				StockSymbol: symbol,
 				EntryPrice:  managerResp.EntryPrice,
