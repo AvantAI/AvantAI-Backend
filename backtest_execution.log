@@ -639,3 +639,873 @@
 [2025-11-05 18:47:24] Completed all commands for date: 2024-02-15
 [2025-11-05 18:47:24] ----------------------------------------
 [2025-11-05 18:47:24] All backtest sequences completed
+[2025-11-13 23:42:26] Starting backtest sequence for date: 2024-02-18
+[2025-11-13 23:42:26] Running data gathering for 2024-02-18
+[2025-11-13 23:42:33] ERROR: Data gathering failed for 2024-02-18
+[2025-11-13 23:42:33] All backtest sequences completed
+[2025-11-15 18:58:28] Starting backtest sequence for date: 2024-03-01
+[2025-11-15 18:58:28] Running data gathering for 2024-03-01
+[2025-11-15 18:58:35] Data gathering completed successfully for 2024-03-01
+[2025-11-15 18:58:35] Running worker agent backtest for 2024-03-01
+[2025-11-15 18:58:36] Worker agent backtest completed successfully for 2024-03-01
+[2025-11-15 18:58:36] Running main backtest for 2024-03-01
+[2025-11-15 18:58:38] Main backtest completed successfully for 2024-03-01
+[2025-11-15 18:58:38] Completed all commands for date: 2024-03-01
+[2025-11-15 18:58:38] ----------------------------------------
+[2025-11-15 18:58:38] All backtest sequences completed
+[2025-11-15 19:02:11] Starting backtest sequence for date: 2025-07-28
+[2025-11-15 19:02:11] Running data gathering for 2025-07-28
+[2025-11-15 19:29:48] Data gathering completed successfully for 2025-07-28
+[2025-11-15 19:29:48] Running worker agent backtest for 2025-07-28
+[2025-11-15 19:29:50] ERROR: Worker agent backtest failed for 2025-07-28
+[2025-11-15 19:29:50] Starting backtest sequence for date: 2025-07-29
+[2025-11-15 19:29:50] Running data gathering for 2025-07-29
+[2025-11-15 19:30:01] ERROR: Data gathering failed for 2025-07-29
+[2025-11-15 19:30:01] Starting backtest sequence for date: 2025-07-30
+[2025-11-15 19:30:01] Running data gathering for 2025-07-30
+[2025-11-15 19:32:57] Starting backtest sequence for date: 2025-07-28
+[2025-11-15 19:32:57] Running data gathering for 2025-07-28
+[2025-11-15 19:46:31] Data gathering completed successfully for 2025-07-28
+[2025-11-15 19:46:31] Running worker agent backtest for 2025-07-28
+[2025-11-15 19:46:50] Worker agent backtest completed successfully for 2025-07-28
+[2025-11-15 19:46:50] Running main backtest for 2025-07-28
+[2025-11-15 19:47:00] Main backtest completed successfully for 2025-07-28
+[2025-11-15 19:47:00] Completed all commands for date: 2025-07-28
+[2025-11-15 19:47:00] ----------------------------------------
+[2025-11-15 19:47:00] Starting backtest sequence for date: 2025-07-29
+[2025-11-15 19:47:00] Running data gathering for 2025-07-29
+[2025-11-15 20:01:01] Data gathering completed successfully for 2025-07-29
+[2025-11-15 20:01:01] Running worker agent backtest for 2025-07-29
+[2025-11-15 20:01:21] Worker agent backtest completed successfully for 2025-07-29
+[2025-11-15 20:01:21] Running main backtest for 2025-07-29
+[2025-11-15 20:01:35] Main backtest completed successfully for 2025-07-29
+[2025-11-15 20:01:35] Completed all commands for date: 2025-07-29
+[2025-11-15 20:01:35] ----------------------------------------
+[2025-11-15 20:01:35] Starting backtest sequence for date: 2025-07-30
+[2025-11-15 20:01:35] Running data gathering for 2025-07-30
+[2025-11-15 20:15:39] Data gathering completed successfully for 2025-07-30
+[2025-11-15 20:15:39] Running worker agent backtest for 2025-07-30
+[2025-11-15 20:16:00] Worker agent backtest completed successfully for 2025-07-30
+[2025-11-15 20:16:00] Running main backtest for 2025-07-30
+[2025-11-15 20:16:09] Main backtest completed successfully for 2025-07-30
+[2025-11-15 20:16:09] Completed all commands for date: 2025-07-30
+[2025-11-15 20:16:09] ----------------------------------------
+[2025-11-15 20:16:09] Starting backtest sequence for date: 2025-07-31
+[2025-11-15 20:16:09] Running data gathering for 2025-07-31
+[2025-11-15 20:30:22] Data gathering completed successfully for 2025-07-31
+[2025-11-15 20:30:22] Running worker agent backtest for 2025-07-31
+[2025-11-15 20:30:44] Worker agent backtest completed successfully for 2025-07-31
+[2025-11-15 20:30:44] Running main backtest for 2025-07-31
+[2025-11-15 20:31:53] Main backtest completed successfully for 2025-07-31
+[2025-11-15 20:31:53] Completed all commands for date: 2025-07-31
+[2025-11-15 20:31:53] ----------------------------------------
+[2025-11-15 20:31:53] Starting backtest sequence for date: 2025-08-01
+[2025-11-15 20:31:53] Running data gathering for 2025-08-01
+[2025-11-15 20:48:31] Data gathering completed successfully for 2025-08-01
+[2025-11-15 20:48:31] Running worker agent backtest for 2025-08-01
+[2025-11-15 20:48:50] Worker agent backtest completed successfully for 2025-08-01
+[2025-11-15 20:48:50] Running main backtest for 2025-08-01
+[2025-11-15 20:49:52] Main backtest completed successfully for 2025-08-01
+[2025-11-15 20:49:52] Completed all commands for date: 2025-08-01
+[2025-11-15 20:49:52] ----------------------------------------
+[2025-11-15 20:49:52] Starting backtest sequence for date: 2025-08-04
+[2025-11-15 20:49:52] Running data gathering for 2025-08-04
+[2025-11-15 21:04:03] Data gathering completed successfully for 2025-08-04
+[2025-11-15 21:04:03] Running worker agent backtest for 2025-08-04
+[2025-11-15 21:04:24] Worker agent backtest completed successfully for 2025-08-04
+[2025-11-15 21:04:24] Running main backtest for 2025-08-04
+[2025-11-15 21:05:30] Main backtest completed successfully for 2025-08-04
+[2025-11-15 21:05:30] Completed all commands for date: 2025-08-04
+[2025-11-15 21:05:30] ----------------------------------------
+[2025-11-15 21:05:30] Starting backtest sequence for date: 2025-08-05
+[2025-11-15 21:05:30] Running data gathering for 2025-08-05
+[2025-11-15 21:19:43] Data gathering completed successfully for 2025-08-05
+[2025-11-15 21:19:43] Running worker agent backtest for 2025-08-05
+[2025-11-15 21:20:02] Worker agent backtest completed successfully for 2025-08-05
+[2025-11-15 21:20:02] Running main backtest for 2025-08-05
+[2025-11-15 21:21:12] Main backtest completed successfully for 2025-08-05
+[2025-11-15 21:21:12] Completed all commands for date: 2025-08-05
+[2025-11-15 21:21:12] ----------------------------------------
+[2025-11-15 21:21:12] Starting backtest sequence for date: 2025-08-06
+[2025-11-15 21:21:12] Running data gathering for 2025-08-06
+[2025-11-15 21:35:21] Data gathering completed successfully for 2025-08-06
+[2025-11-15 21:35:21] Running worker agent backtest for 2025-08-06
+[2025-11-15 21:35:42] Worker agent backtest completed successfully for 2025-08-06
+[2025-11-15 21:35:42] Running main backtest for 2025-08-06
+[2025-11-15 21:36:52] Main backtest completed successfully for 2025-08-06
+[2025-11-15 21:36:52] Completed all commands for date: 2025-08-06
+[2025-11-15 21:36:52] ----------------------------------------
+[2025-11-15 21:36:52] Starting backtest sequence for date: 2025-08-07
+[2025-11-15 21:36:52] Running data gathering for 2025-08-07
+[2025-11-15 21:51:16] Data gathering completed successfully for 2025-08-07
+[2025-11-15 21:51:16] Running worker agent backtest for 2025-08-07
+[2025-11-15 21:51:32] Worker agent backtest completed successfully for 2025-08-07
+[2025-11-15 21:51:32] Running main backtest for 2025-08-07
+[2025-11-15 21:53:41] Main backtest completed successfully for 2025-08-07
+[2025-11-15 21:53:41] Completed all commands for date: 2025-08-07
+[2025-11-15 21:53:41] ----------------------------------------
+[2025-11-15 21:53:41] Starting backtest sequence for date: 2025-08-08
+[2025-11-15 21:53:41] Running data gathering for 2025-08-08
+[2025-11-15 22:08:52] Data gathering completed successfully for 2025-08-08
+[2025-11-15 22:08:52] Running worker agent backtest for 2025-08-08
+[2025-11-15 22:09:13] Worker agent backtest completed successfully for 2025-08-08
+[2025-11-15 22:09:13] Running main backtest for 2025-08-08
+[2025-11-15 22:11:23] Main backtest completed successfully for 2025-08-08
+[2025-11-15 22:11:23] Completed all commands for date: 2025-08-08
+[2025-11-15 22:11:23] ----------------------------------------
+[2025-11-15 22:11:23] Starting backtest sequence for date: 2025-08-11
+[2025-11-15 22:11:23] Running data gathering for 2025-08-11
+[2025-11-15 22:25:31] Data gathering completed successfully for 2025-08-11
+[2025-11-15 22:25:31] Running worker agent backtest for 2025-08-11
+[2025-11-15 22:25:49] Worker agent backtest completed successfully for 2025-08-11
+[2025-11-15 22:25:49] Running main backtest for 2025-08-11
+[2025-11-15 22:26:52] Main backtest completed successfully for 2025-08-11
+[2025-11-15 22:26:52] Completed all commands for date: 2025-08-11
+[2025-11-15 22:26:52] ----------------------------------------
+[2025-11-15 22:26:52] Starting backtest sequence for date: 2025-08-12
+[2025-11-15 22:26:52] Running data gathering for 2025-08-12
+[2025-11-15 22:40:40] Data gathering completed successfully for 2025-08-12
+[2025-11-15 22:40:40] Running worker agent backtest for 2025-08-12
+[2025-11-15 22:40:56] Worker agent backtest completed successfully for 2025-08-12
+[2025-11-15 22:40:56] Running main backtest for 2025-08-12
+[2025-11-15 22:41:11] Main backtest completed successfully for 2025-08-12
+[2025-11-15 22:41:11] Completed all commands for date: 2025-08-12
+[2025-11-15 22:41:11] ----------------------------------------
+[2025-11-15 22:41:11] Starting backtest sequence for date: 2025-08-13
+[2025-11-15 22:41:11] Running data gathering for 2025-08-13
+[2025-11-15 22:55:00] Data gathering completed successfully for 2025-08-13
+[2025-11-15 22:55:00] Running worker agent backtest for 2025-08-13
+[2025-11-15 22:55:24] Worker agent backtest completed successfully for 2025-08-13
+[2025-11-15 22:55:24] Running main backtest for 2025-08-13
+[2025-11-15 22:56:35] Main backtest completed successfully for 2025-08-13
+[2025-11-15 22:56:35] Completed all commands for date: 2025-08-13
+[2025-11-15 22:56:35] ----------------------------------------
+[2025-11-15 22:56:35] Starting backtest sequence for date: 2025-08-14
+[2025-11-15 22:56:35] Running data gathering for 2025-08-14
+[2025-11-15 23:10:34] Data gathering completed successfully for 2025-08-14
+[2025-11-15 23:10:34] Running worker agent backtest for 2025-08-14
+[2025-11-15 23:10:57] Worker agent backtest completed successfully for 2025-08-14
+[2025-11-15 23:10:58] Running main backtest for 2025-08-14
+[2025-11-15 23:11:11] Main backtest completed successfully for 2025-08-14
+[2025-11-15 23:11:11] Completed all commands for date: 2025-08-14
+[2025-11-15 23:11:11] ----------------------------------------
+[2025-11-15 23:11:11] Starting backtest sequence for date: 2025-08-15
+[2025-11-15 23:11:11] Running data gathering for 2025-08-15
+[2025-11-15 23:25:26] Data gathering completed successfully for 2025-08-15
+[2025-11-15 23:25:26] Running worker agent backtest for 2025-08-15
+[2025-11-15 23:25:47] Worker agent backtest completed successfully for 2025-08-15
+[2025-11-15 23:25:47] Running main backtest for 2025-08-15
+[2025-11-15 23:26:00] Main backtest completed successfully for 2025-08-15
+[2025-11-15 23:26:00] Completed all commands for date: 2025-08-15
+[2025-11-15 23:26:00] ----------------------------------------
+[2025-11-15 23:26:00] All backtest sequences completed
+[2025-11-18 18:07:45] Starting backtest sequence for date: 2018-07-23
+[2025-11-18 18:07:45] Running data gathering for 2018-07-23
+[2025-11-18 18:20:52] Data gathering completed successfully for 2018-07-23
+[2025-11-18 18:20:52] Running worker agent backtest for 2018-07-23
+[2025-11-18 18:20:55] Worker agent backtest completed successfully for 2018-07-23
+[2025-11-18 18:20:55] Running main backtest for 2018-07-23
+[2025-11-18 18:20:56] Main backtest completed successfully for 2018-07-23
+[2025-11-18 18:20:56] Completed all commands for date: 2018-07-23
+[2025-11-18 18:20:56] ----------------------------------------
+[2025-11-18 18:20:56] Starting backtest sequence for date: 2018-07-24
+[2025-11-18 18:20:56] Running data gathering for 2018-07-24
+[2025-11-18 18:34:22] Data gathering completed successfully for 2018-07-24
+[2025-11-18 18:34:22] Running worker agent backtest for 2018-07-24
+[2025-11-18 18:34:37] Worker agent backtest completed successfully for 2018-07-24
+[2025-11-18 18:34:37] Running main backtest for 2018-07-24
+[2025-11-18 18:34:44] Main backtest completed successfully for 2018-07-24
+[2025-11-18 18:34:44] Completed all commands for date: 2018-07-24
+[2025-11-18 18:34:44] ----------------------------------------
+[2025-11-18 18:34:44] Starting backtest sequence for date: 2018-07-25
+[2025-11-18 18:34:44] Running data gathering for 2018-07-25
+[2025-11-18 18:48:09] Data gathering completed successfully for 2018-07-25
+[2025-11-18 18:48:09] Running worker agent backtest for 2018-07-25
+[2025-11-18 18:48:28] Worker agent backtest completed successfully for 2018-07-25
+[2025-11-18 18:48:28] Running main backtest for 2018-07-25
+[2025-11-18 18:48:35] Main backtest completed successfully for 2018-07-25
+[2025-11-18 18:48:35] Completed all commands for date: 2018-07-25
+[2025-11-18 18:48:35] ----------------------------------------
+[2025-11-18 18:48:35] Starting backtest sequence for date: 2018-07-26
+[2025-11-18 18:48:35] Running data gathering for 2018-07-26
+[2025-11-18 19:01:33] Data gathering completed successfully for 2018-07-26
+[2025-11-18 19:01:33] Running worker agent backtest for 2018-07-26
+[2025-11-18 19:01:35] Worker agent backtest completed successfully for 2018-07-26
+[2025-11-18 19:01:35] Running main backtest for 2018-07-26
+[2025-11-18 19:01:36] Main backtest completed successfully for 2018-07-26
+[2025-11-18 19:01:36] Completed all commands for date: 2018-07-26
+[2025-11-18 19:01:36] ----------------------------------------
+[2025-11-18 19:01:36] Starting backtest sequence for date: 2018-07-27
+[2025-11-18 19:01:36] Running data gathering for 2018-07-27
+[2025-11-18 19:15:02] Data gathering completed successfully for 2018-07-27
+[2025-11-18 19:15:02] Running worker agent backtest for 2018-07-27
+[2025-11-18 19:15:19] Worker agent backtest completed successfully for 2018-07-27
+[2025-11-18 19:15:19] Running main backtest for 2018-07-27
+[2025-11-18 19:15:27] Main backtest completed successfully for 2018-07-27
+[2025-11-18 19:15:27] Completed all commands for date: 2018-07-27
+[2025-11-18 19:15:27] ----------------------------------------
+[2025-11-18 19:15:27] Starting backtest sequence for date: 2018-07-30
+[2025-11-18 19:15:27] Running data gathering for 2018-07-30
+[2025-11-18 19:27:46] ERROR: Data gathering failed for 2018-07-30
+[2025-11-18 19:27:46] Starting backtest sequence for date: 2018-07-31
+[2025-11-18 19:27:46] Running data gathering for 2018-07-31
+[2025-11-18 22:31:10] Starting backtest sequence for date: 2023-11-13
+[2025-11-18 22:31:11] Running data gathering for 2023-11-13
+[2025-11-18 22:45:24] Data gathering completed successfully for 2023-11-13
+[2025-11-18 22:45:24] Running worker agent backtest for 2023-11-13
+[2025-11-18 22:45:39] Worker agent backtest completed successfully for 2023-11-13
+[2025-11-18 22:45:39] Running main backtest for 2023-11-13
+[2025-11-18 22:45:45] Main backtest completed successfully for 2023-11-13
+[2025-11-18 22:45:45] Completed all commands for date: 2023-11-13
+[2025-11-18 22:45:45] ----------------------------------------
+[2025-11-18 22:45:45] Starting backtest sequence for date: 2023-11-14
+[2025-11-18 22:45:45] Running data gathering for 2023-11-14
+[2025-11-18 22:50:41] ERROR: Data gathering failed for 2023-11-14
+[2025-11-18 22:50:41] Starting backtest sequence for date: 2023-11-15
+[2025-11-18 22:50:41] Running data gathering for 2023-11-15
+[2025-11-18 22:56:02] Starting backtest sequence for date: 2025-02-10
+[2025-11-18 22:56:02] Running data gathering for 2025-02-10
+[2025-11-18 23:10:06] Data gathering completed successfully for 2025-02-10
+[2025-11-18 23:10:06] Running worker agent backtest for 2025-02-10
+[2025-11-18 23:10:27] Worker agent backtest completed successfully for 2025-02-10
+[2025-11-18 23:10:27] Running main backtest for 2025-02-10
+[2025-11-18 23:10:39] Main backtest completed successfully for 2025-02-10
+[2025-11-18 23:10:39] Completed all commands for date: 2025-02-10
+[2025-11-18 23:10:39] ----------------------------------------
+[2025-11-18 23:10:39] Starting backtest sequence for date: 2025-02-11
+[2025-11-18 23:10:39] Running data gathering for 2025-02-11
+[2025-11-18 23:18:42] ERROR: Data gathering failed for 2025-02-11
+[2025-11-18 23:18:42] Starting backtest sequence for date: 2025-02-12
+[2025-11-18 23:18:42] Running data gathering for 2025-02-12
+[2025-11-18 23:19:10] Starting backtest sequence for date: 2025-02-10
+[2025-11-18 23:19:10] Running data gathering for 2025-02-10
+[2025-11-18 23:33:29] Data gathering completed successfully for 2025-02-10
+[2025-11-18 23:33:29] Running worker agent backtest for 2025-02-10
+[2025-11-18 23:33:47] Worker agent backtest completed successfully for 2025-02-10
+[2025-11-18 23:33:47] Running main backtest for 2025-02-10
+[2025-11-18 23:34:05] Main backtest completed successfully for 2025-02-10
+[2025-11-18 23:34:05] Completed all commands for date: 2025-02-10
+[2025-11-18 23:34:05] ----------------------------------------
+[2025-11-18 23:34:05] Starting backtest sequence for date: 2025-02-11
+[2025-11-18 23:34:05] Running data gathering for 2025-02-11
+[2025-11-18 23:48:58] Data gathering completed successfully for 2025-02-11
+[2025-11-18 23:48:58] Running worker agent backtest for 2025-02-11
+[2025-11-18 23:49:17] Worker agent backtest completed successfully for 2025-02-11
+[2025-11-18 23:49:17] Running main backtest for 2025-02-11
+[2025-11-18 23:49:33] Main backtest completed successfully for 2025-02-11
+[2025-11-18 23:49:33] Completed all commands for date: 2025-02-11
+[2025-11-18 23:49:33] ----------------------------------------
+[2025-11-18 23:49:33] Starting backtest sequence for date: 2025-02-12
+[2025-11-18 23:49:33] Running data gathering for 2025-02-12
+[2025-11-19 00:03:12] Data gathering completed successfully for 2025-02-12
+[2025-11-19 00:03:12] Running worker agent backtest for 2025-02-12
+[2025-11-19 00:03:27] Worker agent backtest completed successfully for 2025-02-12
+[2025-11-19 00:03:27] Running main backtest for 2025-02-12
+[2025-11-19 00:03:34] Main backtest completed successfully for 2025-02-12
+[2025-11-19 00:03:34] Completed all commands for date: 2025-02-12
+[2025-11-19 00:03:34] ----------------------------------------
+[2025-11-19 00:03:34] Starting backtest sequence for date: 2025-02-13
+[2025-11-19 00:03:34] Running data gathering for 2025-02-13
+[2025-11-19 00:18:38] Data gathering completed successfully for 2025-02-13
+[2025-11-19 00:18:38] Running worker agent backtest for 2025-02-13
+[2025-11-19 00:19:06] Worker agent backtest completed successfully for 2025-02-13
+[2025-11-19 00:19:06] Running main backtest for 2025-02-13
+[2025-11-19 00:20:15] Main backtest completed successfully for 2025-02-13
+[2025-11-19 00:20:15] Completed all commands for date: 2025-02-13
+[2025-11-19 00:20:15] ----------------------------------------
+[2025-11-19 00:20:15] Starting backtest sequence for date: 2025-02-14
+[2025-11-19 00:20:15] Running data gathering for 2025-02-14
+[2025-11-19 00:34:52] Data gathering completed successfully for 2025-02-14
+[2025-11-19 00:34:52] Running worker agent backtest for 2025-02-14
+[2025-11-19 00:35:12] Worker agent backtest completed successfully for 2025-02-14
+[2025-11-19 00:35:12] Running main backtest for 2025-02-14
+[2025-11-19 00:35:30] Main backtest completed successfully for 2025-02-14
+[2025-11-19 00:35:30] Completed all commands for date: 2025-02-14
+[2025-11-19 00:35:30] ----------------------------------------
+[2025-11-19 00:35:30] Starting backtest sequence for date: 2025-02-17
+[2025-11-19 00:35:30] Running data gathering for 2025-02-17
+[2025-11-19 00:48:36] ERROR: Data gathering failed for 2025-02-17
+[2025-11-19 00:48:36] Starting backtest sequence for date: 2025-02-18
+[2025-11-19 00:48:36] Running data gathering for 2025-02-18
+[2025-11-19 01:02:53] Data gathering completed successfully for 2025-02-18
+[2025-11-19 01:02:53] Running worker agent backtest for 2025-02-18
+[2025-11-19 01:03:18] Worker agent backtest completed successfully for 2025-02-18
+[2025-11-19 01:03:18] Running main backtest for 2025-02-18
+[2025-11-19 01:03:40] Main backtest completed successfully for 2025-02-18
+[2025-11-19 01:03:40] Completed all commands for date: 2025-02-18
+[2025-11-19 01:03:40] ----------------------------------------
+[2025-11-19 01:03:40] Starting backtest sequence for date: 2025-02-19
+[2025-11-19 01:03:40] Running data gathering for 2025-02-19
+[2025-11-19 01:18:13] Data gathering completed successfully for 2025-02-19
+[2025-11-19 01:18:13] Running worker agent backtest for 2025-02-19
+[2025-11-19 01:18:40] Worker agent backtest completed successfully for 2025-02-19
+[2025-11-19 01:18:40] Running main backtest for 2025-02-19
+[2025-11-19 01:18:59] Main backtest completed successfully for 2025-02-19
+[2025-11-19 01:18:59] Completed all commands for date: 2025-02-19
+[2025-11-19 01:18:59] ----------------------------------------
+[2025-11-19 01:18:59] Starting backtest sequence for date: 2025-02-20
+[2025-11-19 01:18:59] Running data gathering for 2025-02-20
+[2025-11-19 01:33:21] Data gathering completed successfully for 2025-02-20
+[2025-11-19 01:33:21] Running worker agent backtest for 2025-02-20
+[2025-11-19 01:33:39] Worker agent backtest completed successfully for 2025-02-20
+[2025-11-19 01:33:39] Running main backtest for 2025-02-20
+[2025-11-19 01:33:54] Main backtest completed successfully for 2025-02-20
+[2025-11-19 01:33:54] Completed all commands for date: 2025-02-20
+[2025-11-19 01:33:54] ----------------------------------------
+[2025-11-19 01:33:54] Starting backtest sequence for date: 2025-02-21
+[2025-11-19 01:33:54] Running data gathering for 2025-02-21
+[2025-11-19 01:48:02] Data gathering completed successfully for 2025-02-21
+[2025-11-19 01:48:02] Running worker agent backtest for 2025-02-21
+[2025-11-19 01:48:21] Worker agent backtest completed successfully for 2025-02-21
+[2025-11-19 01:48:21] Running main backtest for 2025-02-21
+[2025-11-19 01:48:47] Main backtest completed successfully for 2025-02-21
+[2025-11-19 01:48:47] Completed all commands for date: 2025-02-21
+[2025-11-19 01:48:47] ----------------------------------------
+[2025-11-19 01:48:47] Starting backtest sequence for date: 2025-02-24
+[2025-11-19 01:48:47] Running data gathering for 2025-02-24
+[2025-11-19 02:02:41] Data gathering completed successfully for 2025-02-24
+[2025-11-19 02:02:41] Running worker agent backtest for 2025-02-24
+[2025-11-19 02:02:42] Worker agent backtest completed successfully for 2025-02-24
+[2025-11-19 02:02:42] Running main backtest for 2025-02-24
+[2025-11-19 02:02:44] Main backtest completed successfully for 2025-02-24
+[2025-11-19 02:02:44] Completed all commands for date: 2025-02-24
+[2025-11-19 02:02:44] ----------------------------------------
+[2025-11-19 02:02:44] Starting backtest sequence for date: 2025-02-25
+[2025-11-19 02:02:44] Running data gathering for 2025-02-25
+[2025-11-19 02:17:18] Data gathering completed successfully for 2025-02-25
+[2025-11-19 02:17:18] Running worker agent backtest for 2025-02-25
+[2025-11-19 02:17:47] Worker agent backtest completed successfully for 2025-02-25
+[2025-11-19 02:17:47] Running main backtest for 2025-02-25
+[2025-11-19 02:18:00] Main backtest completed successfully for 2025-02-25
+[2025-11-19 02:18:00] Completed all commands for date: 2025-02-25
+[2025-11-19 02:18:00] ----------------------------------------
+[2025-11-19 02:18:00] Starting backtest sequence for date: 2025-02-26
+[2025-11-19 02:18:00] Running data gathering for 2025-02-26
+[2025-11-19 02:32:31] Data gathering completed successfully for 2025-02-26
+[2025-11-19 02:32:31] Running worker agent backtest for 2025-02-26
+[2025-11-19 02:32:48] Worker agent backtest completed successfully for 2025-02-26
+[2025-11-19 02:32:48] Running main backtest for 2025-02-26
+[2025-11-19 02:34:58] Main backtest completed successfully for 2025-02-26
+[2025-11-19 02:34:58] Completed all commands for date: 2025-02-26
+[2025-11-19 02:34:58] ----------------------------------------
+[2025-11-19 02:34:58] Starting backtest sequence for date: 2025-02-27
+[2025-11-19 02:34:58] Running data gathering for 2025-02-27
+[2025-11-19 02:49:10] Data gathering completed successfully for 2025-02-27
+[2025-11-19 02:49:10] Running worker agent backtest for 2025-02-27
+[2025-11-19 02:49:26] Worker agent backtest completed successfully for 2025-02-27
+[2025-11-19 02:49:26] Running main backtest for 2025-02-27
+[2025-11-19 02:50:29] Main backtest completed successfully for 2025-02-27
+[2025-11-19 02:50:29] Completed all commands for date: 2025-02-27
+[2025-11-19 02:50:29] ----------------------------------------
+[2025-11-19 02:50:29] Starting backtest sequence for date: 2025-02-28
+[2025-11-19 02:50:29] Running data gathering for 2025-02-28
+[2025-11-19 03:04:36] Data gathering completed successfully for 2025-02-28
+[2025-11-19 03:04:36] Running worker agent backtest for 2025-02-28
+[2025-11-19 03:04:55] Worker agent backtest completed successfully for 2025-02-28
+[2025-11-19 03:04:55] Running main backtest for 2025-02-28
+[2025-11-19 03:05:16] Main backtest completed successfully for 2025-02-28
+[2025-11-19 03:05:16] Completed all commands for date: 2025-02-28
+[2025-11-19 03:05:16] ----------------------------------------
+[2025-11-19 03:05:16] Starting backtest sequence for date: 2025-03-03
+[2025-11-19 03:05:16] Running data gathering for 2025-03-03
+[2025-11-19 03:19:13] Data gathering completed successfully for 2025-03-03
+[2025-11-19 03:19:13] Running worker agent backtest for 2025-03-03
+[2025-11-19 03:19:34] Worker agent backtest completed successfully for 2025-03-03
+[2025-11-19 03:19:34] Running main backtest for 2025-03-03
+[2025-11-19 03:19:52] Main backtest completed successfully for 2025-03-03
+[2025-11-19 03:19:52] Completed all commands for date: 2025-03-03
+[2025-11-19 03:19:52] ----------------------------------------
+[2025-11-19 03:19:52] Starting backtest sequence for date: 2025-03-04
+[2025-11-19 03:19:52] Running data gathering for 2025-03-04
+[2025-11-19 03:34:02] Data gathering completed successfully for 2025-03-04
+[2025-11-19 03:34:02] Running worker agent backtest for 2025-03-04
+[2025-11-19 03:34:21] Worker agent backtest completed successfully for 2025-03-04
+[2025-11-19 03:34:21] Running main backtest for 2025-03-04
+[2025-11-19 03:34:32] Main backtest completed successfully for 2025-03-04
+[2025-11-19 03:34:32] Completed all commands for date: 2025-03-04
+[2025-11-19 03:34:32] ----------------------------------------
+[2025-11-19 03:34:32] Starting backtest sequence for date: 2025-03-05
+[2025-11-19 03:34:32] Running data gathering for 2025-03-05
+[2025-11-19 03:48:37] Data gathering completed successfully for 2025-03-05
+[2025-11-19 03:48:37] Running worker agent backtest for 2025-03-05
+[2025-11-19 03:48:59] Worker agent backtest completed successfully for 2025-03-05
+[2025-11-19 03:48:59] Running main backtest for 2025-03-05
+[2025-11-19 03:49:21] Main backtest completed successfully for 2025-03-05
+[2025-11-19 03:49:21] Completed all commands for date: 2025-03-05
+[2025-11-19 03:49:21] ----------------------------------------
+[2025-11-19 03:49:21] Starting backtest sequence for date: 2025-03-06
+[2025-11-19 03:49:21] Running data gathering for 2025-03-06
+[2025-11-19 04:03:15] Data gathering completed successfully for 2025-03-06
+[2025-11-19 04:03:15] Running worker agent backtest for 2025-03-06
+[2025-11-19 04:03:35] Worker agent backtest completed successfully for 2025-03-06
+[2025-11-19 04:03:35] Running main backtest for 2025-03-06
+[2025-11-19 04:03:51] Main backtest completed successfully for 2025-03-06
+[2025-11-19 04:03:51] Completed all commands for date: 2025-03-06
+[2025-11-19 04:03:51] ----------------------------------------
+[2025-11-19 04:03:51] Starting backtest sequence for date: 2025-03-07
+[2025-11-19 04:03:51] Running data gathering for 2025-03-07
+[2025-11-19 04:17:48] Data gathering completed successfully for 2025-03-07
+[2025-11-19 04:17:48] Running worker agent backtest for 2025-03-07
+[2025-11-19 04:18:08] Worker agent backtest completed successfully for 2025-03-07
+[2025-11-19 04:18:08] Running main backtest for 2025-03-07
+[2025-11-19 04:18:27] Main backtest completed successfully for 2025-03-07
+[2025-11-19 04:18:27] Completed all commands for date: 2025-03-07
+[2025-11-19 04:18:27] ----------------------------------------
+[2025-11-19 04:18:27] Starting backtest sequence for date: 2025-03-10
+[2025-11-19 04:18:27] Running data gathering for 2025-03-10
+[2025-11-19 04:32:47] Data gathering completed successfully for 2025-03-10
+[2025-11-19 04:32:47] Running worker agent backtest for 2025-03-10
+[2025-11-19 04:33:11] Worker agent backtest completed successfully for 2025-03-10
+[2025-11-19 04:33:11] Running main backtest for 2025-03-10
+[2025-11-19 04:33:28] Main backtest completed successfully for 2025-03-10
+[2025-11-19 04:33:28] Completed all commands for date: 2025-03-10
+[2025-11-19 04:33:28] ----------------------------------------
+[2025-11-19 04:33:28] Starting backtest sequence for date: 2025-03-11
+[2025-11-19 04:33:28] Running data gathering for 2025-03-11
+[2025-11-19 04:47:13] Data gathering completed successfully for 2025-03-11
+[2025-11-19 04:47:13] Running worker agent backtest for 2025-03-11
+[2025-11-19 04:47:34] Worker agent backtest completed successfully for 2025-03-11
+[2025-11-19 04:47:34] Running main backtest for 2025-03-11
+[2025-11-19 04:47:47] Main backtest completed successfully for 2025-03-11
+[2025-11-19 04:47:47] Completed all commands for date: 2025-03-11
+[2025-11-19 04:47:47] ----------------------------------------
+[2025-11-19 04:47:47] Starting backtest sequence for date: 2025-03-12
+[2025-11-19 04:47:47] Running data gathering for 2025-03-12
+[2025-11-19 05:01:54] Data gathering completed successfully for 2025-03-12
+[2025-11-19 05:01:54] Running worker agent backtest for 2025-03-12
+[2025-11-19 05:02:22] Worker agent backtest completed successfully for 2025-03-12
+[2025-11-19 05:02:22] Running main backtest for 2025-03-12
+[2025-11-19 05:02:48] Main backtest completed successfully for 2025-03-12
+[2025-11-19 05:02:48] Completed all commands for date: 2025-03-12
+[2025-11-19 05:02:48] ----------------------------------------
+[2025-11-19 05:02:48] Starting backtest sequence for date: 2025-03-13
+[2025-11-19 05:02:48] Running data gathering for 2025-03-13
+[2025-11-19 05:16:15] Data gathering completed successfully for 2025-03-13
+[2025-11-19 05:16:15] Running worker agent backtest for 2025-03-13
+[2025-11-19 05:16:17] Worker agent backtest completed successfully for 2025-03-13
+[2025-11-19 05:16:17] Running main backtest for 2025-03-13
+[2025-11-19 05:16:18] Main backtest completed successfully for 2025-03-13
+[2025-11-19 05:16:18] Completed all commands for date: 2025-03-13
+[2025-11-19 05:16:18] ----------------------------------------
+[2025-11-19 05:16:19] Starting backtest sequence for date: 2025-03-14
+[2025-11-19 05:16:19] Running data gathering for 2025-03-14
+[2025-11-19 05:30:37] Data gathering completed successfully for 2025-03-14
+[2025-11-19 05:30:37] Running worker agent backtest for 2025-03-14
+[2025-11-19 05:31:04] Worker agent backtest completed successfully for 2025-03-14
+[2025-11-19 05:31:04] Running main backtest for 2025-03-14
+[2025-11-19 05:31:22] Main backtest completed successfully for 2025-03-14
+[2025-11-19 05:31:22] Completed all commands for date: 2025-03-14
+[2025-11-19 05:31:22] ----------------------------------------
+[2025-11-19 05:31:22] Starting backtest sequence for date: 2025-03-17
+[2025-11-19 05:31:22] Running data gathering for 2025-03-17
+[2025-11-19 05:45:45] Data gathering completed successfully for 2025-03-17
+[2025-11-19 05:45:45] Running worker agent backtest for 2025-03-17
+[2025-11-19 05:46:05] Worker agent backtest completed successfully for 2025-03-17
+[2025-11-19 05:46:05] Running main backtest for 2025-03-17
+[2025-11-19 05:46:26] Main backtest completed successfully for 2025-03-17
+[2025-11-19 05:46:26] Completed all commands for date: 2025-03-17
+[2025-11-19 05:46:26] ----------------------------------------
+[2025-11-19 05:46:26] Starting backtest sequence for date: 2025-03-18
+[2025-11-19 05:46:26] Running data gathering for 2025-03-18
+[2025-11-19 06:00:04] Data gathering completed successfully for 2025-03-18
+[2025-11-19 06:00:04] Running worker agent backtest for 2025-03-18
+[2025-11-19 06:00:23] Worker agent backtest completed successfully for 2025-03-18
+[2025-11-19 06:00:23] Running main backtest for 2025-03-18
+[2025-11-19 06:00:57] Main backtest completed successfully for 2025-03-18
+[2025-11-19 06:00:57] Completed all commands for date: 2025-03-18
+[2025-11-19 06:00:57] ----------------------------------------
+[2025-11-19 06:00:57] Starting backtest sequence for date: 2025-03-19
+[2025-11-19 06:00:57] Running data gathering for 2025-03-19
+[2025-11-19 06:14:48] Data gathering completed successfully for 2025-03-19
+[2025-11-19 06:14:48] Running worker agent backtest for 2025-03-19
+[2025-11-19 06:15:08] Worker agent backtest completed successfully for 2025-03-19
+[2025-11-19 06:15:08] Running main backtest for 2025-03-19
+[2025-11-19 06:15:23] Main backtest completed successfully for 2025-03-19
+[2025-11-19 06:15:23] Completed all commands for date: 2025-03-19
+[2025-11-19 06:15:23] ----------------------------------------
+[2025-11-19 06:15:23] Starting backtest sequence for date: 2025-03-20
+[2025-11-19 06:15:23] Running data gathering for 2025-03-20
+[2025-11-19 06:29:14] Data gathering completed successfully for 2025-03-20
+[2025-11-19 06:29:14] Running worker agent backtest for 2025-03-20
+[2025-11-19 06:29:31] Worker agent backtest completed successfully for 2025-03-20
+[2025-11-19 06:29:31] Running main backtest for 2025-03-20
+[2025-11-19 06:30:05] Main backtest completed successfully for 2025-03-20
+[2025-11-19 06:30:05] Completed all commands for date: 2025-03-20
+[2025-11-19 06:30:05] ----------------------------------------
+[2025-11-19 06:30:05] Starting backtest sequence for date: 2025-03-21
+[2025-11-19 06:30:05] Running data gathering for 2025-03-21
+[2025-11-19 06:44:20] Data gathering completed successfully for 2025-03-21
+[2025-11-19 06:44:20] Running worker agent backtest for 2025-03-21
+[2025-11-19 06:44:30] Worker agent backtest completed successfully for 2025-03-21
+[2025-11-19 06:44:30] Running main backtest for 2025-03-21
+[2025-11-19 06:44:45] Main backtest completed successfully for 2025-03-21
+[2025-11-19 06:44:45] Completed all commands for date: 2025-03-21
+[2025-11-19 06:44:45] ----------------------------------------
+[2025-11-19 06:44:45] Starting backtest sequence for date: 2025-03-24
+[2025-11-19 06:44:45] Running data gathering for 2025-03-24
+[2025-11-19 06:58:32] Data gathering completed successfully for 2025-03-24
+[2025-11-19 06:58:32] Running worker agent backtest for 2025-03-24
+[2025-11-19 06:58:53] Worker agent backtest completed successfully for 2025-03-24
+[2025-11-19 06:58:53] Running main backtest for 2025-03-24
+[2025-11-19 06:59:11] Main backtest completed successfully for 2025-03-24
+[2025-11-19 06:59:11] Completed all commands for date: 2025-03-24
+[2025-11-19 06:59:11] ----------------------------------------
+[2025-11-19 06:59:11] Starting backtest sequence for date: 2025-03-25
+[2025-11-19 06:59:11] Running data gathering for 2025-03-25
+[2025-11-19 07:13:09] Data gathering completed successfully for 2025-03-25
+[2025-11-19 07:13:09] Running worker agent backtest for 2025-03-25
+[2025-11-19 07:13:32] Worker agent backtest completed successfully for 2025-03-25
+[2025-11-19 07:13:32] Running main backtest for 2025-03-25
+[2025-11-19 07:13:53] Main backtest completed successfully for 2025-03-25
+[2025-11-19 07:13:53] Completed all commands for date: 2025-03-25
+[2025-11-19 07:13:53] ----------------------------------------
+[2025-11-19 07:13:53] Starting backtest sequence for date: 2025-03-26
+[2025-11-19 07:13:53] Running data gathering for 2025-03-26
+[2025-11-19 07:27:36] Data gathering completed successfully for 2025-03-26
+[2025-11-19 07:27:36] Running worker agent backtest for 2025-03-26
+[2025-11-19 07:28:07] Worker agent backtest completed successfully for 2025-03-26
+[2025-11-19 07:28:07] Running main backtest for 2025-03-26
+[2025-11-19 07:28:28] Main backtest completed successfully for 2025-03-26
+[2025-11-19 07:28:28] Completed all commands for date: 2025-03-26
+[2025-11-19 07:28:28] ----------------------------------------
+[2025-11-19 07:28:28] Starting backtest sequence for date: 2025-03-27
+[2025-11-19 07:28:28] Running data gathering for 2025-03-27
+[2025-11-19 07:42:48] Data gathering completed successfully for 2025-03-27
+[2025-11-19 07:42:48] Running worker agent backtest for 2025-03-27
+[2025-11-19 07:43:05] Worker agent backtest completed successfully for 2025-03-27
+[2025-11-19 07:43:05] Running main backtest for 2025-03-27
+[2025-11-19 07:43:11] Main backtest completed successfully for 2025-03-27
+[2025-11-19 07:43:11] Completed all commands for date: 2025-03-27
+[2025-11-19 07:43:11] ----------------------------------------
+[2025-11-19 07:43:11] Starting backtest sequence for date: 2025-03-28
+[2025-11-19 07:43:11] Running data gathering for 2025-03-28
+[2025-11-19 07:57:08] Data gathering completed successfully for 2025-03-28
+[2025-11-19 07:57:08] Running worker agent backtest for 2025-03-28
+[2025-11-19 07:57:21] Worker agent backtest completed successfully for 2025-03-28
+[2025-11-19 07:57:21] Running main backtest for 2025-03-28
+[2025-11-19 07:57:27] Main backtest completed successfully for 2025-03-28
+[2025-11-19 07:57:27] Completed all commands for date: 2025-03-28
+[2025-11-19 07:57:27] ----------------------------------------
+[2025-11-19 07:57:27] All backtest sequences completed
+[2025-11-20 23:19:32] Starting backtest sequence for date: 2025-02-11
+[2025-11-20 23:19:32] Running data gathering for 2025-02-11
+[2025-11-20 23:20:15] Data gathering completed successfully for 2025-02-11
+[2025-11-20 23:20:15] Running worker agent backtest for 2025-02-11
+[2025-11-20 23:20:42] Worker agent backtest completed successfully for 2025-02-11
+[2025-11-20 23:20:42] Running main backtest for 2025-02-11
+[2025-11-20 23:20:56] Main backtest completed successfully for 2025-02-11
+[2025-11-20 23:20:56] Completed all commands for date: 2025-02-11
+[2025-11-20 23:20:56] ----------------------------------------
+[2025-11-20 23:20:56] All backtest sequences completed
+[2025-11-21 00:12:18] Starting backtest sequence for date: 2025-07-28
+[2025-11-21 00:12:18] Running data gathering for 2025-07-28
+[2025-11-21 00:25:57] Data gathering completed successfully for 2025-07-28
+[2025-11-21 00:25:57] Running worker agent backtest for 2025-07-28
+[2025-11-21 00:26:13] Worker agent backtest completed successfully for 2025-07-28
+[2025-11-21 00:26:13] Running main backtest for 2025-07-28
+[2025-11-21 00:26:20] Main backtest completed successfully for 2025-07-28
+[2025-11-21 00:26:20] Completed all commands for date: 2025-07-28
+[2025-11-21 00:26:20] ----------------------------------------
+[2025-11-21 00:26:20] Starting backtest sequence for date: 2025-07-29
+[2025-11-21 00:26:20] Running data gathering for 2025-07-29
+[2025-11-21 00:40:20] Data gathering completed successfully for 2025-07-29
+[2025-11-21 00:40:20] Running worker agent backtest for 2025-07-29
+[2025-11-21 00:40:42] Worker agent backtest completed successfully for 2025-07-29
+[2025-11-21 00:40:42] Running main backtest for 2025-07-29
+[2025-11-21 00:41:02] Main backtest completed successfully for 2025-07-29
+[2025-11-21 00:41:02] Completed all commands for date: 2025-07-29
+[2025-11-21 00:41:02] ----------------------------------------
+[2025-11-21 00:41:02] Starting backtest sequence for date: 2025-07-30
+[2025-11-21 00:41:02] Running data gathering for 2025-07-30
+[2025-11-21 00:55:10] Data gathering completed successfully for 2025-07-30
+[2025-11-21 00:55:10] Running worker agent backtest for 2025-07-30
+[2025-11-21 00:55:34] Worker agent backtest completed successfully for 2025-07-30
+[2025-11-21 00:55:34] Running main backtest for 2025-07-30
+[2025-11-21 00:56:45] Main backtest completed successfully for 2025-07-30
+[2025-11-21 00:56:45] Completed all commands for date: 2025-07-30
+[2025-11-21 00:56:45] ----------------------------------------
+[2025-11-21 00:56:45] Starting backtest sequence for date: 2025-07-31
+[2025-11-21 00:56:45] Running data gathering for 2025-07-31
+[2025-11-21 01:11:20] Data gathering completed successfully for 2025-07-31
+[2025-11-21 01:11:20] Running worker agent backtest for 2025-07-31
+[2025-11-21 01:11:31] Worker agent backtest completed successfully for 2025-07-31
+[2025-11-21 01:11:31] Running main backtest for 2025-07-31
+[2025-11-21 01:12:44] Main backtest completed successfully for 2025-07-31
+[2025-11-21 01:12:44] Completed all commands for date: 2025-07-31
+[2025-11-21 01:12:44] ----------------------------------------
+[2025-11-21 01:12:44] Starting backtest sequence for date: 2025-08-01
+[2025-11-21 01:12:44] Running data gathering for 2025-08-01
+[2025-11-21 01:27:02] Data gathering completed successfully for 2025-08-01
+[2025-11-21 01:27:02] Running worker agent backtest for 2025-08-01
+[2025-11-21 01:27:07] Worker agent backtest completed successfully for 2025-08-01
+[2025-11-21 01:27:07] Running main backtest for 2025-08-01
+[2025-11-21 01:27:26] Main backtest completed successfully for 2025-08-01
+[2025-11-21 01:27:26] Completed all commands for date: 2025-08-01
+[2025-11-21 01:27:26] ----------------------------------------
+[2025-11-21 01:27:26] Starting backtest sequence for date: 2025-08-04
+[2025-11-21 01:27:26] Running data gathering for 2025-08-04
+[2025-11-21 01:41:26] Data gathering completed successfully for 2025-08-04
+[2025-11-21 01:41:26] Running worker agent backtest for 2025-08-04
+[2025-11-21 01:41:28] Worker agent backtest completed successfully for 2025-08-04
+[2025-11-21 01:41:28] Running main backtest for 2025-08-04
+[2025-11-21 01:42:39] Main backtest completed successfully for 2025-08-04
+[2025-11-21 01:42:39] Completed all commands for date: 2025-08-04
+[2025-11-21 01:42:39] ----------------------------------------
+[2025-11-21 01:42:39] Starting backtest sequence for date: 2025-08-05
+[2025-11-21 01:42:39] Running data gathering for 2025-08-05
+[2025-11-21 01:57:25] Data gathering completed successfully for 2025-08-05
+[2025-11-21 01:57:25] Running worker agent backtest for 2025-08-05
+[2025-11-21 01:57:33] Worker agent backtest completed successfully for 2025-08-05
+[2025-11-21 01:57:33] Running main backtest for 2025-08-05
+[2025-11-21 01:59:43] Main backtest completed successfully for 2025-08-05
+[2025-11-21 01:59:43] Completed all commands for date: 2025-08-05
+[2025-11-21 01:59:43] ----------------------------------------
+[2025-11-21 01:59:43] Starting backtest sequence for date: 2025-08-06
+[2025-11-21 01:59:43] Running data gathering for 2025-08-06
+[2025-11-21 02:14:00] Data gathering completed successfully for 2025-08-06
+[2025-11-21 02:14:00] Running worker agent backtest for 2025-08-06
+[2025-11-21 02:14:04] Worker agent backtest completed successfully for 2025-08-06
+[2025-11-21 02:14:04] Running main backtest for 2025-08-06
+[2025-11-21 02:14:25] Main backtest completed successfully for 2025-08-06
+[2025-11-21 02:14:25] Completed all commands for date: 2025-08-06
+[2025-11-21 02:14:25] ----------------------------------------
+[2025-11-21 02:14:25] Starting backtest sequence for date: 2025-08-07
+[2025-11-21 02:14:25] Running data gathering for 2025-08-07
+[2025-11-21 02:29:05] Data gathering completed successfully for 2025-08-07
+[2025-11-21 02:29:05] Running worker agent backtest for 2025-08-07
+[2025-11-21 02:29:14] Worker agent backtest completed successfully for 2025-08-07
+[2025-11-21 02:29:14] Running main backtest for 2025-08-07
+[2025-11-21 02:32:26] Main backtest completed successfully for 2025-08-07
+[2025-11-21 02:32:26] Completed all commands for date: 2025-08-07
+[2025-11-21 02:32:26] ----------------------------------------
+[2025-11-21 02:32:26] Starting backtest sequence for date: 2025-08-08
+[2025-11-21 02:32:26] Running data gathering for 2025-08-08
+[2025-11-21 02:46:39] Data gathering completed successfully for 2025-08-08
+[2025-11-21 02:46:39] Running worker agent backtest for 2025-08-08
+[2025-11-21 02:46:48] Worker agent backtest completed successfully for 2025-08-08
+[2025-11-21 02:46:48] Running main backtest for 2025-08-08
+[2025-11-21 02:48:00] Main backtest completed successfully for 2025-08-08
+[2025-11-21 02:48:00] Completed all commands for date: 2025-08-08
+[2025-11-21 02:48:00] ----------------------------------------
+[2025-11-21 02:48:00] Starting backtest sequence for date: 2025-08-11
+[2025-11-21 02:48:00] Running data gathering for 2025-08-11
+[2025-11-21 03:02:09] Data gathering completed successfully for 2025-08-11
+[2025-11-21 03:02:09] Running worker agent backtest for 2025-08-11
+[2025-11-21 03:02:16] Worker agent backtest completed successfully for 2025-08-11
+[2025-11-21 03:02:16] Running main backtest for 2025-08-11
+[2025-11-21 03:02:31] Main backtest completed successfully for 2025-08-11
+[2025-11-21 03:02:31] Completed all commands for date: 2025-08-11
+[2025-11-21 03:02:31] ----------------------------------------
+[2025-11-21 03:02:31] Starting backtest sequence for date: 2025-08-12
+[2025-11-21 03:02:31] Running data gathering for 2025-08-12
+[2025-11-21 03:16:57] Data gathering completed successfully for 2025-08-12
+[2025-11-21 03:16:57] Running worker agent backtest for 2025-08-12
+[2025-11-21 03:17:18] Worker agent backtest completed successfully for 2025-08-12
+[2025-11-21 03:17:18] Running main backtest for 2025-08-12
+[2025-11-21 03:19:33] Main backtest completed successfully for 2025-08-12
+[2025-11-21 03:19:33] Completed all commands for date: 2025-08-12
+[2025-11-21 03:19:33] ----------------------------------------
+[2025-11-21 03:19:33] Starting backtest sequence for date: 2025-08-13
+[2025-11-21 03:19:33] Running data gathering for 2025-08-13
+[2025-11-21 03:33:40] Data gathering completed successfully for 2025-08-13
+[2025-11-21 03:33:40] Running worker agent backtest for 2025-08-13
+[2025-11-21 03:33:52] Worker agent backtest completed successfully for 2025-08-13
+[2025-11-21 03:33:52] Running main backtest for 2025-08-13
+[2025-11-21 03:34:07] Main backtest completed successfully for 2025-08-13
+[2025-11-21 03:34:07] Completed all commands for date: 2025-08-13
+[2025-11-21 03:34:07] ----------------------------------------
+[2025-11-21 03:34:07] Starting backtest sequence for date: 2025-08-14
+[2025-11-21 03:34:07] Running data gathering for 2025-08-14
+[2025-11-21 03:47:34] Data gathering completed successfully for 2025-08-14
+[2025-11-21 03:47:34] Running worker agent backtest for 2025-08-14
+[2025-11-21 03:47:36] Worker agent backtest completed successfully for 2025-08-14
+[2025-11-21 03:47:36] Running main backtest for 2025-08-14
+[2025-11-21 03:47:38] Main backtest completed successfully for 2025-08-14
+[2025-11-21 03:47:38] Completed all commands for date: 2025-08-14
+[2025-11-21 03:47:38] ----------------------------------------
+[2025-11-21 03:47:38] Starting backtest sequence for date: 2025-08-15
+[2025-11-21 03:47:38] Running data gathering for 2025-08-15
+[2025-11-21 04:01:51] Data gathering completed successfully for 2025-08-15
+[2025-11-21 04:01:51] Running worker agent backtest for 2025-08-15
+[2025-11-21 04:01:58] Worker agent backtest completed successfully for 2025-08-15
+[2025-11-21 04:01:58] Running main backtest for 2025-08-15
+[2025-11-21 04:02:24] Main backtest completed successfully for 2025-08-15
+[2025-11-21 04:02:24] Completed all commands for date: 2025-08-15
+[2025-11-21 04:02:24] ----------------------------------------
+[2025-11-21 04:02:24] All backtest sequences completed
+[2025-11-21 17:47:32] Starting backtest sequence for date: 2025-07-28
+[2025-11-21 17:47:32] Running data gathering for 2025-07-28
+[2025-11-21 18:01:25] Data gathering completed successfully for 2025-07-28
+[2025-11-21 18:01:25] Running worker agent backtest for 2025-07-28
+[2025-11-21 18:01:39] Worker agent backtest completed successfully for 2025-07-28
+[2025-11-21 18:01:39] Running main backtest for 2025-07-28
+[2025-11-21 18:01:54] Main backtest completed successfully for 2025-07-28
+[2025-11-21 18:01:54] Completed all commands for date: 2025-07-28
+[2025-11-21 18:01:54] ----------------------------------------
+[2025-11-21 18:01:54] Starting backtest sequence for date: 2025-07-29
+[2025-11-21 18:01:54] Running data gathering for 2025-07-29
+[2025-11-21 18:15:39] Data gathering completed successfully for 2025-07-29
+[2025-11-21 18:15:39] Running worker agent backtest for 2025-07-29
+[2025-11-21 18:15:53] Worker agent backtest completed successfully for 2025-07-29
+[2025-11-21 18:15:53] Running main backtest for 2025-07-29
+[2025-11-21 18:16:18] Main backtest completed successfully for 2025-07-29
+[2025-11-21 18:16:18] Completed all commands for date: 2025-07-29
+[2025-11-21 18:16:18] ----------------------------------------
+[2025-11-21 18:16:18] Starting backtest sequence for date: 2025-07-30
+[2025-11-21 18:16:18] Running data gathering for 2025-07-30
+[2025-11-21 18:30:26] Data gathering completed successfully for 2025-07-30
+[2025-11-21 18:30:26] Running worker agent backtest for 2025-07-30
+[2025-11-21 18:30:45] Worker agent backtest completed successfully for 2025-07-30
+[2025-11-21 18:30:45] Running main backtest for 2025-07-30
+[2025-11-21 18:31:59] Main backtest completed successfully for 2025-07-30
+[2025-11-21 18:31:59] Completed all commands for date: 2025-07-30
+[2025-11-21 18:31:59] ----------------------------------------
+[2025-11-21 18:31:59] Starting backtest sequence for date: 2025-07-31
+[2025-11-21 18:31:59] Running data gathering for 2025-07-31
+[2025-11-21 18:45:51] Data gathering completed successfully for 2025-07-31
+[2025-11-21 18:45:51] Running worker agent backtest for 2025-07-31
+[2025-11-21 18:46:13] Worker agent backtest completed successfully for 2025-07-31
+[2025-11-21 18:46:13] Running main backtest for 2025-07-31
+[2025-11-21 18:47:23] Main backtest completed successfully for 2025-07-31
+[2025-11-21 18:47:23] Completed all commands for date: 2025-07-31
+[2025-11-21 18:47:23] ----------------------------------------
+[2025-11-21 18:47:23] Starting backtest sequence for date: 2025-08-01
+[2025-11-21 18:47:23] Running data gathering for 2025-08-01
+[2025-11-21 19:01:15] Data gathering completed successfully for 2025-08-01
+[2025-11-21 19:01:15] Running worker agent backtest for 2025-08-01
+[2025-11-21 19:01:35] Worker agent backtest completed successfully for 2025-08-01
+[2025-11-21 19:01:35] Running main backtest for 2025-08-01
+[2025-11-21 19:01:52] Main backtest completed successfully for 2025-08-01
+[2025-11-21 19:01:52] Completed all commands for date: 2025-08-01
+[2025-11-21 19:01:52] ----------------------------------------
+[2025-11-21 19:01:52] Starting backtest sequence for date: 2025-08-04
+[2025-11-21 19:01:52] Running data gathering for 2025-08-04
+[2025-11-21 19:16:15] Data gathering completed successfully for 2025-08-04
+[2025-11-21 19:16:15] Running worker agent backtest for 2025-08-04
+[2025-11-21 19:16:34] Worker agent backtest completed successfully for 2025-08-04
+[2025-11-21 19:16:34] Running main backtest for 2025-08-04
+[2025-11-21 19:17:50] Main backtest completed successfully for 2025-08-04
+[2025-11-21 19:17:50] Completed all commands for date: 2025-08-04
+[2025-11-21 19:17:50] ----------------------------------------
+[2025-11-21 19:17:50] Starting backtest sequence for date: 2025-08-05
+[2025-11-21 19:17:50] Running data gathering for 2025-08-05
+[2025-11-21 19:32:02] Data gathering completed successfully for 2025-08-05
+[2025-11-21 19:32:02] Running worker agent backtest for 2025-08-05
+[2025-11-21 19:32:24] Worker agent backtest completed successfully for 2025-08-05
+[2025-11-21 19:32:24] Running main backtest for 2025-08-05
+[2025-11-21 19:33:35] Main backtest completed successfully for 2025-08-05
+[2025-11-21 19:33:35] Completed all commands for date: 2025-08-05
+[2025-11-21 19:33:35] ----------------------------------------
+[2025-11-21 19:33:35] Starting backtest sequence for date: 2025-08-06
+[2025-11-21 19:33:35] Running data gathering for 2025-08-06
+[2025-11-21 19:47:25] Data gathering completed successfully for 2025-08-06
+[2025-11-21 19:47:25] Running worker agent backtest for 2025-08-06
+[2025-11-21 19:47:43] Worker agent backtest completed successfully for 2025-08-06
+[2025-11-21 19:47:43] Running main backtest for 2025-08-06
+[2025-11-21 19:48:11] Main backtest completed successfully for 2025-08-06
+[2025-11-21 19:48:11] Completed all commands for date: 2025-08-06
+[2025-11-21 19:48:11] ----------------------------------------
+[2025-11-21 19:48:11] Starting backtest sequence for date: 2025-08-07
+[2025-11-21 19:48:11] Running data gathering for 2025-08-07
+[2025-11-21 20:02:36] Data gathering completed successfully for 2025-08-07
+[2025-11-21 20:02:36] Running worker agent backtest for 2025-08-07
+[2025-11-21 20:02:57] Worker agent backtest completed successfully for 2025-08-07
+[2025-11-21 20:02:57] Running main backtest for 2025-08-07
+[2025-11-21 20:06:09] Main backtest completed successfully for 2025-08-07
+[2025-11-21 20:06:09] Completed all commands for date: 2025-08-07
+[2025-11-21 20:06:09] ----------------------------------------
+[2025-11-21 20:06:09] Starting backtest sequence for date: 2025-08-08
+[2025-11-21 20:06:09] Running data gathering for 2025-08-08
+[2025-11-21 20:20:42] Data gathering completed successfully for 2025-08-08
+[2025-11-21 20:20:42] Running worker agent backtest for 2025-08-08
+[2025-11-21 20:21:00] Worker agent backtest completed successfully for 2025-08-08
+[2025-11-21 20:21:00] Running main backtest for 2025-08-08
+[2025-11-21 20:23:14] Main backtest completed successfully for 2025-08-08
+[2025-11-21 20:23:14] Completed all commands for date: 2025-08-08
+[2025-11-21 20:23:14] ----------------------------------------
+[2025-11-21 20:23:14] Starting backtest sequence for date: 2025-08-11
+[2025-11-21 20:23:14] Running data gathering for 2025-08-11
+[2025-11-21 20:37:22] Data gathering completed successfully for 2025-08-11
+[2025-11-21 20:37:23] Running worker agent backtest for 2025-08-11
+[2025-11-21 20:37:42] Worker agent backtest completed successfully for 2025-08-11
+[2025-11-21 20:37:42] Running main backtest for 2025-08-11
+[2025-11-21 20:38:05] Main backtest completed successfully for 2025-08-11
+[2025-11-21 20:38:05] Completed all commands for date: 2025-08-11
+[2025-11-21 20:38:05] ----------------------------------------
+[2025-11-21 20:38:05] Starting backtest sequence for date: 2025-08-12
+[2025-11-21 20:38:05] Running data gathering for 2025-08-12
+[2025-11-21 20:51:49] Data gathering completed successfully for 2025-08-12
+[2025-11-21 20:51:49] Running worker agent backtest for 2025-08-12
+[2025-11-21 20:52:09] Worker agent backtest completed successfully for 2025-08-12
+[2025-11-21 20:52:09] Running main backtest for 2025-08-12
+[2025-11-21 20:52:28] Main backtest completed successfully for 2025-08-12
+[2025-11-21 20:52:28] Completed all commands for date: 2025-08-12
+[2025-11-21 20:52:28] ----------------------------------------
+[2025-11-21 20:52:28] Starting backtest sequence for date: 2025-08-13
+[2025-11-21 20:52:28] Running data gathering for 2025-08-13
+[2025-11-21 21:06:07] Data gathering completed successfully for 2025-08-13
+[2025-11-21 21:06:07] Running worker agent backtest for 2025-08-13
+[2025-11-21 21:06:29] Worker agent backtest completed successfully for 2025-08-13
+[2025-11-21 21:06:29] Running main backtest for 2025-08-13
+[2025-11-21 21:06:49] Main backtest completed successfully for 2025-08-13
+[2025-11-21 21:06:49] Completed all commands for date: 2025-08-13
+[2025-11-21 21:06:49] ----------------------------------------
+[2025-11-21 21:06:49] Starting backtest sequence for date: 2025-08-14
+[2025-11-21 21:06:49] Running data gathering for 2025-08-14
+[2025-11-21 21:20:35] Data gathering completed successfully for 2025-08-14
+[2025-11-21 21:20:35] Running worker agent backtest for 2025-08-14
+[2025-11-21 21:20:55] Worker agent backtest completed successfully for 2025-08-14
+[2025-11-21 21:20:55] Running main backtest for 2025-08-14
+[2025-11-21 21:21:12] Main backtest completed successfully for 2025-08-14
+[2025-11-21 21:21:12] Completed all commands for date: 2025-08-14
+[2025-11-21 21:21:12] ----------------------------------------
+[2025-11-21 21:21:12] Starting backtest sequence for date: 2025-08-15
+[2025-11-21 21:21:12] Running data gathering for 2025-08-15
+[2025-11-21 21:35:22] Data gathering completed successfully for 2025-08-15
+[2025-11-21 21:35:22] Running worker agent backtest for 2025-08-15
+[2025-11-21 21:35:41] Worker agent backtest completed successfully for 2025-08-15
+[2025-11-21 21:35:41] Running main backtest for 2025-08-15
+[2025-11-21 21:35:59] Main backtest completed successfully for 2025-08-15
+[2025-11-21 21:35:59] Completed all commands for date: 2025-08-15
+[2025-11-21 21:35:59] ----------------------------------------
+[2025-11-21 21:35:59] All backtest sequences completed
+[2025-11-22 14:58:53] Starting backtest sequence for date: 2025-07-28
+[2025-11-22 14:58:53] Running data gathering for 2025-07-28
+[2025-11-22 14:58:56] ERROR: Data gathering failed for 2025-07-28
+[2025-11-22 14:58:56] Starting backtest sequence for date: 2025-07-29
+[2025-11-22 14:58:56] Running data gathering for 2025-07-29
+[2025-11-22 14:58:58] ERROR: Data gathering failed for 2025-07-29
+[2025-11-22 14:58:58] Starting backtest sequence for date: 2025-07-30
+[2025-11-22 14:58:58] Running data gathering for 2025-07-30
+[2025-11-22 14:59:00] ERROR: Data gathering failed for 2025-07-30
+[2025-11-22 14:59:00] Starting backtest sequence for date: 2025-07-31
+[2025-11-22 14:59:00] Running data gathering for 2025-07-31
+[2025-11-22 14:59:02] ERROR: Data gathering failed for 2025-07-31
+[2025-11-22 14:59:02] Starting backtest sequence for date: 2025-08-01
+[2025-11-22 14:59:02] Running data gathering for 2025-08-01
+[2025-11-22 14:59:03] ERROR: Data gathering failed for 2025-08-01
+[2025-11-22 14:59:03] Starting backtest sequence for date: 2025-08-04
+[2025-11-22 14:59:03] Running data gathering for 2025-08-04
+[2025-11-22 14:59:05] ERROR: Data gathering failed for 2025-08-04
+[2025-11-22 14:59:05] Starting backtest sequence for date: 2025-08-05
+[2025-11-22 14:59:05] Running data gathering for 2025-08-05
+[2025-11-22 14:59:07] ERROR: Data gathering failed for 2025-08-05
+[2025-11-22 14:59:07] Starting backtest sequence for date: 2025-08-06
+[2025-11-22 14:59:07] Running data gathering for 2025-08-06
+[2025-11-22 14:59:09] ERROR: Data gathering failed for 2025-08-06
+[2025-11-22 14:59:09] Starting backtest sequence for date: 2025-08-07
+[2025-11-22 14:59:09] Running data gathering for 2025-08-07
+[2025-11-22 14:59:11] ERROR: Data gathering failed for 2025-08-07
+[2025-11-22 14:59:11] Starting backtest sequence for date: 2025-08-08
+[2025-11-22 14:59:11] Running data gathering for 2025-08-08
+[2025-11-22 14:59:13] ERROR: Data gathering failed for 2025-08-08
+[2025-11-22 14:59:13] Starting backtest sequence for date: 2025-08-11
+[2025-11-22 14:59:13] Running data gathering for 2025-08-11
+[2025-11-22 14:59:26] Data gathering completed successfully for 2025-08-11
+[2025-11-22 14:59:26] Running worker agent backtest for 2025-08-11
+[2025-11-22 14:59:28] ERROR: Worker agent backtest failed for 2025-08-11
+[2025-11-22 14:59:28] Starting backtest sequence for date: 2025-08-12
+[2025-11-22 14:59:28] Running data gathering for 2025-08-12
+[2025-11-22 14:59:34] ERROR: Data gathering failed for 2025-08-12
+[2025-11-22 14:59:34] Starting backtest sequence for date: 2025-08-13
+[2025-11-22 14:59:34] Running data gathering for 2025-08-13

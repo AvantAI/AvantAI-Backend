@@ -139,7 +139,7 @@ func main() {
 		log.Fatal("MARKETSTACK_TOKEN not found in environment or .env file")
 	}
 
-	polygonToken = os.Getenv("POLYGON_TOKEN")
+	polygonToken = os.Getenv("POLYGON_KEY")
 	if polygonToken == "" {
 		log.Println("⚠️  POLYGON_TOKEN not found, intraday weak close detection disabled")
 	}

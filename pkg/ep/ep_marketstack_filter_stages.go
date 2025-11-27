@@ -135,8 +135,8 @@ const (
 	NEAR_EMA_ADR_THRESHOLD     = 2.0 // Within 2 ADRs of 10/20 EMA
 
 	// API rate limiting
-	API_CALLS_PER_SECOND = 5
-	MAX_CONCURRENT       = 5
+	API_CALLS_PER_SECOND = 10
+	MAX_CONCURRENT       = 10
 )
 
 func FilterStocksEpisodicPivot(apiKey string, tiingoKey string) {

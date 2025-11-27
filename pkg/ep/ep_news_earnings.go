@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/joho/godotenv"
 )
 
 // Scraped data structures
@@ -62,6 +63,19 @@ type SECFilingsResponse struct {
 			Items           []string `json:"items"`
 		} `json:"recent"`
 	} `json:"filings"`
+}
+
+// FinancialModelingPrep API structures
+type FMPEarningsResponse struct {
+	Symbol           string  `json:"symbol"`
+	Date             string  `json:"date"`
+	Eps              float64 `json:"eps"`
+	EpsEstimated     float64 `json:"epsEstimated"`
+	Revenue          int64   `json:"revenue"`
+	RevenueEstimated int64   `json:"revenueEstimated"`
+	FiscalDateEnding string  `json:"fiscalDateEnding"`
+	Time             string  `json:"time"`
+	UpdatedFromDate  string  `json:"updatedFromDate"`
 }
 
 // Exhibit information
@@ -133,8 +147,8 @@ func GetNewsAndEarnings(wg *sync.WaitGroup, ticker string, dateStr string) {
 	// Filter articles by date
 	scrapedData.NewsArticles = filterArticlesByDate(scrapedData.NewsArticles, targetDate)
 	scrapedData.EarningsReports = filterEarningsByDate(scrapedData.EarningsReports, targetDate)
-	
-	fmt.Printf("After date filtering: %d news articles, %d earnings reports\n", 
+
+	fmt.Printf("After date filtering: %d news articles, %d earnings reports\n",
 		len(scrapedData.NewsArticles), len(scrapedData.EarningsReports))
 
 	// If no earnings reports found from news scraping, try SEC EDGAR directly
@@ -153,13 +167,22 @@ func GetNewsAndEarnings(wg *sync.WaitGroup, ticker string, dateStr string) {
 			}
 			scrapedData.EarningsReports = append(scrapedData.EarningsReports, earningsReport)
 			fmt.Printf("Added SEC EDGAR earnings report\n")
+		} else {
+			// If SEC EDGAR also fails, try FinancialModelingPrep API
+			fmt.Printf("SEC EDGAR returned no results, trying FinancialModelingPrep API...\n")
+			if fmpReport := fetchFromFMP(client, ticker, targetDate); fmpReport != nil {
+				scrapedData.EarningsReports = append(scrapedData.EarningsReports, *fmpReport)
+				fmt.Printf("Added FinancialModelingPrep earnings report\n")
+			} else {
+				fmt.Printf("No earnings data found from any source\n")
+			}
 		}
 	}
 
 	// Fetch full content for all articles (with rate limiting)
 	fmt.Printf("Fetching full content for %d articles...\n", len(scrapedData.NewsArticles))
 	scrapedData.NewsArticles = fetchFullArticleContent(client, scrapedData.NewsArticles)
-	
+
 	fmt.Printf("Fetching full content for %d earnings reports...\n", len(scrapedData.EarningsReports))
 	scrapedData.EarningsReports = fetchFullEarningsContent(client, scrapedData.EarningsReports)
 
@@ -188,36 +211,36 @@ func GetNewsAndEarnings(wg *sync.WaitGroup, ticker string, dateStr string) {
 func fetchFullArticleContent(client *http.Client, articles []NewsArticle) []NewsArticle {
 	var wg sync.WaitGroup
 	articlesChan := make(chan NewsArticle, len(articles))
-	
+
 	// Rate limiter: max 3 concurrent requests
 	semaphore := make(chan struct{}, 3)
-	
+
 	for _, article := range articles {
 		wg.Add(1)
 		go func(a NewsArticle) {
 			defer wg.Done()
-			semaphore <- struct{}{} // Acquire
+			semaphore <- struct{}{}        // Acquire
 			defer func() { <-semaphore }() // Release
-			
+
 			// Add delay between requests
 			time.Sleep(500 * time.Millisecond)
-			
+
 			content := fetchArticleContent(client, a.URL, a.Source)
 			a.Content = content
 			articlesChan <- a
 		}(article)
 	}
-	
+
 	go func() {
 		wg.Wait()
 		close(articlesChan)
 	}()
-	
+
 	var enrichedArticles []NewsArticle
 	for article := range articlesChan {
 		enrichedArticles = append(enrichedArticles, article)
 	}
-	
+
 	return enrichedArticles
 }
 
@@ -225,56 +248,56 @@ func fetchFullArticleContent(client *http.Client, articles []NewsArticle) []News
 func fetchFullEarningsContent(client *http.Client, earnings []EarningsReport) []EarningsReport {
 	var wg sync.WaitGroup
 	earningsChan := make(chan EarningsReport, len(earnings))
-	
+
 	// Rate limiter: max 2 concurrent requests (more conservative for earnings)
 	semaphore := make(chan struct{}, 2)
-	
+
 	for _, earning := range earnings {
 		wg.Add(1)
 		go func(e EarningsReport) {
 			defer wg.Done()
-			semaphore <- struct{}{} // Acquire
+			semaphore <- struct{}{}        // Acquire
 			defer func() { <-semaphore }() // Release
-			
+
 			// Parse report date
 			reportDate, err := time.Parse("2006-01-02", e.ReportDate)
 			if err != nil {
 				reportDate = time.Now()
 			}
-			
+
 			// Fetch earnings content from SEC EDGAR or original URL
 			content := fetchEarningsReportContent(client, e.Ticker, reportDate, e.URL)
 			e.Content = content
 			earningsChan <- e
-			
+
 			// Longer delay between earnings requests
 			time.Sleep(2 * time.Second)
 		}(earning)
 	}
-	
+
 	go func() {
 		wg.Wait()
 		close(earningsChan)
 	}()
-	
+
 	var enrichedEarnings []EarningsReport
 	for earning := range earningsChan {
 		enrichedEarnings = append(enrichedEarnings, earning)
 	}
-	
+
 	return enrichedEarnings
 }
 
 // Fetch earnings report content with SEC EDGAR and fallback to original URL
 func fetchEarningsReportContent(client *http.Client, ticker string, reportDate time.Time, originalURL string) string {
 	fmt.Printf("Fetching earnings content for %s on %s\n", ticker, reportDate.Format("2006-01-02"))
-	
+
 	// Method 1: Try SEC EDGAR first (most reliable and FREE)
 	if content := fetchFromSECEdgar(client, ticker, reportDate); content != "" {
 		fmt.Printf("✓ Successfully fetched earnings from SEC EDGAR\n")
 		return content
 	}
-	
+
 	// Method 2: Try original URL if it's valid
 	if strings.HasPrefix(originalURL, "http://") || strings.HasPrefix(originalURL, "https://") {
 		if content := fetchArticleContent(client, originalURL, ""); content != "" {
@@ -282,7 +305,7 @@ func fetchEarningsReportContent(client *http.Client, ticker string, reportDate t
 			return content
 		}
 	}
-	
+
 	fmt.Printf("✗ Failed to fetch earnings content for %s\n", ticker)
 	return "Unable to fetch full earnings report. Please check SEC EDGAR directly."
 }
@@ -294,36 +317,36 @@ func fetchArticleContent(client *http.Client, url, source string) string {
 		fmt.Printf("Skipping invalid URL (no protocol): %s\n", url)
 		return ""
 	}
-	
+
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		fmt.Printf("Error creating request for %s: %v\n", url, err)
 		return ""
 	}
-	
+
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-	
+
 	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Printf("Error fetching %s: %v\n", url, err)
 		return ""
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != 200 {
 		fmt.Printf("Non-200 status code for %s: %d\n", url, resp.StatusCode)
 		return ""
 	}
-	
+
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
 		fmt.Printf("Error parsing HTML for %s: %v\n", url, err)
 		return ""
 	}
-	
+
 	// Extract content based on source
 	var content string
-	
+
 	if strings.Contains(source, "Yahoo Finance") {
 		content = extractYahooContent(doc)
 	} else if strings.Contains(source, "MarketWatch") {
@@ -334,8 +357,161 @@ func fetchArticleContent(client *http.Client, url, source string) string {
 	} else {
 		content = extractGenericContent(doc)
 	}
-	
+
 	return cleanText(content)
+}
+
+// ============================================================================
+// FINANCIALMODELINGPREP API FUNCTIONS
+// ============================================================================
+
+// Fetch earnings from FinancialModelingPrep API
+func fetchFromFMP(client *http.Client, ticker string, targetDate time.Time) *EarningsReport {
+	// Load API key from environment
+	godotenv.Load() // Load .env file if it exists
+	apiKey := os.Getenv("FMP_KEY")
+	if apiKey == "" {
+		fmt.Printf("FMP_KEY not found in environment variables\n")
+		return nil
+	}
+
+	// Try to get earnings data
+	earnings := fetchFMPEarnings(client, ticker, targetDate, apiKey)
+	if earnings == nil {
+		fmt.Printf("No earnings data found from FMP for %s\n", ticker)
+		return nil
+	}
+
+	// Build the earnings report
+	report := &EarningsReport{
+		Ticker:        ticker,
+		CompanyName:   ticker,
+		ReportDate:    earnings.Date,
+		Period:        earnings.FiscalDateEnding,
+		Summary:       fmt.Sprintf("Earnings data for %s - %s", ticker, earnings.Date),
+		Source:        "FinancialModelingPrep API",
+		URL:           fmt.Sprintf("https://financialmodelingprep.com/api/v3/historical/earning_calendar/%s?apikey=%s", ticker, apiKey),
+		Metrics:       make(map[string]string),
+		KeyHighlights: []string{},
+	}
+
+	// Add metrics
+	report.Metrics["EPS Actual"] = fmt.Sprintf("%.2f", earnings.Eps)
+	report.Metrics["EPS Estimated"] = fmt.Sprintf("%.2f", earnings.EpsEstimated)
+	report.Metrics["Revenue"] = fmt.Sprintf("$%d", earnings.Revenue)
+	report.Metrics["Revenue Estimated"] = fmt.Sprintf("$%d", earnings.RevenueEstimated)
+
+	// Calculate surprises
+	epsSurprise := earnings.Eps - earnings.EpsEstimated
+	revenueSurprise := float64(earnings.Revenue-earnings.RevenueEstimated) / float64(earnings.RevenueEstimated) * 100
+
+	report.KeyHighlights = append(report.KeyHighlights,
+		fmt.Sprintf("EPS: %.2f (Est: %.2f, Surprise: %.2f)", earnings.Eps, earnings.EpsEstimated, epsSurprise),
+		fmt.Sprintf("Revenue: $%d (Est: $%d, Surprise: %.1f%%)", earnings.Revenue, earnings.RevenueEstimated, revenueSurprise),
+	)
+
+	// Build content summary
+	report.Content = fmt.Sprintf(
+		"Earnings Summary for %s\n\n"+
+			"Report Date: %s\n"+
+			"Fiscal Period Ending: %s\n\n"+
+			"Financial Results:\n"+
+			"- EPS (Actual): %.2f\n"+
+			"- EPS (Estimated): %.2f\n"+
+			"- EPS Surprise: %.2f\n\n"+
+			"- Revenue (Actual): $%d\n"+
+			"- Revenue (Estimated): $%d\n"+
+			"- Revenue Surprise: %.1f%%\n\n"+
+			"Announcement Time: %s\n",
+		ticker, earnings.Date, earnings.FiscalDateEnding,
+		earnings.Eps, earnings.EpsEstimated, epsSurprise,
+		earnings.Revenue, earnings.RevenueEstimated, revenueSurprise,
+		earnings.Time,
+	)
+
+	return report
+}
+
+// Fetch earnings data from FMP
+func fetchFMPEarnings(client *http.Client, ticker string, targetDate time.Time, apiKey string) *FMPEarningsResponse {
+	// Get earnings calendar for the specific date range
+	// Search within 7 days before and after target date for more precision
+	fromDate := targetDate.AddDate(0, 0, -7).Format("2006-01-02")
+	toDate := targetDate.AddDate(0, 0, 7).Format("2006-01-02")
+
+	url := fmt.Sprintf(
+		"https://financialmodelingprep.com/api/v3/historical/earning_calendar/%s?from=%s&to=%s&apikey=%s",
+		ticker, fromDate, toDate, apiKey,
+	)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		fmt.Printf("Error creating FMP request: %v\n", err)
+		return nil
+	}
+
+	req.Header.Set("User-Agent", "Mozilla/5.0")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("Error fetching from FMP: %v\n", err)
+		return nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		fmt.Printf("FMP API returned status %d\n", resp.StatusCode)
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		fmt.Printf("Response: %s\n", string(bodyBytes))
+		return nil
+	}
+
+	var earnings []FMPEarningsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&earnings); err != nil {
+		fmt.Printf("Error decoding FMP response: %v\n", err)
+		return nil
+	}
+
+	if len(earnings) == 0 {
+		fmt.Printf("No earnings found in FMP response for date range %s to %s\n", fromDate, toDate)
+		return nil
+	}
+
+	// Find the earnings report closest to the target date (within 2 days)
+	var closestEarnings *FMPEarningsResponse
+	minDiff := 365 * 24 * time.Hour
+
+	for i := range earnings {
+		earningsDate, err := time.Parse("2006-01-02", earnings[i].Date)
+		if err != nil {
+			continue
+		}
+
+		diff := earningsDate.Sub(targetDate)
+		if diff < 0 {
+			diff = -diff
+		}
+
+		// Only consider earnings within 2 days of target date
+		if diff.Hours()/24 > 2 {
+			continue
+		}
+
+		if diff < minDiff {
+			minDiff = diff
+			closestEarnings = &earnings[i]
+		}
+	}
+
+	if closestEarnings != nil {
+		daysDiff := minDiff.Hours() / 24
+		fmt.Printf("Found FMP earnings for %s on %s (%.0f days from target date %s)\n",
+			ticker, closestEarnings.Date, daysDiff, targetDate.Format("2006-01-02"))
+	} else {
+		fmt.Printf("No earnings found within 2 days of target date %s\n", targetDate.Format("2006-01-02"))
+	}
+
+	return closestEarnings
 }
 
 // ============================================================================
@@ -347,45 +523,45 @@ func fetchFromSECEdgar(client *http.Client, ticker string, targetDate time.Time)
 	// SEC requires a User-Agent with company name and email
 	// IMPORTANT: Replace this with your actual contact info
 	userAgent := "PersonalProject yourname@youremail.com"
-	
+
 	// First, get the CIK (Central Index Key) for the ticker
 	cik := getCIKFromTicker(client, ticker, userAgent)
 	if cik == "" {
 		fmt.Printf("Could not find CIK for ticker %s\n", ticker)
 		return ""
 	}
-	
+
 	// Format CIK with leading zeros (10 digits)
 	cik = fmt.Sprintf("%010s", cik)
-	
+
 	// Fetch recent filings
 	filingURL := fmt.Sprintf("https://data.sec.gov/submissions/CIK%s.json", cik)
-	
+
 	req, err := http.NewRequest("GET", filingURL, nil)
 	if err != nil {
 		return ""
 	}
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "application/json")
-	
+
 	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Printf("Error fetching SEC filings: %v\n", err)
 		return ""
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != 200 {
 		fmt.Printf("SEC API returned status %d\n", resp.StatusCode)
 		return ""
 	}
-	
+
 	var filings SECFilingsResponse
 	if err := json.NewDecoder(resp.Body).Decode(&filings); err != nil {
 		fmt.Printf("Error decoding SEC response: %v\n", err)
 		return ""
 	}
-	
+
 	// Find relevant earnings filing (8-K or 10-Q) closest to target date
 	var bestFiling struct {
 		accessionNumber string
@@ -393,27 +569,27 @@ func fetchFromSECEdgar(client *http.Client, ticker string, targetDate time.Time)
 		formType        string
 		filingDate      string
 	}
-	
+
 	minDiff := 90 * 24 * time.Hour // Max 90 days difference
-	
+
 	for i := 0; i < len(filings.Filings.Recent.FormType); i++ {
 		formType := filings.Filings.Recent.FormType[i]
-		
+
 		// Look for earnings-related forms
 		if formType != "8-K" && formType != "10-Q" && formType != "10-K" {
 			continue
 		}
-		
+
 		filingDate, err := time.Parse("2006-01-02", filings.Filings.Recent.FilingDate[i])
 		if err != nil {
 			continue
 		}
-		
+
 		diff := filingDate.Sub(targetDate)
 		if diff < 0 {
 			diff = -diff
 		}
-		
+
 		// For 8-K, check if it's earnings-related
 		if formType == "8-K" {
 			items := filings.Filings.Recent.Items[i]
@@ -422,7 +598,7 @@ func fetchFromSECEdgar(client *http.Client, ticker string, targetDate time.Time)
 				continue
 			}
 		}
-		
+
 		if diff < minDiff {
 			minDiff = diff
 			bestFiling.accessionNumber = filings.Filings.Recent.AccessionNumber[i]
@@ -431,28 +607,28 @@ func fetchFromSECEdgar(client *http.Client, ticker string, targetDate time.Time)
 			bestFiling.filingDate = filings.Filings.Recent.FilingDate[i]
 		}
 	}
-	
+
 	if bestFiling.accessionNumber == "" {
 		fmt.Printf("No relevant SEC filings found near %s\n", targetDate.Format("2006-01-02"))
 		return ""
 	}
-	
+
 	fmt.Printf("Found SEC filing: %s filed on %s\n", bestFiling.formType, bestFiling.filingDate)
-	
+
 	// For 8-K filings, we need to get the exhibits (99.1, 99.2) which contain the actual earnings content
 	accessionNoSlash := strings.ReplaceAll(bestFiling.accessionNumber, "-", "")
-	
+
 	if bestFiling.formType == "8-K" {
 		// Fetch the index page to find all exhibits
 		indexURL := fmt.Sprintf("https://www.sec.gov/cgi-bin/viewer?action=view&cik=%s&accession_number=%s&xbrl_type=v",
 			strings.TrimLeft(cik, "0"), bestFiling.accessionNumber)
-		
+
 		exhibits := findExhibits(client, indexURL, userAgent, cik, accessionNoSlash)
-		
+
 		// Fetch content from all exhibits (usually 99.1 is press release, 99.2 is financials)
 		var allContent strings.Builder
 		successCount := 0
-		
+
 		for i, exhibit := range exhibits {
 			fmt.Printf("Attempting to fetch exhibit: %s from %s\n", exhibit.name, exhibit.url)
 			content := fetchSECDocument(client, exhibit.url, userAgent)
@@ -464,31 +640,31 @@ func fetchFromSECEdgar(client *http.Client, ticker string, targetDate time.Time)
 					allContent.WriteString(strings.Repeat("=", 80) + "\n\n")
 				}
 				allContent.WriteString(content)
-				
+
 				// Stop after successfully getting 2-3 exhibits (usually that's all we need)
 				if successCount >= 3 {
 					break
 				}
 			}
-			
+
 			// Only try up to 10 exhibit URLs to avoid too many failed requests
 			if i >= 9 {
 				break
 			}
 		}
-		
+
 		if allContent.Len() > 0 {
 			fmt.Printf("Successfully fetched %d exhibits\n", successCount)
 			return allContent.String()
 		}
-		
+
 		fmt.Printf("Failed to fetch any exhibits, will try primary document\n")
 	}
-	
+
 	// Fallback: fetch the primary document
 	docURL := fmt.Sprintf("https://www.sec.gov/Archives/edgar/data/%s/%s/%s",
 		strings.TrimLeft(cik, "0"), accessionNoSlash, bestFiling.primaryDoc)
-	
+
 	return fetchSECDocument(client, docURL, userAgent)
 }
 
@@ -497,12 +673,12 @@ func findExhibits(client *http.Client, indexURL, userAgent, cik, accessionNoSlas
 	// First, try the more direct approach - fetch the filing's index.htm or -index.htm
 	baseURL := fmt.Sprintf("https://www.sec.gov/Archives/edgar/data/%s/%s/",
 		strings.TrimLeft(cik, "0"), accessionNoSlash)
-	
+
 	// Try common index file names
 	indexFiles := []string{accessionNoSlash + "-index.htm", accessionNoSlash + "-index.html", "index.htm", "index.html"}
-	
+
 	var doc *goquery.Document
-	
+
 	for _, indexFile := range indexFiles {
 		tryURL := baseURL + indexFile
 		req, err := http.NewRequest("GET", tryURL, nil)
@@ -510,12 +686,12 @@ func findExhibits(client *http.Client, indexURL, userAgent, cik, accessionNoSlas
 			continue
 		}
 		req.Header.Set("User-Agent", userAgent)
-		
+
 		resp, err := client.Do(req)
 		if err != nil {
 			continue
 		}
-		
+
 		if resp.StatusCode == 200 {
 			doc, err = goquery.NewDocumentFromReader(resp.Body)
 			resp.Body.Close()
@@ -528,20 +704,20 @@ func findExhibits(client *http.Client, indexURL, userAgent, cik, accessionNoSlas
 			resp.Body.Close()
 		}
 	}
-	
+
 	var exhibits []Exhibit
-	
+
 	if doc != nil {
 		// Look for exhibit files in the index table
 		doc.Find("table").Each(func(i int, table *goquery.Selection) {
 			table.Find("tr").Each(func(j int, row *goquery.Selection) {
 				cells := row.Find("td")
-				
+
 				// Handle different table formats (3, 4, or 5 columns)
 				if cells.Length() >= 3 {
 					var typeText, descText string
 					var link *goquery.Selection
-					
+
 					// Common format: Seq | Description | Document | Type | Size
 					// Or: Type | Description | Document
 					if cells.Length() >= 4 {
@@ -555,7 +731,7 @@ func findExhibits(client *http.Client, indexURL, userAgent, cik, accessionNoSlas
 						descText = strings.TrimSpace(cells.Eq(1).Text())
 						link = cells.Eq(2).Find("a").First()
 					}
-					
+
 					// If we still don't have a link, search all cells
 					if link.Length() == 0 {
 						row.Find("a").Each(func(k int, a *goquery.Selection) {
@@ -564,10 +740,10 @@ func findExhibits(client *http.Client, indexURL, userAgent, cik, accessionNoSlas
 							}
 						})
 					}
-					
+
 					// Combine type and description for matching
 					combined := strings.ToLower(typeText + " " + descText)
-					
+
 					// Look for earnings-related exhibits with very broad matching
 					isRelevantExhibit := strings.Contains(combined, "ex-99") ||
 						strings.Contains(combined, "exhibit 99") ||
@@ -579,7 +755,7 @@ func findExhibits(client *http.Client, indexURL, userAgent, cik, accessionNoSlas
 						strings.Contains(combined, "earnings") ||
 						strings.Contains(combined, "financial results") ||
 						(strings.Contains(combined, "exhibit") && strings.Contains(combined, "99"))
-					
+
 					if isRelevantExhibit && link.Length() > 0 {
 						if href, exists := link.Attr("href"); exists && href != "" {
 							// Make URL absolute
@@ -590,7 +766,7 @@ func findExhibits(client *http.Client, indexURL, userAgent, cik, accessionNoSlas
 									href = baseURL + href
 								}
 							}
-							
+
 							// Create a descriptive name
 							exhibitName := descText
 							if exhibitName == "" {
@@ -599,7 +775,7 @@ func findExhibits(client *http.Client, indexURL, userAgent, cik, accessionNoSlas
 							if exhibitName == "" {
 								exhibitName = "Earnings Exhibit"
 							}
-							
+
 							exhibits = append(exhibits, Exhibit{
 								name: strings.TrimSpace(exhibitName),
 								url:  href,
@@ -611,12 +787,12 @@ func findExhibits(client *http.Client, indexURL, userAgent, cik, accessionNoSlas
 			})
 		})
 	}
-	
+
 	if len(exhibits) > 0 {
 		fmt.Printf("Found %d exhibits via index parsing\n", len(exhibits))
 		return exhibits
 	}
-	
+
 	// Fallback to common exhibit construction
 	fmt.Printf("No exhibits found via index, falling back to common patterns\n")
 	return constructCommonExhibits(cik, accessionNoSlash)
@@ -626,7 +802,7 @@ func findExhibits(client *http.Client, indexURL, userAgent, cik, accessionNoSlas
 func constructCommonExhibits(cik, accessionNoSlash string) []Exhibit {
 	baseURL := fmt.Sprintf("https://www.sec.gov/Archives/edgar/data/%s/%s/",
 		strings.TrimLeft(cik, "0"), accessionNoSlash)
-	
+
 	// Common exhibit file naming patterns - try many variations
 	commonExhibits := []string{
 		// Standard patterns
@@ -651,7 +827,7 @@ func constructCommonExhibits(cik, accessionNoSlash string) []Exhibit {
 		"ex99_1.txt",
 		"ex-99_1.txt",
 	}
-	
+
 	var exhibits []Exhibit
 	for _, filename := range commonExhibits {
 		exhibits = append(exhibits, Exhibit{
@@ -659,7 +835,7 @@ func constructCommonExhibits(cik, accessionNoSlash string) []Exhibit {
 			url:  baseURL + filename,
 		})
 	}
-	
+
 	fmt.Printf("Generated %d potential exhibit URLs to try\n", len(exhibits))
 	return exhibits
 }
@@ -668,57 +844,57 @@ func constructCommonExhibits(cik, accessionNoSlash string) []Exhibit {
 func getCIKFromTicker(client *http.Client, ticker string, userAgent string) string {
 	// SEC maintains a ticker to CIK mapping
 	url := "https://www.sec.gov/files/company_tickers.json"
-	
+
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return ""
 	}
 	req.Header.Set("User-Agent", userAgent)
-	
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return ""
 	}
 	defer resp.Body.Close()
-	
+
 	var tickers map[string]struct {
 		CIK    int    `json:"cik_str"`
 		Ticker string `json:"ticker"`
 		Title  string `json:"title"`
 	}
-	
+
 	if err := json.NewDecoder(resp.Body).Decode(&tickers); err != nil {
 		return ""
 	}
-	
+
 	ticker = strings.ToUpper(ticker)
 	for _, v := range tickers {
 		if strings.ToUpper(v.Ticker) == ticker {
 			return fmt.Sprintf("%d", v.CIK)
 		}
 	}
-	
+
 	return ""
 }
 
 // Fetch and parse SEC document
 func fetchSECDocument(client *http.Client, docURL, userAgent string) string {
 	fmt.Printf("Fetching: %s\n", docURL)
-	
+
 	req, err := http.NewRequest("GET", docURL, nil)
 	if err != nil {
 		return ""
 	}
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-	
+
 	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Printf("Error fetching SEC document: %v\n", err)
 		return ""
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != 200 {
 		// For exhibits, a 404 is normal if the filename doesn't match
 		// Don't log errors for common exhibit attempts
@@ -727,23 +903,23 @@ func fetchSECDocument(client *http.Client, docURL, userAgent string) string {
 		}
 		return ""
 	}
-	
+
 	// Read the body first
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Printf("Error reading response body: %v\n", err)
 		return ""
 	}
-	
+
 	// Check if it's actually binary data (images, PDFs, etc) - skip these
 	contentType := resp.Header.Get("Content-Type")
-	if strings.Contains(contentType, "image") || 
-	   strings.Contains(contentType, "pdf") || 
-	   strings.Contains(contentType, "octet-stream") {
+	if strings.Contains(contentType, "image") ||
+		strings.Contains(contentType, "pdf") ||
+		strings.Contains(contentType, "octet-stream") {
 		fmt.Printf("Skipping binary content type: %s\n", contentType)
 		return ""
 	}
-	
+
 	// Check for binary data by looking at first bytes
 	if len(bodyBytes) > 4 {
 		// Check for common binary file signatures
@@ -760,48 +936,48 @@ func fetchSECDocument(client *http.Client, docURL, userAgent string) string {
 			return ""
 		}
 	}
-	
+
 	// Convert to string and check if it's mostly printable
 	content := string(bodyBytes)
 	if !isPrintableText(content) {
 		fmt.Printf("Skipping non-printable/binary content\n")
 		return ""
 	}
-	
+
 	// Check if it's HTML
 	isHTML := strings.Contains(contentType, "html") || strings.Contains(content[:min(512, len(content))], "<html")
-	
+
 	if !isHTML {
 		// Plain text document - clean it up
 		return cleanTextContent(content)
 	}
-	
+
 	// Parse as HTML
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(content))
 	if err != nil {
 		// If parsing fails, return cleaned text
 		return cleanTextContent(content)
 	}
-	
+
 	// Remove script, style, and other non-content elements
 	doc.Find("script, style, meta, link, noscript").Remove()
-	
+
 	// Extract text from HTML - prioritize the main content
 	var textContent strings.Builder
-	
+
 	// For SEC documents, look for specific content areas
 	mainContent := doc.Find("body").First()
 	if mainContent.Length() == 0 {
 		mainContent = doc.Selection
 	}
-	
+
 	// Extract text while preserving some structure
 	seenText := make(map[string]bool)
-	
+
 	mainContent.Find("p, div, td, li, h1, h2, h3, h4, span").Each(func(i int, s *goquery.Selection) {
 		// Get direct text (not from children)
 		text := strings.TrimSpace(s.Contents().Not("script, style").Text())
-		
+
 		// Filter out very short text, HTML artifacts, and duplicates
 		if len(text) > 15 && !strings.HasPrefix(text, "<") && !seenText[text] {
 			// Avoid repeating the same text if it appears in nested elements
@@ -810,21 +986,21 @@ func fetchSECDocument(client *http.Client, docURL, userAgent string) string {
 			textContent.WriteString("\n\n")
 		}
 	})
-	
+
 	result := textContent.String()
-	
+
 	// If we didn't get much content, try a simpler approach
 	if len(result) < 500 {
 		result = strings.TrimSpace(doc.Text())
 	}
-	
+
 	// Clean up the result
 	result = cleanTextContent(result)
-	
+
 	if len(result) > 100 {
 		fmt.Printf("✓ Successfully extracted %d characters of content\n", len(result))
 	}
-	
+
 	return result
 }
 
@@ -833,10 +1009,10 @@ func isPrintableText(s string) bool {
 	if len(s) == 0 {
 		return false
 	}
-	
+
 	printableCount := 0
 	sampleSize := min(1000, len(s))
-	
+
 	for i := 0; i < sampleSize; i++ {
 		c := s[i]
 		// Allow common printable ASCII, newlines, tabs
@@ -844,7 +1020,7 @@ func isPrintableText(s string) bool {
 			printableCount++
 		}
 	}
-	
+
 	// If less than 80% is printable, it's probably binary
 	return float64(printableCount)/float64(sampleSize) > 0.8
 }
@@ -865,24 +1041,17 @@ func cleanTextContent(text string) string {
 		}
 		return r
 	}, text)
-	
+
 	// Clean up excessive whitespace
 	re := regexp.MustCompile(`\s+`)
 	cleaned = re.ReplaceAllString(cleaned, " ")
-	
+
 	// Clean up excessive newlines
 	re = regexp.MustCompile(`\n\s*\n\s*\n+`)
 	cleaned = re.ReplaceAllString(cleaned, "\n\n")
-	
+
 	return strings.TrimSpace(cleaned)
 }
-
-// func min(a, b int) int {
-// 	if a < b {
-// 		return a
-// 	}
-// 	return b
-// }
 
 // ============================================================================
 // CONTENT EXTRACTION FUNCTIONS
@@ -891,7 +1060,7 @@ func cleanTextContent(text string) string {
 // Extract content from Yahoo Finance articles
 func extractYahooContent(doc *goquery.Document) string {
 	var paragraphs []string
-	
+
 	// Yahoo Finance article body selectors
 	doc.Find("div.caas-body p, article p, div[data-test-locator='paragraph'] p").Each(func(i int, s *goquery.Selection) {
 		text := s.Text()
@@ -899,7 +1068,7 @@ func extractYahooContent(doc *goquery.Document) string {
 			paragraphs = append(paragraphs, text)
 		}
 	})
-	
+
 	if len(paragraphs) == 0 {
 		// Fallback: try to get all paragraphs
 		doc.Find("p").Each(func(i int, s *goquery.Selection) {
@@ -909,14 +1078,14 @@ func extractYahooContent(doc *goquery.Document) string {
 			}
 		})
 	}
-	
+
 	return strings.Join(paragraphs, "\n\n")
 }
 
 // Extract content from MarketWatch articles
 func extractMarketWatchContent(doc *goquery.Document) string {
 	var paragraphs []string
-	
+
 	// MarketWatch article body selectors
 	doc.Find("div.article__body p, div.body__content p, article p").Each(func(i int, s *goquery.Selection) {
 		text := s.Text()
@@ -924,7 +1093,7 @@ func extractMarketWatchContent(doc *goquery.Document) string {
 			paragraphs = append(paragraphs, text)
 		}
 	})
-	
+
 	if len(paragraphs) == 0 {
 		// Fallback
 		doc.Find("p").Each(func(i int, s *goquery.Selection) {
@@ -934,17 +1103,17 @@ func extractMarketWatchContent(doc *goquery.Document) string {
 			}
 		})
 	}
-	
+
 	return strings.Join(paragraphs, "\n\n")
 }
 
 // Generic content extraction for unknown sources
 func extractGenericContent(doc *goquery.Document) string {
 	var paragraphs []string
-	
+
 	// Remove unwanted elements
 	doc.Find("script, style, nav, header, footer, aside, .ad, .advertisement, .sidebar").Remove()
-	
+
 	// Try to find main content area
 	mainSelectors := []string{
 		"article",
@@ -955,7 +1124,7 @@ func extractGenericContent(doc *goquery.Document) string {
 		"div.entry-content",
 		"div[role='main']",
 	}
-	
+
 	var mainContent *goquery.Selection
 	for _, selector := range mainSelectors {
 		if content := doc.Find(selector).First(); content.Length() > 0 {
@@ -963,12 +1132,12 @@ func extractGenericContent(doc *goquery.Document) string {
 			break
 		}
 	}
-	
+
 	// If no main content found, use body
 	if mainContent == nil || mainContent.Length() == 0 {
 		mainContent = doc.Find("body")
 	}
-	
+
 	// Extract all paragraphs from main content
 	mainContent.Find("p").Each(func(i int, s *goquery.Selection) {
 		text := s.Text()
@@ -977,7 +1146,7 @@ func extractGenericContent(doc *goquery.Document) string {
 			paragraphs = append(paragraphs, text)
 		}
 	})
-	
+
 	return strings.Join(paragraphs, "\n\n")
 }
 
@@ -1028,7 +1197,7 @@ func scrapeYahooFinance(client *http.Client, ticker string, targetDate time.Time
 		if len(newsArticles) >= 20 {
 			return
 		}
-		
+
 		title := s.Find("h3").Text()
 		if title == "" {
 			title = s.Find("a").First().Text()
@@ -1127,7 +1296,7 @@ func scrapeMarketWatch(client *http.Client, ticker string, targetDate time.Time,
 		if len(newsArticles) >= 20 {
 			return
 		}
-		
+
 		title := s.Find("h3.article__headline a").Text()
 		if title == "" {
 			title = s.Find("h2.article__headline a").Text()
@@ -1225,7 +1394,7 @@ func scrapeFinviz(client *http.Client, ticker string, targetDate time.Time, news
 		if i == 0 { // Skip header row
 			return
 		}
-		
+
 		// Limit to 20 news articles total from Finviz
 		if len(newsArticles) >= 20 {
 			return
@@ -1401,27 +1570,31 @@ func filterArticlesByDate(articles []NewsArticle, targetDate time.Time) []NewsAr
 
 func filterEarningsByDate(earnings []EarningsReport, targetDate time.Time) []EarningsReport {
 	var filtered []EarningsReport
-	
+
 	for _, earning := range earnings {
 		// Parse the report date
 		reportDate, err := time.Parse("2006-01-02", earning.ReportDate)
 		if err != nil {
-			// If date parsing fails, include it anyway
-			filtered = append(filtered, earning)
+			// If date parsing fails, skip it
+			fmt.Printf("Skipping earnings report due to date parse error: %s\n", earning.ReportDate)
 			continue
 		}
-		
-		// Accept earnings within 7 days of target date (more lenient than news)
+
+		// Accept earnings within 2 days of target date
 		daysDiff := reportDate.Sub(targetDate).Hours() / 24
 		if daysDiff < 0 {
 			daysDiff = -daysDiff
 		}
-		
-		if daysDiff <= 7 {
+
+		if daysDiff <= 2 {
 			filtered = append(filtered, earning)
+			fmt.Printf("Including earnings report from %s (%.0f days from target)\n", earning.ReportDate, daysDiff)
+		} else {
+			fmt.Printf("Filtering out earnings report from %s (%.0f days from target, exceeds 2 day limit)\n",
+				earning.ReportDate, daysDiff)
 		}
 	}
-	
+
 	return filtered
 }
 
