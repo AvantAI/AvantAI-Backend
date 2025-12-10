@@ -662,7 +662,7 @@ package main
 // 	if strings.ToLower(strings.TrimSpace(managerResp.Recommendation)) == "buy" {
 // 		// Only add to watchlist if we have entry price and stop loss
 // 		if managerResp.EntryPrice != "" && managerResp.StopLoss != "" {
-			// shares := math.Round((((riskPercent) * (riskPerTrade * accSize)) * 1.0) / (entryPrice - stopLoss))
+// 			shares := math.Round((((riskPercent) * (riskPerTrade * accSize)) * 1.0) / (entryPrice - stopLoss))
 // 			entry := WatchlistEntry{
 // 				StockSymbol: symbol,
 // 				EntryPrice:  managerResp.EntryPrice,
