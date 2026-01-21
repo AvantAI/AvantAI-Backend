@@ -1,6 +1,7 @@
 package sapien
 
 import (
+	"avantai/pkg/spec"
 	"fmt"
 	"io"
 	"log"
@@ -14,8 +15,10 @@ import (
 
 func NewsAgentReqInfo(wg *sync.WaitGroup, stock string) {
 	defer wg.Done() // Decrement the counter when the goroutine completes
-	const EpNewsAgent = "ep-news-agent"
-	const namespace = "avant"
+	const EpNewsAgent = "ep-gemma-news-agent"
+	// const namespace = "avant"
+
+	logger := zap.Must(zap.NewProduction())
 
 	// Navigate to the directory and open the file
 	dirPath := fmt.Sprintf("data/%s", stock)
@@ -37,26 +40,35 @@ func NewsAgentReqInfo(wg *sync.WaitGroup, stock string) {
 		log.Fatal("Error loading .env file")
 	}
 
-	apiKey := os.Getenv("SAPIEN_TOKEN")
+	// apiKey := os.Getenv("SAPIEN_TOKEN")
 
-	sapienApi := NewSapienApi("http://localhost:8081", apiKey, zap.Must(zap.NewProduction()))
+	// sapienApi := NewSapienApi("http://localhost:4081", apiKey, zap.Must(zap.NewProduction()))
 
-	statusCode, status, agentRes, err := sapienApi.GenerateCompletion(
-		namespace,
-		EpNewsAgent,
-		&ServeRequest{
-			Input: []Field{
-				{Name: "ep_news", Value: string(news)},
-			},
+	jsonResp := false
+	agentRes, err := spec.Generate(EpNewsAgent, &spec.ServeRequestSpecV3{
+		AgentNamespace: "avant",
+		AgentName:      EpNewsAgent,
+		Input: []spec.NameValueTypeV3{
+			{Name: "ep_news", Value: string(news)},
 		},
-	)
+	}, jsonResp, logger)
+
+	// statusCode, status, agentRes, err := sapienApi.GenerateCompletion(
+	// 	namespace,
+	// 	EpNewsAgent,
+	// 	&ServeRequest{
+	// 		Input: []Field{
+	// 			{Name: "ep_news", Value: string(news)},
+	// 		},
+	// 	},
+	// )
 
 	if err != nil {
-		fmt.Printf("StatusCode: %d status: %s err: %s", statusCode, status, err)
+		fmt.Printf("err: %s", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("StatusCode: %d status: %s", statusCode, status)
+	// fmt.Printf("StatusCode: %d status: %s", statusCode, status)
 
 	// Create folders
 	dataDir := "reports"
@@ -74,9 +86,9 @@ func NewsAgentReqInfo(wg *sync.WaitGroup, stock string) {
 	}
 	defer file.Close()
 
-	fmt.Println("Response:", agentRes.Response)
+	fmt.Println("Response:", agentRes)
 
-	_, err = file.WriteString(agentRes.Response)
+	_, err = file.WriteString(agentRes)
 	if err != nil {
 		fmt.Println("Error writing to file:", err)
 		os.Exit(1)

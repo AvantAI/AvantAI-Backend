@@ -139,7 +139,7 @@ func FilterStocksEpisodicPivotRealtime(config AlpacaConfig) error {
 
 // Stage 1: Real-time gap up filter
 func realtimeStage1GapUp(config AlpacaConfig) ([]RealtimeStockData, error) {
-	symbols, err := getAlpacaTradableSymbols(config)
+	symbols, err := getAlpacaTradableSymbolsMain(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get symbols: %v", err)
 	}
@@ -514,7 +514,7 @@ func realtimeStage4Final(stocks []RealtimeResult) []RealtimeResult {
 // Helper functions for Alpaca API
 
 // Get tradable symbols from Alpaca
-func getAlpacaTradableSymbols(config AlpacaConfig) ([]string, error) {
+func getAlpacaTradableSymbolsMain(config AlpacaConfig) ([]string, error) {
 	url := fmt.Sprintf("%s/v2/assets?status=active&asset_class=us_equity", config.BaseURL)
 
 	req, err := http.NewRequest("GET", url, nil)

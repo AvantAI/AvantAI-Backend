@@ -1,11 +1,9 @@
 package sapien
 
 import (
+	"avantai/pkg/spec"
 	"fmt"
-	"log"
-	"os"
 
-	"github.com/joho/godotenv"
 	"go.uber.org/zap"
 )
 
@@ -19,41 +17,55 @@ type StockData struct {
 	Volume float64 `json:"volume,string"`
 }
 
-func ManagerAgentReqInfo(stock_data string, news string, earnings_report string, sentiment string) (*ServeResponse, error) {
-	const EpCerebrasManagerAgent = "ep-cerebras-manager-agent"
-	const namespace = "avant"
+func ManagerAgentReqInfo(stock_data string, news string, earnings_report string, sentiment string) (string, error) {
+	const EpCerebrasManagerAgent = "ep-cerebras-manager-v3-agent"
+	// const namespace = "avant"
 
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
+	logger := zap.Must(zap.NewProduction())
 
-	apiKey := os.Getenv("SAPIEN_TOKEN")
+	// err := godotenv.Load()
+	// if err != nil {
+	// 	log.Fatal("Error loading .env file")
+	// }
 
-	sapienApi := NewSapienApi("http://localhost:8081", apiKey, zap.Must(zap.NewProduction()))
+	// apiKey := os.Getenv("SAPIEN_TOKEN")
 
-	statusCode, status, agentRes, err := sapienApi.GenerateCompletion(
-		namespace,
-		EpCerebrasManagerAgent,
-		&ServeRequest{
-			Input: []Field{
-				{Name: "stock_data", Value: stock_data},
+	// sapienApi := NewSapienApi("http://localhost:4081", apiKey, zap.Must(zap.NewProduction()))
 
-				{Name: "news", Value: news},
-
-				{Name: "earnings_report", Value: earnings_report},
-
-				{Name: "stock_sentiment", Value: sentiment},
-			},
+	jsonResp := false
+	agentRes, err := spec.Generate(EpCerebrasManagerAgent, &spec.ServeRequestSpecV3{
+		AgentNamespace: "avant",
+		AgentName:      EpCerebrasManagerAgent,
+		Input: []spec.NameValueTypeV3{
+			{Name: "stock_data", Value: stock_data},
+			{Name: "news", Value: news},
+			{Name: "earnings_report", Value: earnings_report},
+			{Name: "stock_sentiment", Value: sentiment},
 		},
-	)
+	}, jsonResp, logger)
+
+	// statusCode, status, agentRes, err := sapienApi.GenerateCompletion(
+	// 	namespace,
+	// 	EpCerebrasManagerAgent,
+	// 	&ServeRequest{
+	// 		Input: []Field{
+	// 			{Name: "stock_data", Value: stock_data},
+
+	// 			{Name: "news", Value: news},
+
+	// 			{Name: "earnings_report", Value: earnings_report},
+
+	// 			{Name: "stock_sentiment", Value: sentiment},
+	// 		},
+	// 	},
+	// )
 
 	if err != nil {
-		fmt.Printf("StatusCode: %d status: %s err: %s", statusCode, status, err)
-		return nil, err
+		fmt.Printf("err: %s", err)
+		return "", err
 	}
 
-	fmt.Printf("StatusCode: %d status: %s", statusCode, status)
+	// fmt.Printf("StatusCode: %d status: %s", statusCode, status)
 
 	return agentRes, nil
 }

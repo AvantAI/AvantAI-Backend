@@ -24,21 +24,36 @@ const (
 	CSV_CHECK_INTERVAL   = 10 * time.Second
 	SIMULATION_MODE      = true
 	
-	MAX_STOP_DISTANCE_MULTIPLIER = 1.5
+	// IMPROVED: Wider stop to avoid premature stop-outs
+	MAX_STOP_DISTANCE_MULTIPLIER = 2.0  // Was 1.5
 	ATR_PERIOD                   = 14
 	
-	PROFIT_TAKE_MIN_RR    = 2.0
-	PROFIT_TAKE_MAX_RR    = 4.0
-	PROFIT_TAKE_PERCENT   = 0.40
-	STRONG_EP_GAIN        = 1.00
-	STRONG_EP_DAYS        = 3
-	STRONG_EP_TAKE_PERCENT = 0.75
+	// IMPROVED: Earlier breakeven protection
+	BREAKEVEN_TRIGGER_PERCENT = 0.02    // Move to BE at +2%
+	BREAKEVEN_TRIGGER_DAYS    = 2       // Can trigger after day 2
+	
+	// IMPROVED: Graduated profit taking
+	PROFIT_TAKE_1_RR         = 1.5      // First exit at 1.5R
+	PROFIT_TAKE_1_PERCENT    = 0.25     // Take 25%
+	PROFIT_TAKE_2_RR         = 3.0      // Second exit at 3R
+	PROFIT_TAKE_2_PERCENT    = 0.25     // Take another 25%
+	PROFIT_TAKE_3_RR         = 5.0      // Third exit at 5R
+	PROFIT_TAKE_3_PERCENT    = 0.25     // Take another 25%
+	
+	STRONG_EP_GAIN           = 0.15     // 15% in 3 days
+	STRONG_EP_DAYS           = 3
+	STRONG_EP_TAKE_PERCENT   = 0.30     // Take 30%
 	
 	MA_PERIOD = 20
 	
 	WEAK_CLOSE_THRESHOLD = 0.30
 	
-	MAX_DAYS_NO_FOLLOWTHROUGH = 5
+	MAX_DAYS_NO_FOLLOWTHROUGH = 8       // More patience
+	
+	// NEW: Entry filters
+	MIN_VOLUME_RATIO = 1.2
+	MIN_PRICE        = 2.0
+	MAX_PRICE        = 200.0
 )
 
 type MarketstackEODResponse struct {
@@ -83,6 +98,8 @@ type Position struct {
 	PurchaseDate     time.Time
 	Status           string
 	ProfitTaken      bool
+	ProfitTaken2     bool
+	ProfitTaken3     bool
 	DaysHeld         int
 	LastCheckDate    time.Time
 	InitialStopLoss  float64
@@ -91,6 +108,9 @@ type Position struct {
 	EPDayHigh        float64
 	HighestPrice     float64
 	TrailingStopMode bool
+	CumulativeProfit float64
+	InitialShares    float64
+	AverageVolume    float64
 	mu               sync.Mutex
 }
 
@@ -217,13 +237,11 @@ func getTotalAccountValue() float64 {
 	cashBalance := accountSize
 	accountMu.Unlock()
 	
-	// Add the current value of all open positions
 	positionsMu.RLock()
 	defer positionsMu.RUnlock()
 	
 	totalPositionValue := 0.0
 	for _, pos := range activePositions {
-		// Use entry price as current value (we'll update with actual prices in real-time)
 		positionValue := pos.EntryPrice * pos.Shares
 		totalPositionValue += positionValue
 	}
@@ -285,14 +303,12 @@ func processWatchlist(filePath string) {
 		return positions[i].PurchaseDate.Before(positions[j].PurchaseDate)
 	})
 
-	// Group positions by date
 	dateGroups := make(map[string][]*Position)
 	for _, pos := range positions {
 		dateKey := pos.PurchaseDate.Format("2006-01-02")
 		dateGroups[dateKey] = append(dateGroups[dateKey], pos)
 	}
 
-	// Process each date group
 	for _, datePositions := range dateGroups {
 		if len(datePositions) == 0 {
 			continue
@@ -302,10 +318,8 @@ func processWatchlist(filePath string) {
 			continue
 		}
 
-		// SEQUENTIAL: Calculate shares for all positions based on current account
 		scaledPositions := scalePositionsToFit(datePositions)
 
-		// SEQUENTIAL: Start all positions (subtract from account)
 		var validPositions []*Position
 		for _, pos := range scaledPositions {
 			if startPosition(pos) {
@@ -313,7 +327,6 @@ func processWatchlist(filePath string) {
 			}
 		}
 
-		// CONCURRENT: Simulate all positions concurrently
 		if len(validPositions) > 0 {
 			log.Printf("🚀 Starting concurrent simulation for %d positions on %s", 
 				len(validPositions), validPositions[0].PurchaseDate.Format("2006-01-02"))
@@ -363,7 +376,6 @@ func recalculateShares(pos *Position, currentAccountSize float64) *Position {
 func scalePositionsToFit(positions []*Position) []*Position {
 	recalculatedPositions := make([]*Position, len(positions))
 	
-	// Use TOTAL account value (cash + existing positions) for share calculation
 	totalAccountValue := getTotalAccountValue()
 	
 	for i, pos := range positions {
@@ -531,7 +543,6 @@ func checkWeakCloseIntraday(symbol string, date time.Time) (bool, float64) {
 
 	dayHigh := 0.0
 	var weakClosePrice float64
-	// var weakCloseTime time.Time
 
 	for i, bar := range result.Results {
 		if bar.High > dayHigh {
@@ -543,7 +554,6 @@ func checkWeakCloseIntraday(symbol string, date time.Time) (bool, float64) {
 			closeFromHigh := (dayHigh - bar.Close) / dayHigh
 			if closeFromHigh >= WEAK_CLOSE_THRESHOLD {
 				weakClosePrice = bar.Close
-				// weakCloseTime = barTime
 				log.Printf("[%s] ⚠️  WEAK CLOSE detected at %s | Close: $%.2f (%.1f%% from high $%.2f)",
 					symbol, barTime.Format("15:04"), bar.Close, closeFromHigh*100, dayHigh)
 				return true, weakClosePrice
@@ -600,6 +610,37 @@ func calculateATR(symbol string, endDate time.Time, period int) float64 {
 	return sum / float64(len(trueRanges))
 }
 
+func calculateAverageVolume(symbol string, endDate time.Time, period int) float64 {
+	cacheMu.RLock()
+	historicalData, exists := historicalCache[symbol]
+	cacheMu.RUnlock()
+	
+	if !exists || len(historicalData) < period {
+		return 0
+	}
+
+	var endIdx int
+	for i := range historicalData {
+		dataDate, _ := time.Parse("2006-01-02T15:04:05-0700", historicalData[i].Date)
+		if !dataDate.After(endDate) {
+			endIdx = i
+		}
+	}
+
+	if endIdx < period {
+		return 0
+	}
+
+	sum := 0.0
+	for i := endIdx - period; i < endIdx; i++ {
+		if i >= 0 {
+			sum += historicalData[i].Volume
+		}
+	}
+
+	return sum / float64(period)
+}
+
 func startPosition(pos *Position) bool {
 	log.Printf("[%s] 📥 Fetching historical data...", pos.Symbol)
 	
@@ -632,21 +673,54 @@ func startPosition(pos *Position) bool {
 		return false
 	}
 
+	// NEW: Price filter
+	if epDayData.Close < MIN_PRICE || epDayData.Close > MAX_PRICE {
+		log.Printf("[%s] ⚠️  Price $%.2f outside acceptable range ($%.2f-$%.2f), skipping",
+			pos.Symbol, epDayData.Close, MIN_PRICE, MAX_PRICE)
+		processedMu.Lock()
+		processedSymbols[pos.Symbol] = true
+		processedMu.Unlock()
+		return false
+	}
+
+	// NEW: Volume filter
+	avgVolume := calculateAverageVolume(pos.Symbol, pos.PurchaseDate, 20)
+	if avgVolume > 0 {
+		volumeRatio := epDayData.Volume / avgVolume
+		if volumeRatio < MIN_VOLUME_RATIO {
+			log.Printf("[%s] ⚠️  Insufficient volume: %.2fx average (need %.2fx), skipping",
+				pos.Symbol, volumeRatio, MIN_VOLUME_RATIO)
+			processedMu.Lock()
+			processedSymbols[pos.Symbol] = true
+			processedMu.Unlock()
+			return false
+		}
+		log.Printf("[%s] ✅ Volume: %.2fx average", pos.Symbol, volumeRatio)
+		pos.AverageVolume = avgVolume
+	}
+
+	// NEW: Trend filter
+	ma20 := calculate20DayMA(pos.Symbol, pos.PurchaseDate)
+	if ma20 > 0 && epDayData.Close < ma20 {
+		log.Printf("[%s] ⚠️  Price $%.2f below 20-day MA $%.2f, skipping weak setup",
+			pos.Symbol, epDayData.Close, ma20)
+		processedMu.Lock()
+		processedSymbols[pos.Symbol] = true
+		processedMu.Unlock()
+		return false
+	}
+
 	pos.EPDayLow = epDayData.Low
 	pos.EPDayHigh = epDayData.High
 	
-	// Calculate ATR for validation
 	atr := calculateATR(pos.Symbol, pos.PurchaseDate, ATR_PERIOD)
 	
-	// Use the stop loss from watchlist if provided, otherwise calculate
 	var finalStop float64
 	if pos.StopLoss > 0 && pos.StopLoss < pos.EntryPrice {
-		// User provided a stop loss in the watchlist, use it
 		finalStop = pos.StopLoss
 		log.Printf("[%s] ℹ️  Using watchlist stop loss: $%.2f", pos.Symbol, finalStop)
 	} else {
-		// Calculate stop just below EP day low
-		suggestedStop := pos.EPDayLow * 0.99
+		suggestedStop := pos.EPDayLow * 0.98
 
 		if atr > 0 {
 			maxStopDistance := atr * MAX_STOP_DISTANCE_MULTIPLIER
@@ -667,7 +741,6 @@ func startPosition(pos *Position) bool {
 	pos.InitialRisk = pos.EntryPrice - pos.StopLoss
 	pos.HighestPrice = pos.EntryPrice
 
-	// Use TOTAL account value (cash + existing positions) for share calculation
 	totalAccountValue := getTotalAccountValue()
 	pos = recalculateShares(pos, totalAccountValue)
 
@@ -695,6 +768,8 @@ func startPosition(pos *Position) bool {
 
 	updateAccountSize(-positionCost)
 	pos.LastCheckDate = pos.PurchaseDate
+	pos.InitialShares = pos.Shares
+	pos.CumulativeProfit = 0.0
 	
 	positionsMu.Lock()
 	activePositions[pos.Symbol] = pos
@@ -974,143 +1049,124 @@ func simulateNextDay(pos *Position) bool {
 		currentPrice, dayLow, dayHigh, currentGain, (currentGain/pos.EntryPrice)*100, currentRR, pos.StopLoss)
 
 	// RULE 1: Check stop loss
-	// Day 1 (entry day): Check intraday low vs stop
-	// Day 2+: Only check closing price vs stop (end-of-day management)
 	if pos.DaysHeld == 1 {
-		// Entry day: Check intraday low
 		if dayLow <= pos.StopLoss {
 			stopOut(pos, pos.StopLoss, searchDate)
 			return true
 		}
 	} else {
-		// Subsequent days: Only check closing price
 		if currentPrice <= pos.StopLoss {
 			stopOut(pos, pos.StopLoss, searchDate)
 			return true
 		}
 	}
 
-	// AUTOMATIC BREAKEVEN: If we're in profit and haven't taken profit yet, move stop to breakeven
-	// BUT only after the first day to avoid getting stopped out too early
-	if pos.DaysHeld > 3 && !pos.ProfitTaken && dayHigh > pos.EntryPrice && pos.StopLoss < pos.EntryPrice {
+	// IMPROVED: Earlier breakeven
+	if pos.DaysHeld >= BREAKEVEN_TRIGGER_DAYS && !pos.ProfitTaken {
 		percentGain := (dayHigh - pos.EntryPrice) / pos.EntryPrice
-		if percentGain >= 0.03 {
+		if percentGain >= BREAKEVEN_TRIGGER_PERCENT && pos.StopLoss < pos.EntryPrice {
 			pos.StopLoss = pos.EntryPrice
-			log.Printf("[%s] 🔒 MOVED TO BREAKEVEN - Up %.1f%% intraday (Day %d), protecting capital. Stop: $%.2f",
+			log.Printf("[%s] 🔒 MOVED TO BREAKEVEN - Up %.1f%% (Day %d), protecting capital. Stop: $%.2f",
 				pos.Symbol, percentGain*100, pos.DaysHeld, pos.StopLoss)
 		}
 	}
 
-	// RULE 5: Tighten stop if no follow-through
-	if pos.DaysHeld >= MAX_DAYS_NO_FOLLOWTHROUGH && currentPrice < pos.EntryPrice*1.05 && !pos.ProfitTaken {
-		tightenedStop := pos.EntryPrice - (pos.InitialRisk * 0.5)
+	// IMPROVED: Tighten stop if no follow-through
+	if pos.DaysHeld >= MAX_DAYS_NO_FOLLOWTHROUGH && currentRR < 0.5 && !pos.ProfitTaken {
+		tightenedStop := pos.EntryPrice - (pos.InitialRisk * 0.3)
 		tightenedStop = math.Max(tightenedStop, pos.EntryPrice)
 		if tightenedStop > pos.StopLoss {
 			pos.StopLoss = tightenedStop
-			log.Printf("[%s] ⚠️  No follow-through after %d days. Tightening stop to $%.2f",
+			log.Printf("[%s] ⚠️  Weak follow-through after %d days. Tightening to $%.2f",
 				pos.Symbol, MAX_DAYS_NO_FOLLOWTHROUGH, pos.StopLoss)
 		}
 	}
 
-	// RULE 2: Check for strong EP
+	// Check for strong EP
 	percentGain := (currentPrice - pos.EntryPrice) / pos.EntryPrice
 	if pos.DaysHeld <= STRONG_EP_DAYS && percentGain >= STRONG_EP_GAIN && !pos.ProfitTaken {
 		takeStrongEPProfit(pos, currentPrice, searchDate)
 		return false
 	}
 
-	// RULE 2: Take profit at 2R-4R
-	if currentRR >= PROFIT_TAKE_MIN_RR && currentRR <= PROFIT_TAKE_MAX_RR && !pos.ProfitTaken {
-		takeProfitPartial(pos, currentPrice, searchDate, PROFIT_TAKE_PERCENT)
+	// IMPROVED: Graduated profit taking
+	if currentRR >= PROFIT_TAKE_1_RR && !pos.ProfitTaken {
+		takeProfitPartial(pos, currentPrice, searchDate, PROFIT_TAKE_1_PERCENT, 1)
 		pos.TrailingStopMode = true
-		// Move stop to breakeven ONLY if we're past day 3
-		if pos.DaysHeld > 3 {
+		pos.ProfitTaken = true
+		if pos.DaysHeld >= BREAKEVEN_TRIGGER_DAYS {
 			pos.StopLoss = math.Max(pos.StopLoss, pos.EntryPrice)
-			log.Printf("[%s] 🔒 Stop moved to breakeven after profit taking", pos.Symbol)
+			log.Printf("[%s] 🔒 Stop at breakeven after 1st profit", pos.Symbol)
 		}
 		return false
 	}
 
-	// RULE 3: Trailing stop using 20-day MA
+	if currentRR >= PROFIT_TAKE_2_RR && pos.ProfitTaken && !pos.ProfitTaken2 {
+		takeProfitPartial(pos, currentPrice, searchDate, PROFIT_TAKE_2_PERCENT, 2)
+		newStop := pos.EntryPrice + (pos.InitialRisk * 1.0)
+		pos.StopLoss = math.Max(pos.StopLoss, newStop)
+		pos.ProfitTaken2 = true
+		log.Printf("[%s] 🔒 Stop locked at +1R after 2nd profit", pos.Symbol)
+		return false
+	}
+
+	if currentRR >= PROFIT_TAKE_3_RR && pos.ProfitTaken2 && !pos.ProfitTaken3 {
+		takeProfitPartial(pos, currentPrice, searchDate, PROFIT_TAKE_3_PERCENT, 3)
+		newStop := pos.EntryPrice + (pos.InitialRisk * 2.0)
+		pos.StopLoss = math.Max(pos.StopLoss, newStop)
+		pos.ProfitTaken3 = true
+		log.Printf("[%s] 🔒 Stop locked at +2R after 3rd profit", pos.Symbol)
+		return false
+	}
+
+	// IMPROVED: Better trailing stops
 	if pos.TrailingStopMode {
 		ma20 := calculate20DayMA(pos.Symbol, searchDate)
-		
 		percentGainFromEntry := (currentPrice - pos.EntryPrice) / pos.EntryPrice
 		
-		if percentGainFromEntry > 0.10 {
-			// For gains > 10%, use loose trailing stop (4% below MA)
+		if percentGainFromEntry > 0.20 {
 			var newStop float64
 			if ma20 > 0 {
-				// 4% below MA
-				newStop = ma20 * 0.96
+				newStop = math.Max(ma20*0.94, currentPrice*0.94)
 			} else {
-				// Fallback: 8% below current price
-				newStop = currentPrice * 0.92
-			}
-			
-			// CRITICAL: Never allow stop below entry price
-			newStop = math.Max(newStop, pos.EntryPrice)
-			
-			// Only raise the stop, never lower it
-			if newStop > pos.StopLoss {
-				pos.StopLoss = newStop
-				log.Printf("[%s] 📈 Loose trailing stop (%.1f%% gain): $%.2f (4%% below 20-day MA)", 
-					pos.Symbol, percentGainFromEntry*100, pos.StopLoss)
-			}
-			
-			// Exit if price closes 4% below MA
-			if ma20 > 0 && currentPrice < ma20 * 0.96 {
-				exitPrice := math.Max(pos.StopLoss, pos.EntryPrice)
-				exitPosition(pos, exitPrice, searchDate, "Closed 4%+ below 20-day MA")
-				return true
-			}
-		} else if percentGainFromEntry > 0.05 {
-			// For gains 5-10%, use moderate trailing stop (4% below MA)
-			var newStop float64
-			if ma20 > 0 {
-				// 4% below MA
-				newStop = ma20 * 0.96
-			} else {
-				// Fallback: 6% below current price
 				newStop = currentPrice * 0.94
 			}
 			
-			// CRITICAL: Never allow stop below entry price
 			newStop = math.Max(newStop, pos.EntryPrice)
-			
-			// Only raise the stop, never lower it
 			if newStop > pos.StopLoss {
 				pos.StopLoss = newStop
-				log.Printf("[%s] 📈 Moderate trailing stop (%.1f%% gain): $%.2f (4%% below 20-day MA)", 
+				log.Printf("[%s] 📈 Wide trailing (%.1f%% gain): $%.2f",
 					pos.Symbol, percentGainFromEntry*100, pos.StopLoss)
 			}
+		} else if percentGainFromEntry > 0.10 {
+			var newStop float64
+			if ma20 > 0 {
+				newStop = ma20 * 0.95
+			} else {
+				newStop = currentPrice * 0.95
+			}
 			
-			// Exit if closes 4% below MA
-			if ma20 > 0 && currentPrice < ma20 * 0.96 {
-				exitPrice := math.Max(pos.StopLoss, pos.EntryPrice)
-				exitPosition(pos, exitPrice, searchDate, "Closed 4%+ below 20-day MA")
-				return true
+			newStop = math.Max(newStop, pos.EntryPrice)
+			if newStop > pos.StopLoss {
+				pos.StopLoss = newStop
+				log.Printf("[%s] 📈 Medium trailing (%.1f%% gain): $%.2f",
+					pos.Symbol, percentGainFromEntry*100, pos.StopLoss)
 			}
-		} else {
-			// For gains < 5%, use tight trailing stop (4% below MA or at breakeven)
-			if ma20 > 0 && currentPrice < ma20 * 0.96 {
-				exitPrice := math.Max(pos.StopLoss, pos.EntryPrice)
-				exitPosition(pos, exitPrice, searchDate, "Closed 4%+ below 20-day MA")
-				return true
-			}
-
-			// Update stop to 4% below MA if it's above entry price and above current stop
+		} else if percentGainFromEntry > 0.05 {
 			if ma20 > 0 {
 				newStop := ma20 * 0.96
-				if newStop > pos.StopLoss && newStop >= pos.EntryPrice {
+				newStop = math.Max(newStop, pos.EntryPrice)
+				if newStop > pos.StopLoss {
 					pos.StopLoss = newStop
-					log.Printf("[%s] 📈 Tight trailing stop updated: $%.2f (4%% below 20-day MA)", pos.Symbol, pos.StopLoss)
-				} else if pos.StopLoss < pos.EntryPrice {
-					// If somehow stop is below entry, fix it immediately
-					pos.StopLoss = pos.EntryPrice
-					log.Printf("[%s] 🔒 Stop corrected to breakeven: $%.2f", pos.Symbol, pos.StopLoss)
+					log.Printf("[%s] 📈 Tight trailing: $%.2f", pos.Symbol, pos.StopLoss)
 				}
 			}
+		}
+		
+		if percentGainFromEntry < 0.10 && ma20 > 0 && currentPrice < ma20*0.96 {
+			exitPrice := math.Max(pos.StopLoss, pos.EntryPrice)
+			exitPosition(pos, exitPrice, searchDate, "Closed below 20-MA")
+			return true
 		}
 	}
 
@@ -1157,12 +1213,28 @@ func takeStrongEPProfit(pos *Position, currentPrice float64, date time.Time) {
 	remainingShares := pos.Shares - sharesToSell
 	profit := (currentPrice - pos.EntryPrice) * sharesToSell
 
-	fmt.Printf("\n[%s] 🚀 STRONG EP DETECTED! Taking %.0f%% profit on %s\n",
+	fmt.Printf("\n[%s] 🚀 STRONG EP! Taking %.0f%% profit on %s\n",
 		pos.Symbol, STRONG_EP_TAKE_PERCENT*100, date.Format("2006-01-02"))
 	fmt.Printf("    Selling %.0f shares @ $%.2f = $%.2f (Profit: $%.2f)\n",
 		sharesToSell, currentPrice, saleProceeds, profit)
 
 	updateAccountSize(saleProceeds)
+	pos.CumulativeProfit += profit
+	
+	recordTradeResult(TradeResult{
+		Symbol:      pos.Symbol,
+		EntryPrice:  pos.EntryPrice,
+		ExitPrice:   currentPrice,
+		Shares:      sharesToSell,
+		InitialRisk: pos.InitialRisk,
+		ProfitLoss:  profit,
+		RiskReward:  (currentPrice - pos.EntryPrice) / pos.InitialRisk,
+		EntryDate:   pos.PurchaseDate.Format("2006-01-02"),
+		ExitDate:    date.Format("2006-01-02"),
+		ExitReason:  fmt.Sprintf("Strong EP - %.0f%% sold", STRONG_EP_TAKE_PERCENT*100),
+		IsWinner:    true,
+		AccountSize: getAccountSize_Safe(),
+	})
 
 	pos.Shares = remainingShares
 	pos.StopLoss = math.Max(pos.EntryPrice, pos.StopLoss)
@@ -1170,49 +1242,69 @@ func takeStrongEPProfit(pos *Position, currentPrice float64, date time.Time) {
 	pos.ProfitTaken = true
 	pos.TrailingStopMode = true
 
-	log.Printf("[%s] ✅ Stop moved to breakeven @ $%.2f | %.0f shares remaining\n",
-		pos.Symbol, pos.StopLoss, remainingShares)
+	log.Printf("[%s] ✅ Stop at BE: $%.2f | %.0f shares remaining | Cumulative: $%.2f\n",
+		pos.Symbol, pos.StopLoss, remainingShares, pos.CumulativeProfit)
 }
 
-func takeProfitPartial(pos *Position, currentPrice float64, date time.Time, percent float64) {
+func takeProfitPartial(pos *Position, currentPrice float64, date time.Time, percent float64, level int) {
 	sharesToSell := math.Floor(pos.Shares * percent)
 	saleProceeds := sharesToSell * currentPrice
 	remainingShares := pos.Shares - sharesToSell
 	profit := (currentPrice - pos.EntryPrice) * sharesToSell
 	rr := (currentPrice - pos.EntryPrice) / pos.InitialRisk
 
-	fmt.Printf("\n[%s] 🎯 TAKING PROFIT (%.2fR) on %s | Selling %.0f%% (%.0f shares) @ $%.2f = $%.2f (Profit: $%.2f)\n",
-		pos.Symbol, rr, date.Format("2006-01-02"), percent*100, sharesToSell, currentPrice, saleProceeds, profit)
+	fmt.Printf("\n[%s] 🎯 PROFIT LEVEL %d (%.2fR) on %s | Selling %.0f%% (%.0f shares) @ $%.2f = $%.2f (Profit: $%.2f)\n",
+		pos.Symbol, level, rr, date.Format("2006-01-02"), percent*100, sharesToSell, currentPrice, saleProceeds, profit)
 
 	updateAccountSize(saleProceeds)
+	pos.CumulativeProfit += profit
+	
+	recordTradeResult(TradeResult{
+		Symbol:      pos.Symbol,
+		EntryPrice:  pos.EntryPrice,
+		ExitPrice:   currentPrice,
+		Shares:      sharesToSell,
+		InitialRisk: pos.InitialRisk,
+		ProfitLoss:  profit,
+		RiskReward:  rr,
+		EntryDate:   pos.PurchaseDate.Format("2006-01-02"),
+		ExitDate:    date.Format("2006-01-02"),
+		ExitReason:  fmt.Sprintf("Profit Level %d at %.2fR", level, rr),
+		IsWinner:    true,
+		AccountSize: getAccountSize_Safe(),
+	})
 
 	pos.Shares = remainingShares
-	pos.StopLoss = math.Max(pos.EntryPrice, pos.StopLoss)
-	pos.Status = "MONITORING"
-	pos.ProfitTaken = true
+	pos.Status = fmt.Sprintf("MONITORING (Lvl %d)", level)
 
-	log.Printf("[%s] ✅ Stop moved to breakeven @ $%.2f | %.0f shares remaining\n",
-		pos.Symbol, pos.StopLoss, remainingShares)
+	log.Printf("[%s] ✅ %.0f shares remaining | Cumulative: $%.2f | Stop: $%.2f\n",
+		pos.Symbol, remainingShares, pos.CumulativeProfit, pos.StopLoss)
 }
 
 func stopOut(pos *Position, exitPrice float64, date time.Time) {
 	totalProceeds := exitPrice * pos.Shares
 	costBasis := pos.EntryPrice * pos.Shares
 	profitLoss := totalProceeds - costBasis
+	totalProfitLoss := profitLoss + pos.CumulativeProfit
 
-	isWinner := exitPrice >= pos.EntryPrice || profitLoss > 0
+	isWinner := totalProfitLoss > 0
 	exitReason := "Stop Loss Hit"
 	
 	if isWinner && pos.ProfitTaken {
 		exitReason = "Trailing Stop Hit (Profit Protected)"
-		fmt.Printf("\n[%s] 📊 TRAILING STOP HIT on %s @ $%.2f | Remaining Position P/L: $%.2f\n",
-			pos.Symbol, date.Format("2006-01-02"), exitPrice, profitLoss)
+		fmt.Printf("\n[%s] 📊 TRAILING STOP HIT on %s @ $%.2f | Remaining P/L: $%.2f | Total P/L: $%.2f\n",
+			pos.Symbol, date.Format("2006-01-02"), exitPrice, profitLoss, totalProfitLoss)
 	} else {
 		fmt.Printf("\n[%s] 🛑 STOPPED OUT on %s @ $%.2f | Loss: $%.2f\n",
 			pos.Symbol, date.Format("2006-01-02"), exitPrice, profitLoss)
 	}
 
 	updateAccountSize(totalProceeds)
+
+	exitReasonDetail := exitReason
+	if pos.CumulativeProfit > 0 {
+		exitReasonDetail = fmt.Sprintf("%s (Previous partial profits: $%.2f)", exitReason, pos.CumulativeProfit)
+	}
 
 	recordTradeResult(TradeResult{
 		Symbol:      pos.Symbol,
@@ -1224,7 +1316,7 @@ func stopOut(pos *Position, exitPrice float64, date time.Time) {
 		RiskReward:  (exitPrice - pos.EntryPrice) / pos.InitialRisk,
 		EntryDate:   pos.PurchaseDate.Format("2006-01-02"),
 		ExitDate:    date.Format("2006-01-02"),
-		ExitReason:  exitReason,
+		ExitReason:  exitReasonDetail,
 		IsWinner:    isWinner,
 		AccountSize: getAccountSize_Safe(),
 	})
@@ -1237,13 +1329,19 @@ func exitPosition(pos *Position, currentPrice float64, date time.Time, reason st
 	totalProceeds := currentPrice * pos.Shares
 	costBasis := pos.EntryPrice * pos.Shares
 	profit := totalProceeds - costBasis
+	totalProfit := profit + pos.CumulativeProfit
 
-	fmt.Printf("\n[%s] 📤 EXITING on %s @ $%.2f | Reason: %s | P/L: $%.2f\n",
-		pos.Symbol, date.Format("2006-01-02"), currentPrice, reason, profit)
+	fmt.Printf("\n[%s] 📤 EXITING on %s @ $%.2f | Reason: %s | Remaining P/L: $%.2f | Total P/L: $%.2f\n",
+		pos.Symbol, date.Format("2006-01-02"), currentPrice, reason, profit, totalProfit)
 
 	updateAccountSize(totalProceeds)
 
 	rr := (currentPrice - pos.EntryPrice) / pos.InitialRisk
+	
+	reasonDetail := reason
+	if pos.CumulativeProfit > 0 {
+		reasonDetail = fmt.Sprintf("%s (Previous partial profits: $%.2f)", reason, pos.CumulativeProfit)
+	}
 
 	recordTradeResult(TradeResult{
 		Symbol:      pos.Symbol,
@@ -1255,8 +1353,8 @@ func exitPosition(pos *Position, currentPrice float64, date time.Time, reason st
 		RiskReward:  rr,
 		EntryDate:   pos.PurchaseDate.Format("2006-01-02"),
 		ExitDate:    date.Format("2006-01-02"),
-		ExitReason:  reason,
-		IsWinner:    profit > 0,
+		ExitReason:  reasonDetail,
+		IsWinner:    totalProfit > 0,
 		AccountSize: getAccountSize_Safe(),
 	})
 
@@ -1366,7 +1464,7 @@ func printCurrentStats() {
 		avgLossRR = loserRR / float64(losers)
 	}
 
-	initialAccount := getAccountSize()
+	initialAccount := 10000.0
 	currentAccount := getAccountSize_Safe()
 	returnPct := (currentAccount - initialAccount) / initialAccount * 100
 

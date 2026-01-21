@@ -1,59 +1,65 @@
 #!/bin/bash
 
-# Path to the file containing dates (one per line)
-DATES_FILE="./dates.txt"
+###############################################################################
+# Configuration
+###############################################################################
 
-# Log file for tracking execution
+export LC_ALL=C
 LOG_FILE="./backtest_execution.log"
 
-# Function to log messages
+START_DATE="2025-01-02"
+END_DATE="2025-12-31"
+
+###############################################################################
+# Logging
+###############################################################################
+
 log_message() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+    echo "[$(/bin/date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
 
-# Check if dates file exists
-if [ ! -f "$DATES_FILE" ]; then
-    log_message "ERROR: Dates file not found: $DATES_FILE"
-    exit 1
-fi
+###############################################################################
+# Convert dates to epoch ONCE
+###############################################################################
 
-# Read dates file line by line
-while IFS= read -r target_date || [ -n "$target_date" ]; do
-    # Skip empty lines and comments
-    [[ -z "$target_date" || "$target_date" =~ ^[[:space:]]*# ]] && continue
-    
-    log_message "Starting backtest sequence for date: $target_date"
-    
-    # Command 1: Data gathering
-    log_message "Running data gathering for $target_date"
-    if go run cmd/avantai/ep/data_gathering/ep_manual_data.go --date $target_date; then
-        log_message "Data gathering completed successfully for $target_date"
-    else
-        log_message "ERROR: Data gathering failed for $target_date"
-        continue  # Skip to next date if this step fails
-    fi
-    
-    # Command 2: Worker agent backtest
-    log_message "Running worker agent backtest for $target_date"
-    if go run cmd/avantai/ep/worker-agents/ep_worker_agent_backtest.go --date $target_date; then
-        log_message "Worker agent backtest completed successfully for $target_date"
-    else
-        log_message "ERROR: Worker agent backtest failed for $target_date"
-        continue  # Skip to next date if this step fails
-    fi
-    
-    # Command 3: Main backtest
-    log_message "Running main backtest for $target_date"
-    if go run cmd/avantai/ep/ep_main/ep_main_backtest.go --date $target_date; then
-        log_message "Main backtest completed successfully for $target_date"
-    else
-        log_message "ERROR: Main backtest failed for $target_date"
-        continue  # Skip to next date if this step fails
-    fi
-    
-    log_message "Completed all commands for date: $target_date"
-    log_message "----------------------------------------"
-    
-done < "$DATES_FILE"
+start_ts=$(/bin/date -j -f "%Y-%m-%d" "$START_DATE" "+%s") || exit 1
+end_ts=$(/bin/date -j -f "%Y-%m-%d" "$END_DATE" "+%s") || exit 1
 
-log_message "All backtest sequences completed"
+###############################################################################
+# Main loop (epoch-based — unbreakable)
+###############################################################################
+
+log_message "Starting backtests from $START_DATE to $END_DATE"
+
+current_ts="$start_ts"
+
+while [[ "$current_ts" -le "$end_ts" ]]; do
+
+    # Convert epoch → YYYY-MM-DD (read-only usage)
+    current_date=$(/bin/date -j -f "%s" "$current_ts" "+%Y-%m-%d")
+
+    # Weekday check
+    dow=$(/bin/date -j -f "%s" "$current_ts" "+%u")
+    if [[ "$dow" -ge 6 ]]; then
+        log_message "Skipping weekend: $current_date"
+        current_ts=$((current_ts + 86400))
+        continue
+    fi
+
+    log_message "Processing date: $current_date"
+
+    go run cmd/avantai/ep/data_gathering/ep_manual_data.go --date "$current_date" \
+        || log_message "ERROR: Data gathering failed for $current_date"
+
+    go run cmd/avantai/ep/worker-agents/ep_worker_agent_backtest.go --date "$current_date" \
+        || log_message "ERROR: Worker agent backtest failed for $current_date"
+
+    go run cmd/avantai/ep/ep_main/ep_main_alpaca_backtest.go --date "$current_date" \
+        || log_message "ERROR: Main backtest failed for $current_date"
+
+    # Advance exactly one day (in seconds)
+    current_ts=$((current_ts + 86400))
+
+done
+
+log_message "All weekday backtest sequences for 2025 completed."

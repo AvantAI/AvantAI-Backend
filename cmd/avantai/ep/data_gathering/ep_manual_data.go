@@ -95,7 +95,11 @@ func main() {
 
 	// apiKey := os.Getenv("API_KEY")
 	tiingoKey := os.Getenv("TIINGO_KEY")
-	marketStackKey := os.Getenv("MARKETSTACK_TOKEN")
+	alpacaKey := os.Getenv("ALPACA_API_KEY")
+	alpacaSecret := os.Getenv("ALPACA_SECRET_KEY")
+	finnhubKey := os.Getenv("FINNHUB_KEY")
+	finnhubSecret := os.Getenv("FINNHUB_SECRET_KEY")
+	// marketStackKey := os.Getenv("MARKETSTACK_TOKEN")
 	// Filters out stocks that don't match the given criteria
 	// ep.FilterStocks(apiKey)
 	// Simple backtest for one date
@@ -106,7 +110,10 @@ func main() {
 	// Advanced backtest with custom config
 	config := ep.BacktestConfig{
 		TargetDate:     backtestDate,
-		MarketstackKey: marketStackKey,
+		AlpacaKey:    alpacaKey,
+		AlpacaSecret: alpacaSecret,
+		FinnhubKey:    finnhubKey,
+		FinnhubSecret: finnhubSecret,
 		TiingoKey:      tiingoKey,
 		LookbackDays:   1000,
 	}

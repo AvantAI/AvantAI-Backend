@@ -1,6 +1,7 @@
 package sapien
 
 import (
+	"avantai/pkg/spec"
 	"fmt"
 	"io"
 	"log"
@@ -14,8 +15,10 @@ import (
 
 func EarningsReportAgentReqInfo(wg *sync.WaitGroup, stock string) {
 	defer wg.Done() // Decrement the counter when the goroutine completes
-	const EpEarningsReportAgent = "ep-earnings-report-agent"
-	const namespace = "avant"
+	const EpEarningsReportAgent = "ep-gemma-earnings-report-agent"
+	// const namespace = "avant"
+
+	logger := zap.Must(zap.NewProduction())
 
 	// Navigate to the directory and open the file
 	dirPath := fmt.Sprintf("data/%s", stock)
@@ -37,26 +40,35 @@ func EarningsReportAgentReqInfo(wg *sync.WaitGroup, stock string) {
 		log.Fatal("Error loading .env file")
 	}
 
-	apiKey := os.Getenv("SAPIEN_TOKEN")
+	// apiKey := os.Getenv("SAPIEN_TOKEN")
 
-	sapienApi := NewSapienApi("http://localhost:8081", apiKey, zap.Must(zap.NewProduction()))
-
-	statusCode, status, agentRes, err := sapienApi.GenerateCompletion(
-		namespace,
-		EpEarningsReportAgent,
-		&ServeRequest{
-			Input: []Field{
-				{Name: "ep_earnings", Value: string(earnings_report)},
-			},
+	jsonResp := false
+	agentRes, err := spec.Generate(EpEarningsReportAgent, &spec.ServeRequestSpecV3{
+		AgentNamespace: "avant",
+		AgentName:      EpEarningsReportAgent,
+		Input: []spec.NameValueTypeV3{
+			{Name: "ep_earnings", Value: string(earnings_report)},
 		},
-	)
+	}, jsonResp, logger)
+
+	// sapienApi := NewSapienApi("http://localhost:4081", apiKey, zap.Must(zap.NewProduction()))
+
+	// statusCode, status, agentRes, err := sapienApi.GenerateCompletion(
+	// 	namespace,
+	// 	EpEarningsReportAgent,
+	// 	&ServeRequest{
+	// 		Input: []Field{
+	// 			{Name: "ep_earnings", Value: string(earnings_report)},
+	// 		},
+	// 	},
+	// )
 
 	if err != nil {
-		fmt.Printf("StatusCode: %d status: %s err: %s", statusCode, status, err)
+		fmt.Printf("err: %s", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("StatusCode: %d status: %s", statusCode, status)
+	// fmt.Printf("StatusCode: %d status: %s", statusCode, status)
 
 	// Create folders
 	dataDir := "reports"
@@ -74,9 +86,9 @@ func EarningsReportAgentReqInfo(wg *sync.WaitGroup, stock string) {
 	}
 	defer file.Close()
 
-	fmt.Println("Response:", agentRes.Response)
+	fmt.Println("Response:", agentRes)
 
-	_, err = file.WriteString(agentRes.Response)
+	_, err = file.WriteString(agentRes)
 	if err != nil {
 		fmt.Println("Error writing to file:", err)
 		os.Exit(1)
