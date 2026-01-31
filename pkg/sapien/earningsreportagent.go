@@ -7,14 +7,12 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"sync"
 
 	"github.com/joho/godotenv"
 	"go.uber.org/zap"
 )
 
-func EarningsReportAgentReqInfo(wg *sync.WaitGroup, stock string) {
-	defer wg.Done() // Decrement the counter when the goroutine completes
+func EarningsReportAgentReqInfo(stock string) {
 	const EpEarningsReportAgent = "ep-gemma-earnings-report-agent"
 	// const namespace = "avant"
 

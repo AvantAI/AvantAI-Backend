@@ -758,12 +758,26 @@ func startPosition(pos *Position) bool {
 	currentCash := getAccountSize_Safe()
 
 	if positionCost > currentCash {
-		log.Printf("[%s] ⚠️  Insufficient funds. Need $%.2f, have $%.2f. Skipping.",
+		// Use 50% of available cash to buy what we can
+		availableFunds := currentCash * 0.5
+		affordableShares := math.Floor(availableFunds / pos.EntryPrice)
+		
+		if affordableShares < 1 {
+			log.Printf("[%s] ⚠️  Insufficient funds even for 1 share. Need $%.2f, have $%.2f. Skipping.",
+				pos.Symbol, pos.EntryPrice, currentCash)
+			processedMu.Lock()
+			processedSymbols[pos.Symbol] = true
+			processedMu.Unlock()
+			return false
+		}
+		
+		log.Printf("[%s] ⚠️  Insufficient funds for full position. Need $%.2f, have $%.2f",
 			pos.Symbol, positionCost, currentCash)
-		processedMu.Lock()
-		processedSymbols[pos.Symbol] = true
-		processedMu.Unlock()
-		return false
+		log.Printf("[%s] 💡 Adjusting: Using 50%% of cash ($%.2f) to buy %.0f shares instead of %.0f shares",
+			pos.Symbol, availableFunds, affordableShares, pos.Shares)
+		
+		pos.Shares = affordableShares
+		positionCost = pos.EntryPrice * pos.Shares
 	}
 
 	updateAccountSize(-positionCost)

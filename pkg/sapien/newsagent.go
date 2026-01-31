@@ -7,14 +7,12 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"sync"
 
 	"github.com/joho/godotenv"
 	"go.uber.org/zap"
 )
 
-func NewsAgentReqInfo(wg *sync.WaitGroup, stock string) {
-	defer wg.Done() // Decrement the counter when the goroutine completes
+func NewsAgentReqInfo(stock string) {
 	const EpNewsAgent = "ep-gemma-news-agent"
 	// const namespace = "avant"
 

@@ -9,7 +9,6 @@ import (
 	"log"
 	"os"
 	"strings"
-	"sync"
 )
 
 // Top-level structure that matches your JSON
@@ -113,34 +112,37 @@ func main() {
 	}
 
 	// Use a WaitGroup to wait for all goroutines to complete
-	var wg sync.WaitGroup
+	// var wg sync.WaitGroup
 
 	// Create a semaphore channel to limit concurrent API calls
 	// Buffer size of 3 means max 3 concurrent operations
-	semaphore := make(chan struct{}, 1)
+	// semaphore := make(chan struct{}, 1)
 
 	// gets the news info for the respective stock
 	for _, stock := range report.QualifyingStocks {
-		wg.Add(1)
 
-		go func(symbol string) {
-			defer wg.Done()
+		sapien.NewsAgentReqInfo(stock.Symbol)
+		sapien.EarningsReportAgentReqInfo(stock.Symbol)
+		// wg.Add(1)
 
-			// Acquire semaphore (blocks if 3 goroutines are already running)
-			semaphore <- struct{}{}
-			defer func() { <-semaphore }() // Release semaphore when done
+		// go func(symbol string) {
+		// 	defer wg.Done()
 
-			// Create a WaitGroup for the two agent calls
-			var agentWg sync.WaitGroup
-			agentWg.Add(2)
+		// 	// Acquire semaphore (blocks if 3 goroutines are already running)
+		// 	semaphore <- struct{}{}
+		// 	defer func() { <-semaphore }() // Release semaphore when done
 
-			go sapien.NewsAgentReqInfo(&agentWg, symbol)
-			go sapien.EarningsReportAgentReqInfo(&agentWg, symbol)
+		// 	// Create a WaitGroup for the two agent calls
+		// 	var agentWg sync.WaitGroup
+		// 	agentWg.Add(2)
 
-			agentWg.Wait()
-		}(stock.Symbol)
+		// 	go sapien.NewsAgentReqInfo(&agentWg, symbol)
+		// 	go sapien.EarningsReportAgentReqInfo(&agentWg, symbol)
+
+		// 	agentWg.Wait()
+		// }(stock.Symbol)
 	}
 
 	// Wait for all goroutines to finish
-	wg.Wait()
+	// wg.Wait()
 }

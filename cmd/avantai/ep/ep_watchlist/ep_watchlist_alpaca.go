@@ -23,17 +23,25 @@ package main
 // 	ALPACA_BASE_URL = "https://data.alpaca.markets/v2"
 // 	CHECK_INTERVAL  = 5 * time.Minute
 
-// 	// Stop loss configuration
-// 	MAX_STOP_DISTANCE_MULTIPLIER = 1.5
+// 	// IMPROVED: Wider stop to avoid premature stop-outs
+// 	MAX_STOP_DISTANCE_MULTIPLIER = 2.0 // Was 1.5
 // 	ATR_PERIOD                   = 14
 
-// 	// Profit taking thresholds
-// 	PROFIT_TAKE_MIN_RR     = 2.0
-// 	PROFIT_TAKE_MAX_RR     = 4.0
-// 	PROFIT_TAKE_PERCENT    = 0.40
-// 	STRONG_EP_GAIN         = 1.00
+// 	// IMPROVED: Earlier breakeven protection
+// 	BREAKEVEN_TRIGGER_PERCENT = 0.02 // Move to BE at +2%
+// 	BREAKEVEN_TRIGGER_DAYS    = 2    // Can trigger after day 2
+
+// 	// IMPROVED: Graduated profit taking
+// 	PROFIT_TAKE_1_RR      = 1.5  // First exit at 1.5R
+// 	PROFIT_TAKE_1_PERCENT = 0.25 // Take 25%
+// 	PROFIT_TAKE_2_RR      = 3.0  // Second exit at 3R
+// 	PROFIT_TAKE_2_PERCENT = 0.25 // Take another 25%
+// 	PROFIT_TAKE_3_RR      = 5.0  // Third exit at 5R
+// 	PROFIT_TAKE_3_PERCENT = 0.25 // Take another 25%
+
+// 	STRONG_EP_GAIN         = 0.15 // 15% in 3 days
 // 	STRONG_EP_DAYS         = 3
-// 	STRONG_EP_TAKE_PERCENT = 0.75
+// 	STRONG_EP_TAKE_PERCENT = 0.30 // Take 30%
 
 // 	// Trailing stop
 // 	MA_PERIOD = 20
@@ -41,8 +49,13 @@ package main
 // 	// Weak close threshold
 // 	WEAK_CLOSE_THRESHOLD = 0.30
 
-// 	// Time-based exit
-// 	MAX_DAYS_NO_FOLLOWTHROUGH = 5
+// 	// IMPROVED: More patience
+// 	MAX_DAYS_NO_FOLLOWTHROUGH = 8 // Was 5
+
+// 	// NEW: Entry filters
+// 	MIN_VOLUME_RATIO = 1.2
+// 	MIN_PRICE        = 2.0
+// 	MAX_PRICE        = 200.0
 
 // 	// Market hours (ET)
 // 	MARKET_OPEN_HOUR    = 9
@@ -90,6 +103,8 @@ package main
 // 	PurchaseDate     time.Time
 // 	Status           string
 // 	ProfitTaken      bool
+// 	ProfitTaken2     bool
+// 	ProfitTaken3     bool
 // 	DaysHeld         int
 // 	LastCheckDate    time.Time
 // 	InitialStopLoss  float64
@@ -98,6 +113,9 @@ package main
 // 	EPDayHigh        float64
 // 	HighestPrice     float64
 // 	TrailingStopMode bool
+// 	CumulativeProfit float64
+// 	InitialShares    float64
+// 	AverageVolume    float64
 // }
 
 // type TradeResult struct {
@@ -167,15 +185,23 @@ package main
 
 // 	initializeTradeResultsFile()
 
-// 	log.Println("🕐 Starting LIVE TRADING mode...")
+// 	log.Println("🕐 Starting ENHANCED LIVE TRADING mode...")
 // 	log.Println("Monitoring watchlist and active positions during market hours")
 // 	log.Println("")
-// 	log.Println("📋 EP TRADING RULES IMPLEMENTED:")
-// 	log.Println("  1. Stop-Loss: Just below EP day low, max 1.5x ATR distance")
-// 	log.Println("  2. Profit Taking: 40% at 2-4R, 75% on strong EP (100%+ in 3 days)")
-// 	log.Println("  3. Trailing Stop: 20-day MA based, adjusted by gain level")
-// 	log.Println("  4. Weak Close Exit: Immediate exit if closes 30%+ off high on EP day")
-// 	log.Println("  5. Time-Frame: Tighten stops if no follow-through within 5 days")
+// 	log.Println("📋 ENHANCED EP TRADING RULES IMPLEMENTED:")
+// 	log.Println("  1. Entry Filters: Volume 1.2x avg, Price $2-$200, Above 20-day MA")
+// 	log.Println("  2. Stop-Loss: Just below EP day low, max 2.0x ATR distance (WIDER)")
+// 	log.Println("  3. Breakeven: Move to BE at +2% gain after Day 2 (EARLIER)")
+// 	log.Println("  4. Graduated Profit Taking:")
+// 	log.Println("     - Level 1: 25% at 1.5R")
+// 	log.Println("     - Level 2: 25% at 3.0R (stop locked at +1R)")
+// 	log.Println("     - Level 3: 25% at 5.0R (stop locked at +2R)")
+// 	log.Println("  5. Strong EP: 30% at 15% gain in 3 days")
+// 	log.Println("  6. Dynamic Trailing Stop: Adjusts based on gain percentage")
+// 	log.Println("     - Wide trailing (6% below) if gain > 20%")
+// 	log.Println("     - Medium trailing (5% below) if gain > 10%")
+// 	log.Println("     - Tight trailing (4% below MA) if gain > 5%")
+// 	log.Println("  7. Time-Frame: Tighten stops if no follow-through within 8 days")
 // 	log.Println("")
 // 	log.Println("📊 Entry day positions: Intraday monitoring every 15 minutes using Alpaca")
 // 	log.Println("⏰ Pre-close check will run at 3:55 PM ET (5 min before close)")
@@ -342,8 +368,14 @@ package main
 // 				totalProceeds := weakClosePrice * pos.Shares
 // 				costBasis := pos.EntryPrice * pos.Shares
 // 				profitLoss := totalProceeds - costBasis
+// 				totalProfitLoss := profitLoss + pos.CumulativeProfit
 
 // 				updateAccountSize(totalProceeds)
+
+// 				exitReason := "Weak Close Intraday"
+// 				if pos.CumulativeProfit > 0 {
+// 					exitReason = fmt.Sprintf("%s (Previous partial profits: $%.2f)", exitReason, pos.CumulativeProfit)
+// 				}
 
 // 				recordTradeResult(TradeResult{
 // 					Symbol:      symbol,
@@ -355,8 +387,8 @@ package main
 // 					RiskReward:  (weakClosePrice - pos.EntryPrice) / pos.InitialRisk,
 // 					EntryDate:   pos.PurchaseDate.Format("2006-01-02"),
 // 					ExitDate:    time.Now().Format("2006-01-02"),
-// 					ExitReason:  "Weak Close Intraday",
-// 					IsWinner:    profitLoss > 0,
+// 					ExitReason:  exitReason,
+// 					IsWinner:    totalProfitLoss > 0,
 // 					AccountSize: accountSize,
 // 				})
 
@@ -451,7 +483,7 @@ package main
 
 // 	for i := 1; i < len(records); i++ {
 // 		pos := parsePosition(records[i])
-// 		if pos != nil && (pos.Status == "HOLDING" || pos.Status == "MONITORING" || strings.Contains(pos.Status, "Strong EP")) {
+// 		if pos != nil && (pos.Status == "HOLDING" || pos.Status == "MONITORING" || strings.Contains(pos.Status, "Strong EP") || strings.Contains(pos.Status, "Lvl")) {
 // 			fetchAllHistoricalData(pos.Symbol, pos.PurchaseDate)
 
 // 			pos.DaysHeld = int(time.Since(pos.PurchaseDate).Hours() / 24)
@@ -462,9 +494,9 @@ package main
 // 			currentPrice := getCurrentPrice(pos.Symbol)
 // 			gain := currentPrice - pos.EntryPrice
 
-// 			log.Printf("  [%s] %.2f shares @ $%.2f | Current: $%.2f | Gain: $%.2f (%.1f%%) | Days: %d",
+// 			log.Printf("  [%s] %.2f shares @ $%.2f | Current: $%.2f | Gain: $%.2f (%.1f%%) | Days: %d | Cumulative: $%.2f",
 // 				pos.Symbol, pos.Shares, pos.EntryPrice, currentPrice, gain,
-// 				(gain/pos.EntryPrice)*100, pos.DaysHeld)
+// 				(gain/pos.EntryPrice)*100, pos.DaysHeld, pos.CumulativeProfit)
 // 		}
 // 	}
 
@@ -487,6 +519,7 @@ package main
 
 // 	totalValue := 0.0
 // 	totalGain := 0.0
+// 	totalCumulativeProfit := 0.0
 
 // 	for symbol, pos := range activePositions {
 // 		currentPrice := getCurrentPrice(symbol)
@@ -496,15 +529,16 @@ package main
 
 // 		totalValue += positionValue
 // 		totalGain += positionGain
+// 		totalCumulativeProfit += pos.CumulativeProfit
 
-// 		log.Printf("[%s] %s | %.0f shares @ $%.2f → $%.2f | Value: $%.2f | P/L: $%.2f (%.1f%%) | R/R: %.2fR | Days: %d",
-// 			symbol, pos.Status, pos.Shares, pos.EntryPrice, currentPrice, positionValue,
-// 			positionGain, (positionGain/(pos.EntryPrice*pos.Shares))*100, rr, pos.DaysHeld)
+// 		log.Printf("[%s] %s | %.0f/%.0f shares @ $%.2f → $%.2f | Value: $%.2f | P/L: $%.2f (%.1f%%) | Cum: $%.2f | R/R: %.2fR | Days: %d",
+// 			symbol, pos.Status, pos.Shares, pos.InitialShares, pos.EntryPrice, currentPrice, positionValue,
+// 			positionGain, (positionGain/(pos.EntryPrice*pos.Shares))*100, pos.CumulativeProfit, rr, pos.DaysHeld)
 // 	}
 
 // 	log.Println(strings.Repeat("-", 80))
-// 	log.Printf("Total Position Value: $%.2f | Total P/L: $%.2f | Account: $%.2f",
-// 		totalValue, totalGain, accountSize)
+// 	log.Printf("Total Position Value: $%.2f | Total P/L: $%.2f | Cumulative Profits: $%.2f | Account: $%.2f",
+// 		totalValue, totalGain, totalCumulativeProfit, accountSize)
 // 	log.Println(strings.Repeat("=", 80) + "\n")
 // }
 
@@ -519,17 +553,13 @@ package main
 // 		}
 // 	}
 
-// 	log.Println("File stats: ", fileInfo.Name(), fileInfo.Size(), fileInfo.ModTime())
-
 // 	watchlistPath = filePath
 
-// 	// if fileInfo.ModTime().After(lastModTime) {
-// 	// 	lastModTime = fileInfo.ModTime()
-// 	// 	log.Println("📋 Watchlist updated, processing new entries...")
-		
-// 	// }
-
-// 	processWatchlist(filePath)
+// 	if fileInfo.ModTime().After(lastModTime) {
+// 		lastModTime = fileInfo.ModTime()
+// 		log.Println("📋 Watchlist updated, processing new entries...")
+// 		processWatchlist(filePath)
+// 	}
 // }
 
 // func processWatchlist(filePath string) {
@@ -719,6 +749,36 @@ package main
 // 	return true
 // }
 
+// func calculateAverageVolume(symbol string, endDate time.Time, period int) float64 {
+// 	historicalData, exists := historicalCache[symbol]
+// 	if !exists || len(historicalData) < period {
+// 		return 0
+// 	}
+
+// 	var endIdx int
+// 	targetDate := endDate.Format("2006-01-02")
+
+// 	for i := range historicalData {
+// 		barTime, _ := time.Parse(time.RFC3339, historicalData[i].T)
+// 		if barTime.Format("2006-01-02") <= targetDate {
+// 			endIdx = i
+// 		}
+// 	}
+
+// 	if endIdx < period {
+// 		return 0
+// 	}
+
+// 	sum := 0.0
+// 	for i := endIdx - period; i < endIdx; i++ {
+// 		if i >= 0 {
+// 			sum += historicalData[i].V
+// 		}
+// 	}
+
+// 	return sum / float64(period)
+// }
+
 // func startPosition(pos *Position) {
 // 	log.Printf("[%s] 📥 Fetching historical data...", pos.Symbol)
 
@@ -747,6 +807,37 @@ package main
 // 		return
 // 	}
 
+// 	// NEW: Price filter
+// 	if epDayData.C < MIN_PRICE || epDayData.C > MAX_PRICE {
+// 		log.Printf("[%s] ⚠️  Price $%.2f outside acceptable range ($%.2f-$%.2f), skipping",
+// 			pos.Symbol, epDayData.C, MIN_PRICE, MAX_PRICE)
+// 		processedSymbols[pos.Symbol] = true
+// 		return
+// 	}
+
+// 	// NEW: Volume filter
+// 	avgVolume := calculateAverageVolume(pos.Symbol, pos.PurchaseDate, 20)
+// 	if avgVolume > 0 {
+// 		volumeRatio := epDayData.V / avgVolume
+// 		if volumeRatio < MIN_VOLUME_RATIO {
+// 			log.Printf("[%s] ⚠️  Insufficient volume: %.2fx average (need %.2fx), skipping",
+// 				pos.Symbol, volumeRatio, MIN_VOLUME_RATIO)
+// 			processedSymbols[pos.Symbol] = true
+// 			return
+// 		}
+// 		log.Printf("[%s] ✅ Volume: %.2fx average", pos.Symbol, volumeRatio)
+// 		pos.AverageVolume = avgVolume
+// 	}
+
+// 	// NEW: Trend filter
+// 	ma20 := calculate20DayMA(pos.Symbol, pos.PurchaseDate)
+// 	if ma20 > 0 && epDayData.C < ma20 {
+// 		log.Printf("[%s] ⚠️  Price $%.2f below 20-day MA $%.2f, skipping weak setup",
+// 			pos.Symbol, epDayData.C, ma20)
+// 		processedSymbols[pos.Symbol] = true
+// 		return
+// 	}
+
 // 	pos.EPDayLow = epDayData.L
 // 	pos.EPDayHigh = epDayData.H
 
@@ -757,9 +848,11 @@ package main
 // 		finalStop = pos.StopLoss
 // 		log.Printf("[%s] ℹ️  Using watchlist stop loss: $%.2f", pos.Symbol, finalStop)
 // 	} else {
-// 		suggestedStop := pos.EPDayLow * 0.99
+// 		// IMPROVED: Wider stop (0.98 instead of 0.99)
+// 		suggestedStop := pos.EPDayLow * 0.98
 
 // 		if atr > 0 {
+// 			// IMPROVED: 2.0x ATR instead of 1.5x
 // 			maxStopDistance := atr * MAX_STOP_DISTANCE_MULTIPLIER
 // 			actualStopDistance := pos.EntryPrice - suggestedStop
 
@@ -787,16 +880,33 @@ package main
 // 	}
 
 // 	positionCost := pos.EntryPrice * pos.Shares
+
+// 	// IMPROVED: Buy what we can afford if insufficient funds
 // 	if positionCost > accountSize {
-// 		log.Printf("[%s] ⚠️  Insufficient funds. Need $%.2f, have $%.2f. Skipping.",
+// 		availableFunds := accountSize * 0.5
+// 		affordableShares := math.Floor(availableFunds / pos.EntryPrice)
+
+// 		if affordableShares < 1 {
+// 			log.Printf("[%s] ⚠️  Insufficient funds even for 1 share. Need $%.2f, have $%.2f. Skipping.",
+// 				pos.Symbol, pos.EntryPrice, accountSize)
+// 			processedSymbols[pos.Symbol] = true
+// 			return
+// 		}
+
+// 		log.Printf("[%s] ⚠️  Insufficient funds for full position. Need $%.2f, have $%.2f",
 // 			pos.Symbol, positionCost, accountSize)
-// 		processedSymbols[pos.Symbol] = true
-// 		return
+// 		log.Printf("[%s] 💡 Adjusting: Using 50%% of cash ($%.2f) to buy %.0f shares instead of %.0f shares",
+// 			pos.Symbol, availableFunds, affordableShares, pos.Shares)
+
+// 		pos.Shares = affordableShares
+// 		positionCost = pos.EntryPrice * pos.Shares
 // 	}
 
 // 	updateAccountSize(-positionCost)
 // 	pos.LastCheckDate = pos.PurchaseDate
 // 	pos.Status = "HOLDING"
+// 	pos.InitialShares = pos.Shares
+// 	pos.CumulativeProfit = 0.0
 // 	activePositions[pos.Symbol] = pos
 // 	processedSymbols[pos.Symbol] = true
 
@@ -906,7 +1016,7 @@ package main
 // 	// Remove .py extension
 // 	moduleName = strings.TrimSuffix(moduleName, ".py")
 
-// 	// Build the Python command - handle the return value and print it
+// 	// Build the Python command
 // 	var pythonCmd string
 // 	if sellPrice > 0 {
 // 		// Limit order with price
@@ -919,7 +1029,7 @@ package main
 // 			sellPrice,
 // 		)
 // 	} else {
-// 		// Market order (pass None for sell_price)
+// 		// Market order
 // 		pythonCmd = fmt.Sprintf(
 // 			"import sys; sys.path.insert(0, '%s'); from %s import place_sell_order; order = place_sell_order('%s', %d, None); print(f'Order placed: {order.id} - {order.status}')",
 // 			scriptDir,
@@ -1018,10 +1128,11 @@ package main
 // 			log.Printf("[%s] 📈 NEW HIGH: $%.2f (was $%.2f)", symbol, currentPrice, pos.HighestPrice)
 // 		}
 
-// 		log.Printf("[%s] Status: %s | Current: $%.2f | Gain: $%.2f (%.1f%%) | R/R: %.2fR | Stop: $%.2f",
+// 		log.Printf("[%s] Status: %s | Current: $%.2f | Gain: $%.2f (%.1f%%) | R/R: %.2fR | Cum: $%.2f | Stop: $%.2f | Shares: %.0f/%.0f",
 // 			symbol, pos.Status, currentPrice, currentGain,
-// 			(currentGain/pos.EntryPrice)*100, currentRR, pos.StopLoss)
+// 			(currentGain/pos.EntryPrice)*100, currentRR, pos.CumulativeProfit, pos.StopLoss, pos.Shares, pos.InitialShares)
 
+// 		// Stop loss alerts
 // 		if pos.DaysHeld <= 1 {
 // 			if currentPrice <= pos.StopLoss*1.02 {
 // 				if !stopAlerts[symbol] {
@@ -1045,9 +1156,10 @@ package main
 // 			}
 // 		}
 
-// 		if pos.DaysHeld > 3 && !pos.ProfitTaken && currentPrice > pos.EntryPrice && pos.StopLoss < pos.EntryPrice {
+// 		// IMPROVED: Earlier breakeven (Day 2 at 2%)
+// 		if pos.DaysHeld >= BREAKEVEN_TRIGGER_DAYS && !pos.ProfitTaken {
 // 			percentGainIntraday := (currentPrice - pos.EntryPrice) / pos.EntryPrice
-// 			if percentGainIntraday >= 0.03 {
+// 			if percentGainIntraday >= BREAKEVEN_TRIGGER_PERCENT && pos.StopLoss < pos.EntryPrice {
 // 				pos.StopLoss = pos.EntryPrice
 // 				log.Printf("[%s] 🔒 MOVED TO BREAKEVEN - Up %.1f%% (Day %d), protecting capital. Stop: $%.2f",
 // 					pos.Symbol, percentGainIntraday*100, pos.DaysHeld, pos.StopLoss)
@@ -1055,34 +1167,66 @@ package main
 // 			}
 // 		}
 
-// 		if !pos.ProfitTaken {
-// 			if pos.DaysHeld <= STRONG_EP_DAYS && percentGain >= STRONG_EP_GAIN {
-// 				if !profitAlerts[symbol] {
-// 					log.Printf("[%s] 🎉🎉 STRONG EP ALERT: %.1f%% gain in %d days!",
-// 						symbol, percentGain*100, pos.DaysHeld)
-// 					log.Printf("[%s] 🎉🎉 RECOMMENDATION: Take %.0f%% profit at market close",
-// 						symbol, STRONG_EP_TAKE_PERCENT*100)
-// 					profitAlerts[symbol] = true
-// 				}
-// 			}
-
-// 			if currentRR >= PROFIT_TAKE_MIN_RR && currentRR <= PROFIT_TAKE_MAX_RR {
-// 				if !profitAlerts[symbol] {
-// 					log.Printf("[%s] 🎯🎯 PROFIT TARGET REACHED: %.2fR!", symbol, currentRR)
-// 					log.Printf("[%s] 🎯🎯 RECOMMENDATION: Take %.0f%% profit at market close",
-// 						symbol, PROFIT_TAKE_PERCENT*100)
-// 					profitAlerts[symbol] = true
-// 				}
+// 		// Profit alerts - Strong EP
+// 		if !pos.ProfitTaken && pos.DaysHeld <= STRONG_EP_DAYS && percentGain >= STRONG_EP_GAIN {
+// 			if !profitAlerts[symbol] {
+// 				log.Printf("[%s] 🎉🎉 STRONG EP ALERT: %.1f%% gain in %d days!",
+// 					symbol, percentGain*100, pos.DaysHeld)
+// 				log.Printf("[%s] 🎉🎉 RECOMMENDATION: Take %.0f%% profit at market close",
+// 					symbol, STRONG_EP_TAKE_PERCENT*100)
+// 				profitAlerts[symbol] = true
 // 			}
 // 		}
 
+// 		// IMPROVED: Graduated profit alerts
+// 		if currentRR >= PROFIT_TAKE_1_RR && !pos.ProfitTaken {
+// 			if !profitAlerts[symbol+"_L1"] {
+// 				log.Printf("[%s] 🎯 PROFIT LEVEL 1 REACHED: %.2fR!", symbol, currentRR)
+// 				log.Printf("[%s] 🎯 RECOMMENDATION: Take %.0f%% profit at market close",
+// 					symbol, PROFIT_TAKE_1_PERCENT*100)
+// 				profitAlerts[symbol+"_L1"] = true
+// 			}
+// 		}
+
+// 		if currentRR >= PROFIT_TAKE_2_RR && pos.ProfitTaken && !pos.ProfitTaken2 {
+// 			if !profitAlerts[symbol+"_L2"] {
+// 				log.Printf("[%s] 🎯🎯 PROFIT LEVEL 2 REACHED: %.2fR!", symbol, currentRR)
+// 				log.Printf("[%s] 🎯🎯 RECOMMENDATION: Take %.0f%% profit, lock stop at +1R",
+// 					symbol, PROFIT_TAKE_2_PERCENT*100)
+// 				profitAlerts[symbol+"_L2"] = true
+// 			}
+// 		}
+
+// 		if currentRR >= PROFIT_TAKE_3_RR && pos.ProfitTaken2 && !pos.ProfitTaken3 {
+// 			if !profitAlerts[symbol+"_L3"] {
+// 				log.Printf("[%s] 🎯🎯🎯 PROFIT LEVEL 3 REACHED: %.2fR!", symbol, currentRR)
+// 				log.Printf("[%s] 🎯🎯🎯 RECOMMENDATION: Take %.0f%% profit, lock stop at +2R",
+// 					symbol, PROFIT_TAKE_3_PERCENT*100)
+// 				profitAlerts[symbol+"_L3"] = true
+// 			}
+// 		}
+
+// 		// IMPROVED: Dynamic trailing stop monitoring
 // 		if pos.TrailingStopMode {
 // 			ma20 := calculate20DayMA(symbol, time.Now())
 // 			if ma20 > 0 {
-// 				distanceFromMA := ((currentPrice - ma20) / ma20) * 100
-// 				if distanceFromMA < 5.0 && distanceFromMA > -2.0 {
-// 					log.Printf("[%s] ⚠️  Near 20-day MA: $%.2f (MA: $%.2f, %.1f%% away)",
-// 						symbol, currentPrice, ma20, distanceFromMA)
+// 				percentGainFromEntry := (currentPrice - pos.EntryPrice) / pos.EntryPrice
+// 				var targetDistance float64
+
+// 				if percentGainFromEntry > 0.20 {
+// 					targetDistance = 0.06 // 6% wide trailing
+// 				} else if percentGainFromEntry > 0.10 {
+// 					targetDistance = 0.05 // 5% medium trailing
+// 				} else if percentGainFromEntry > 0.05 {
+// 					targetDistance = 0.04 // 4% tight trailing
+// 				}
+
+// 				if targetDistance > 0 {
+// 					distanceFromMA := ((currentPrice - ma20) / ma20) * 100
+// 					if distanceFromMA < targetDistance*100 && distanceFromMA > -(targetDistance*100/2) {
+// 						log.Printf("[%s] ⚠️  Near 20-day MA: $%.2f (MA: $%.2f, %.1f%% away, trailing at %.0f%%)",
+// 							symbol, currentPrice, ma20, distanceFromMA, targetDistance*100)
+// 					}
 // 				}
 // 			}
 // 		}
@@ -1119,12 +1263,13 @@ package main
 // 		log.Printf("\n[%s] Pre-Close Analysis:", symbol)
 // 		log.Printf("  Current Price: $%.2f (Position Value: $%.2f)", currentPrice, positionValue)
 // 		log.Printf("  Entry Price: $%.2f | Stop Loss: $%.2f", pos.EntryPrice, pos.StopLoss)
-// 		log.Printf("  Gain: $%.2f (%.1f%%) | R/R: %.2fR", currentGain, percentGain*100, currentRR)
-// 		log.Printf("  Days Held: %d | Status: %s | Profit Taken: %v", pos.DaysHeld, pos.Status, pos.ProfitTaken)
+// 		log.Printf("  Gain: $%.2f (%.1f%%) | R/R: %.2fR | Cumulative: $%.2f", currentGain, percentGain*100, currentRR, pos.CumulativeProfit)
+// 		log.Printf("  Days Held: %d | Status: %s | Shares: %.0f/%.0f", pos.DaysHeld, pos.Status, pos.Shares, pos.InitialShares)
 
 // 		shouldSell := false
 // 		sellReason := ""
 
+// 		// Check stop loss
 // 		if pos.DaysHeld <= 1 {
 // 			if currentPrice <= pos.StopLoss {
 // 				log.Printf("  🛑 ALERT: SELL NOW - Price at/below stop!")
@@ -1135,12 +1280,13 @@ package main
 // 		} else {
 // 			if currentPrice <= pos.StopLoss {
 // 				log.Printf("  🛑 ALERT: SELL AT CLOSE - Price at/below stop!")
-// 				sellReason = fmt.Sprintf("AT STOP LOSS ($%.2f <= $%.2f) - LOSS: $%.2f",
+// 				sellReason = fmt.Sprintf("AT STOP LOSS ($%.2f <= $%.2f) - P/L: $%.2f",
 // 					currentPrice, pos.StopLoss, currentGain*pos.Shares)
 // 				shouldSell = true
 // 			}
 // 		}
 
+// 		// Strong EP check
 // 		if !shouldSell && pos.DaysHeld <= STRONG_EP_DAYS && percentGain >= STRONG_EP_GAIN && !pos.ProfitTaken {
 // 			log.Printf("  🚀 ALERT: Take %.0f%% profit - Strong EP detected!", STRONG_EP_TAKE_PERCENT*100)
 // 			sharesToSell := pos.Shares * STRONG_EP_TAKE_PERCENT
@@ -1150,35 +1296,67 @@ package main
 // 			shouldSell = true
 // 		}
 
-// 		if !shouldSell && currentRR >= PROFIT_TAKE_MIN_RR && currentRR <= PROFIT_TAKE_MAX_RR && !pos.ProfitTaken {
-// 			log.Printf("  🎯 ALERT: Take %.0f%% profit - Hit %.2fR target!", PROFIT_TAKE_PERCENT*100, currentRR)
-// 			sharesToSell := pos.Shares * PROFIT_TAKE_PERCENT
+// 		// IMPROVED: Graduated profit taking
+// 		if !shouldSell && currentRR >= PROFIT_TAKE_1_RR && !pos.ProfitTaken {
+// 			log.Printf("  🎯 ALERT: Take %.0f%% profit - Hit %.2fR target (Level 1)!", PROFIT_TAKE_1_PERCENT*100, currentRR)
+// 			sharesToSell := pos.Shares * PROFIT_TAKE_1_PERCENT
 // 			profitAmount := (currentPrice - pos.EntryPrice) * sharesToSell
-// 			sellReason = fmt.Sprintf("PROFIT TARGET - Sell %.0f shares (%.0f%% of position) for $%.2f profit (%.2fR achieved)",
-// 				sharesToSell, PROFIT_TAKE_PERCENT*100, profitAmount, currentRR)
+// 			sellReason = fmt.Sprintf("PROFIT LEVEL 1 - Sell %.0f shares (%.0f%% of position) for $%.2f profit (%.2fR achieved)",
+// 				sharesToSell, PROFIT_TAKE_1_PERCENT*100, profitAmount, currentRR)
 // 			shouldSell = true
 // 		}
 
+// 		if !shouldSell && currentRR >= PROFIT_TAKE_2_RR && pos.ProfitTaken && !pos.ProfitTaken2 {
+// 			log.Printf("  🎯🎯 ALERT: Take %.0f%% profit - Hit %.2fR target (Level 2)!", PROFIT_TAKE_2_PERCENT*100, currentRR)
+// 			sharesToSell := pos.Shares * PROFIT_TAKE_2_PERCENT
+// 			profitAmount := (currentPrice - pos.EntryPrice) * sharesToSell
+// 			sellReason = fmt.Sprintf("PROFIT LEVEL 2 - Sell %.0f shares (%.0f%% of position) for $%.2f profit (%.2fR achieved)",
+// 				sharesToSell, PROFIT_TAKE_2_PERCENT*100, profitAmount, currentRR)
+// 			shouldSell = true
+// 		}
+
+// 		if !shouldSell && currentRR >= PROFIT_TAKE_3_RR && pos.ProfitTaken2 && !pos.ProfitTaken3 {
+// 			log.Printf("  🎯🎯🎯 ALERT: Take %.0f%% profit - Hit %.2fR target (Level 3)!", PROFIT_TAKE_3_PERCENT*100, currentRR)
+// 			sharesToSell := pos.Shares * PROFIT_TAKE_3_PERCENT
+// 			profitAmount := (currentPrice - pos.EntryPrice) * sharesToSell
+// 			sellReason = fmt.Sprintf("PROFIT LEVEL 3 - Sell %.0f shares (%.0f%% of position) for $%.2f profit (%.2fR achieved)",
+// 				sharesToSell, PROFIT_TAKE_3_PERCENT*100, profitAmount, currentRR)
+// 			shouldSell = true
+// 		}
+
+// 		// IMPROVED: Dynamic trailing stop check
 // 		if !shouldSell && pos.TrailingStopMode {
 // 			ma20 := calculate20DayMA(symbol, time.Now())
-// 			// percentGainFromEntry := (currentPrice - pos.EntryPrice) / pos.EntryPrice
+// 			percentGainFromEntry := (currentPrice - pos.EntryPrice) / pos.EntryPrice
 
-// 			if ma20 > 0 && currentPrice < ma20*0.96 {
-// 				log.Printf("  📉 ALERT: SELL - Price 4 percent below 20-day MA ($%.2f)", ma20)
-// 				profitAmount := (currentPrice - pos.EntryPrice) * pos.Shares
-// 				sellReason = fmt.Sprintf("TRAILING STOP - 4 percent below 20-day MA ($%.2f < $%.2f) - P/L: $%.2f",
-// 					currentPrice, ma20*0.96, profitAmount)
-// 				shouldSell = true
+// 			if ma20 > 0 {
+// 				var stopThreshold float64
+// 				if percentGainFromEntry > 0.20 {
+// 					stopThreshold = ma20 * 0.94 // 6% below
+// 				} else if percentGainFromEntry > 0.10 {
+// 					stopThreshold = ma20 * 0.95 // 5% below
+// 				} else if percentGainFromEntry > 0.05 {
+// 					stopThreshold = ma20 * 0.96 // 4% below
+// 				}
+
+// 				if stopThreshold > 0 && currentPrice < stopThreshold {
+// 					log.Printf("  📉 ALERT: SELL - Price below dynamic trailing stop")
+// 					profitAmount := (currentPrice - pos.EntryPrice) * pos.Shares
+// 					sellReason = fmt.Sprintf("TRAILING STOP - Below %.0f%% MA threshold ($%.2f < $%.2f) - P/L: $%.2f",
+// 						(1-(stopThreshold/ma20))*100, currentPrice, stopThreshold, profitAmount)
+// 					shouldSell = true
+// 				}
 // 			}
 // 		}
 
-// 		if !shouldSell && pos.DaysHeld >= MAX_DAYS_NO_FOLLOWTHROUGH && currentPrice < pos.EntryPrice*1.05 && !pos.ProfitTaken {
-// 			log.Printf("  ⚠️  WARNING: No follow-through after %d days (only %.1f%% gain)",
-// 				pos.DaysHeld, percentGain*100)
+// 		// IMPROVED: Weak momentum check (8 days instead of 5)
+// 		if !shouldSell && pos.DaysHeld >= MAX_DAYS_NO_FOLLOWTHROUGH && currentRR < 0.5 && !pos.ProfitTaken {
+// 			log.Printf("  ⚠️  WARNING: No follow-through after %d days (only %.2fR)",
+// 				pos.DaysHeld, currentRR)
 // 			log.Printf("  Consider tightening stop or exiting if no momentum")
 // 			holdPositions = append(holdPositions,
-// 				fmt.Sprintf("%s: WEAK MOMENTUM - %d days, only %.1f%% gain - Consider exit",
-// 					symbol, pos.DaysHeld, percentGain*100))
+// 				fmt.Sprintf("%s: WEAK MOMENTUM - %d days, only %.2fR - Consider exit",
+// 					symbol, pos.DaysHeld, currentRR))
 // 		}
 
 // 		if shouldSell {
@@ -1187,8 +1365,8 @@ package main
 // 		} else if len(holdPositions) == 0 || holdPositions[len(holdPositions)-1][:len(symbol)] != symbol {
 // 			log.Printf("  ✅ HOLD - No exit signals at this time")
 // 			holdPositions = append(holdPositions,
-// 				fmt.Sprintf("%s: Hold - P/L: $%.2f (%.1f%%), R/R: %.2fR",
-// 					symbol, currentGain*pos.Shares, percentGain*100, currentRR))
+// 				fmt.Sprintf("%s: Hold - P/L: $%.2f (%.1f%%), R/R: %.2fR, Cum: $%.2f",
+// 					symbol, currentGain*pos.Shares, percentGain*100, currentRR, pos.CumulativeProfit))
 // 		}
 // 	}
 
@@ -1287,10 +1465,11 @@ package main
 // 		pos.HighestPrice = dayHigh
 // 	}
 
-// 	log.Printf("[%s] EOD Day %d | Close: $%.2f | Low: $%.2f | High: $%.2f | Gain: $%.2f (%.1f%%) | R/R: %.2fR | Stop: $%.2f",
+// 	log.Printf("[%s] EOD Day %d | Close: $%.2f | Low: $%.2f | High: $%.2f | Gain: $%.2f (%.1f%%) | R/R: %.2fR | Cum: $%.2f | Stop: $%.2f",
 // 		pos.Symbol, pos.DaysHeld, currentPrice, dayLow, dayHigh, currentGain,
-// 		(currentGain/pos.EntryPrice)*100, currentRR, pos.StopLoss)
+// 		(currentGain/pos.EntryPrice)*100, currentRR, pos.CumulativeProfit, pos.StopLoss)
 
+// 	// Check stop loss
 // 	if pos.DaysHeld == 1 {
 // 		if dayLow <= pos.StopLoss {
 // 			stopOut(pos, pos.StopLoss, time.Now())
@@ -1303,27 +1482,30 @@ package main
 // 		}
 // 	}
 
-// 	if pos.DaysHeld > 3 && !pos.ProfitTaken && dayHigh > pos.EntryPrice && pos.StopLoss < pos.EntryPrice {
+// 	// IMPROVED: Earlier breakeven (Day 2 at 2%)
+// 	if pos.DaysHeld >= BREAKEVEN_TRIGGER_DAYS && !pos.ProfitTaken {
 // 		percentGain := (dayHigh - pos.EntryPrice) / pos.EntryPrice
-// 		if percentGain >= 0.03 {
+// 		if percentGain >= BREAKEVEN_TRIGGER_PERCENT && pos.StopLoss < pos.EntryPrice {
 // 			pos.StopLoss = pos.EntryPrice
-// 			log.Printf("[%s] 🔒 MOVED TO BREAKEVEN - Up %.1f%% intraday (Day %d), protecting capital. Stop: $%.2f",
+// 			log.Printf("[%s] 🔒 MOVED TO BREAKEVEN - Up %.1f%% (Day %d), protecting capital. Stop: $%.2f",
 // 				pos.Symbol, percentGain*100, pos.DaysHeld, pos.StopLoss)
 // 			updatePositionInCSV(pos)
 // 		}
 // 	}
 
-// 	if pos.DaysHeld >= MAX_DAYS_NO_FOLLOWTHROUGH && currentPrice < pos.EntryPrice*1.05 && !pos.ProfitTaken {
-// 		tightenedStop := pos.EntryPrice - (pos.InitialRisk * 0.5)
+// 	// IMPROVED: Tighten stop if no follow-through (8 days instead of 5)
+// 	if pos.DaysHeld >= MAX_DAYS_NO_FOLLOWTHROUGH && currentRR < 0.5 && !pos.ProfitTaken {
+// 		tightenedStop := pos.EntryPrice - (pos.InitialRisk * 0.3)
 // 		tightenedStop = math.Max(tightenedStop, pos.EntryPrice)
 // 		if tightenedStop > pos.StopLoss {
 // 			pos.StopLoss = tightenedStop
-// 			log.Printf("[%s] ⚠️  No follow-through after %d days. Tightening stop to $%.2f",
+// 			log.Printf("[%s] ⚠️  Weak follow-through after %d days. Tightening stop to $%.2f",
 // 				pos.Symbol, MAX_DAYS_NO_FOLLOWTHROUGH, pos.StopLoss)
 // 			updatePositionInCSV(pos)
 // 		}
 // 	}
 
+// 	// Check for strong EP
 // 	percentGain := (currentPrice - pos.EntryPrice) / pos.EntryPrice
 // 	if pos.DaysHeld <= STRONG_EP_DAYS && percentGain >= STRONG_EP_GAIN && !pos.ProfitTaken {
 // 		takeStrongEPProfit(pos, currentPrice, time.Now())
@@ -1331,35 +1513,88 @@ package main
 // 		return false
 // 	}
 
-// 	if currentRR >= PROFIT_TAKE_MIN_RR && currentRR <= PROFIT_TAKE_MAX_RR && !pos.ProfitTaken {
-// 		takeProfitPartial(pos, currentPrice, time.Now(), PROFIT_TAKE_PERCENT)
+// 	// IMPROVED: Graduated profit taking
+// 	if currentRR >= PROFIT_TAKE_1_RR && !pos.ProfitTaken {
+// 		takeProfitPartial(pos, currentPrice, time.Now(), PROFIT_TAKE_1_PERCENT, 1)
 // 		pos.TrailingStopMode = true
-// 		if pos.DaysHeld > 3 {
+// 		pos.ProfitTaken = true
+// 		if pos.DaysHeld >= BREAKEVEN_TRIGGER_DAYS {
 // 			pos.StopLoss = math.Max(pos.StopLoss, pos.EntryPrice)
-// 			log.Printf("[%s] 🔒 Stop moved to breakeven after profit taking", pos.Symbol)
+// 			log.Printf("[%s] 🔒 Stop at breakeven after Level 1 profit", pos.Symbol)
 // 		}
 // 		updatePositionInCSV(pos)
 // 		return false
 // 	}
 
+// 	if currentRR >= PROFIT_TAKE_2_RR && pos.ProfitTaken && !pos.ProfitTaken2 {
+// 		takeProfitPartial(pos, currentPrice, time.Now(), PROFIT_TAKE_2_PERCENT, 2)
+// 		newStop := pos.EntryPrice + (pos.InitialRisk * 1.0)
+// 		pos.StopLoss = math.Max(pos.StopLoss, newStop)
+// 		pos.ProfitTaken2 = true
+// 		log.Printf("[%s] 🔒 Stop locked at +1R after Level 2 profit", pos.Symbol)
+// 		updatePositionInCSV(pos)
+// 		return false
+// 	}
+
+// 	if currentRR >= PROFIT_TAKE_3_RR && pos.ProfitTaken2 && !pos.ProfitTaken3 {
+// 		takeProfitPartial(pos, currentPrice, time.Now(), PROFIT_TAKE_3_PERCENT, 3)
+// 		newStop := pos.EntryPrice + (pos.InitialRisk * 2.0)
+// 		pos.StopLoss = math.Max(pos.StopLoss, newStop)
+// 		pos.ProfitTaken3 = true
+// 		log.Printf("[%s] 🔒 Stop locked at +2R after Level 3 profit", pos.Symbol)
+// 		updatePositionInCSV(pos)
+// 		return false
+// 	}
+
+// 	// IMPROVED: Dynamic trailing stop
 // 	if pos.TrailingStopMode {
 // 		ma20 := calculate20DayMA(pos.Symbol, time.Now())
-// 		// percentGainFromEntry := (currentPrice - pos.EntryPrice) / pos.EntryPrice
+// 		percentGainFromEntry := (currentPrice - pos.EntryPrice) / pos.EntryPrice
 
 // 		if ma20 > 0 {
-// 			newStop := ma20 * 0.96
-// 			newStop = math.Max(newStop, pos.EntryPrice)
+// 			var newStop float64
 
-// 			if newStop > pos.StopLoss {
-// 				pos.StopLoss = newStop
-// 				log.Printf("[%s] 📈 Trailing stop updated: $%.2f (4%% below 20-day MA)",
-// 					pos.Symbol, pos.StopLoss)
-// 				updatePositionInCSV(pos)
+// 			if percentGainFromEntry > 0.20 {
+// 				// Wide trailing: 6% below MA or price
+// 				newStop = math.Max(ma20*0.94, currentPrice*0.94)
+// 				newStop = math.Max(newStop, pos.EntryPrice)
+// 				if newStop > pos.StopLoss {
+// 					pos.StopLoss = newStop
+// 					log.Printf("[%s] 📈 Wide trailing (%.1f%% gain): $%.2f (6%% below)",
+// 						pos.Symbol, percentGainFromEntry*100, pos.StopLoss)
+// 					updatePositionInCSV(pos)
+// 				}
+// 			} else if percentGainFromEntry > 0.10 {
+// 				// Medium trailing: 5% below MA or price
+// 				newStop = math.Max(ma20*0.95, currentPrice*0.95)
+// 				newStop = math.Max(newStop, pos.EntryPrice)
+// 				if newStop > pos.StopLoss {
+// 					pos.StopLoss = newStop
+// 					log.Printf("[%s] 📈 Medium trailing (%.1f%% gain): $%.2f (5%% below)",
+// 						pos.Symbol, percentGainFromEntry*100, pos.StopLoss)
+// 					updatePositionInCSV(pos)
+// 				}
+// 			} else if percentGainFromEntry > 0.05 {
+// 				// Tight trailing: 4% below MA
+// 				newStop = ma20 * 0.96
+// 				newStop = math.Max(newStop, pos.EntryPrice)
+// 				if newStop > pos.StopLoss {
+// 					pos.StopLoss = newStop
+// 					log.Printf("[%s] 📈 Tight trailing (%.1f%% gain): $%.2f (4%% below MA)",
+// 						pos.Symbol, percentGainFromEntry*100, pos.StopLoss)
+// 					updatePositionInCSV(pos)
+// 				}
 // 			}
 
-// 			if currentPrice < ma20*0.96 {
-// 				exitPrice := math.Max(pos.StopLoss, pos.EntryPrice)
-// 				exitPosition(pos, exitPrice, time.Now(), "Closed 4%+ below 20-day MA")
+// 			// Exit if below trailing threshold
+// 			if percentGainFromEntry > 0.20 && currentPrice < ma20*0.94 {
+// 				exitPosition(pos, currentPrice, time.Now(), "Closed 6% below MA (wide trailing)")
+// 				return true
+// 			} else if percentGainFromEntry > 0.10 && currentPrice < ma20*0.95 {
+// 				exitPosition(pos, currentPrice, time.Now(), "Closed 5% below MA (medium trailing)")
+// 				return true
+// 			} else if percentGainFromEntry > 0.05 && currentPrice < ma20*0.96 {
+// 				exitPosition(pos, currentPrice, time.Now(), "Closed 4% below MA (tight trailing)")
 // 				return true
 // 			}
 // 		}
@@ -1386,6 +1621,22 @@ package main
 // 	}
 
 // 	updateAccountSize(saleProceeds)
+// 	pos.CumulativeProfit += profit
+
+// 	recordTradeResult(TradeResult{
+// 		Symbol:      pos.Symbol,
+// 		EntryPrice:  pos.EntryPrice,
+// 		ExitPrice:   currentPrice,
+// 		Shares:      sharesToSell,
+// 		InitialRisk: pos.InitialRisk,
+// 		ProfitLoss:  profit,
+// 		RiskReward:  (currentPrice - pos.EntryPrice) / pos.InitialRisk,
+// 		EntryDate:   pos.PurchaseDate.Format("2006-01-02"),
+// 		ExitDate:    date.Format("2006-01-02"),
+// 		ExitReason:  fmt.Sprintf("Strong EP - %.0f%% sold", STRONG_EP_TAKE_PERCENT*100),
+// 		IsWinner:    true,
+// 		AccountSize: accountSize,
+// 	})
 
 // 	pos.Shares = remainingShares
 // 	pos.StopLoss = math.Max(pos.EntryPrice, pos.StopLoss)
@@ -1393,19 +1644,19 @@ package main
 // 	pos.ProfitTaken = true
 // 	pos.TrailingStopMode = true
 
-// 	log.Printf("[%s] ✅ Stop moved to breakeven @ $%.2f | %.0f shares remaining\n",
-// 		pos.Symbol, pos.StopLoss, remainingShares)
+// 	log.Printf("[%s] ✅ Stop at BE: $%.2f | %.0f shares remaining | Cumulative: $%.2f\n",
+// 		pos.Symbol, pos.StopLoss, remainingShares, pos.CumulativeProfit)
 // }
 
-// func takeProfitPartial(pos *Position, currentPrice float64, date time.Time, percent float64) {
+// func takeProfitPartial(pos *Position, currentPrice float64, date time.Time, percent float64, level int) {
 // 	sharesToSell := math.Floor(pos.Shares * percent)
 // 	saleProceeds := sharesToSell * currentPrice
 // 	remainingShares := pos.Shares - sharesToSell
 // 	profit := (currentPrice - pos.EntryPrice) * sharesToSell
 // 	rr := (currentPrice - pos.EntryPrice) / pos.InitialRisk
 
-// 	fmt.Printf("\n[%s] 🎯 TAKING PROFIT (%.2fR) on %s | Selling %.0f%% (%.0f shares) @ $%.2f = $%.2f (Profit: $%.2f)\n",
-// 		pos.Symbol, rr, date.Format("2006-01-02"), percent*100, sharesToSell, currentPrice, saleProceeds, profit)
+// 	fmt.Printf("\n[%s] 🎯 PROFIT LEVEL %d (%.2fR) on %s | Selling %.0f%% (%.0f shares) @ $%.2f = $%.2f (Profit: $%.2f)\n",
+// 		pos.Symbol, level, rr, date.Format("2006-01-02"), percent*100, sharesToSell, currentPrice, saleProceeds, profit)
 
 // 	// Execute sell order
 // 	if err := executeSellOrder(pos.Symbol, sharesToSell, currentPrice); err != nil {
@@ -1413,28 +1664,43 @@ package main
 // 	}
 
 // 	updateAccountSize(saleProceeds)
+// 	pos.CumulativeProfit += profit
+
+// 	recordTradeResult(TradeResult{
+// 		Symbol:      pos.Symbol,
+// 		EntryPrice:  pos.EntryPrice,
+// 		ExitPrice:   currentPrice,
+// 		Shares:      sharesToSell,
+// 		InitialRisk: pos.InitialRisk,
+// 		ProfitLoss:  profit,
+// 		RiskReward:  rr,
+// 		EntryDate:   pos.PurchaseDate.Format("2006-01-02"),
+// 		ExitDate:    date.Format("2006-01-02"),
+// 		ExitReason:  fmt.Sprintf("Profit Level %d at %.2fR", level, rr),
+// 		IsWinner:    true,
+// 		AccountSize: accountSize,
+// 	})
 
 // 	pos.Shares = remainingShares
-// 	pos.StopLoss = math.Max(pos.EntryPrice, pos.StopLoss)
-// 	pos.Status = "MONITORING"
-// 	pos.ProfitTaken = true
+// 	pos.Status = fmt.Sprintf("MONITORING (Lvl %d)", level)
 
-// 	log.Printf("[%s] ✅ Stop moved to breakeven @ $%.2f | %.0f shares remaining\n",
-// 		pos.Symbol, pos.StopLoss, remainingShares)
+// 	log.Printf("[%s] ✅ %.0f shares remaining | Cumulative: $%.2f | Stop: $%.2f\n",
+// 		pos.Symbol, remainingShares, pos.CumulativeProfit, pos.StopLoss)
 // }
 
 // func stopOut(pos *Position, exitPrice float64, date time.Time) {
 // 	totalProceeds := exitPrice * pos.Shares
 // 	costBasis := pos.EntryPrice * pos.Shares
 // 	profitLoss := totalProceeds - costBasis
+// 	totalProfitLoss := profitLoss + pos.CumulativeProfit
 
-// 	isWinner := exitPrice >= pos.EntryPrice || profitLoss > 0
+// 	isWinner := totalProfitLoss > 0
 // 	exitReason := "Stop Loss Hit"
 
 // 	if isWinner && pos.ProfitTaken {
 // 		exitReason = "Trailing Stop Hit (Profit Protected)"
-// 		fmt.Printf("\n[%s] 📊 TRAILING STOP HIT on %s @ $%.2f | Remaining Position P/L: $%.2f\n",
-// 			pos.Symbol, date.Format("2006-01-02"), exitPrice, profitLoss)
+// 		fmt.Printf("\n[%s] 📊 TRAILING STOP HIT on %s @ $%.2f | Remaining P/L: $%.2f | Total P/L: $%.2f\n",
+// 			pos.Symbol, date.Format("2006-01-02"), exitPrice, profitLoss, totalProfitLoss)
 // 	} else {
 // 		fmt.Printf("\n[%s] 🛑 STOPPED OUT on %s @ $%.2f | Loss: $%.2f\n",
 // 			pos.Symbol, date.Format("2006-01-02"), exitPrice, profitLoss)
@@ -1447,6 +1713,11 @@ package main
 
 // 	updateAccountSize(totalProceeds)
 
+// 	exitReasonDetail := exitReason
+// 	if pos.CumulativeProfit > 0 {
+// 		exitReasonDetail = fmt.Sprintf("%s (Previous partial profits: $%.2f)", exitReason, pos.CumulativeProfit)
+// 	}
+
 // 	recordTradeResult(TradeResult{
 // 		Symbol:      pos.Symbol,
 // 		EntryPrice:  pos.EntryPrice,
@@ -1457,7 +1728,7 @@ package main
 // 		RiskReward:  (exitPrice - pos.EntryPrice) / pos.InitialRisk,
 // 		EntryDate:   pos.PurchaseDate.Format("2006-01-02"),
 // 		ExitDate:    date.Format("2006-01-02"),
-// 		ExitReason:  exitReason,
+// 		ExitReason:  exitReasonDetail,
 // 		IsWinner:    isWinner,
 // 		AccountSize: accountSize,
 // 	})
@@ -1470,9 +1741,10 @@ package main
 // 	totalProceeds := currentPrice * pos.Shares
 // 	costBasis := pos.EntryPrice * pos.Shares
 // 	profit := totalProceeds - costBasis
+// 	totalProfit := profit + pos.CumulativeProfit
 
-// 	fmt.Printf("\n[%s] 📤 EXITING on %s @ $%.2f | Reason: %s | P/L: $%.2f\n",
-// 		pos.Symbol, date.Format("2006-01-02"), currentPrice, reason, profit)
+// 	fmt.Printf("\n[%s] 📤 EXITING on %s @ $%.2f | Reason: %s | Remaining P/L: $%.2f | Total P/L: $%.2f\n",
+// 		pos.Symbol, date.Format("2006-01-02"), currentPrice, reason, profit, totalProfit)
 
 // 	// Execute sell order for all remaining shares
 // 	if err := executeSellOrder(pos.Symbol, pos.Shares, currentPrice); err != nil {
@@ -1482,6 +1754,11 @@ package main
 // 	updateAccountSize(totalProceeds)
 
 // 	rr := (currentPrice - pos.EntryPrice) / pos.InitialRisk
+
+// 	reasonDetail := reason
+// 	if pos.CumulativeProfit > 0 {
+// 		reasonDetail = fmt.Sprintf("%s (Previous partial profits: $%.2f)", reason, pos.CumulativeProfit)
+// 	}
 
 // 	recordTradeResult(TradeResult{
 // 		Symbol:      pos.Symbol,
@@ -1493,8 +1770,8 @@ package main
 // 		RiskReward:  rr,
 // 		EntryDate:   pos.PurchaseDate.Format("2006-01-02"),
 // 		ExitDate:    date.Format("2006-01-02"),
-// 		ExitReason:  reason,
-// 		IsWinner:    profit > 0,
+// 		ExitReason:  reasonDetail,
+// 		IsWinner:    totalProfit > 0,
 // 		AccountSize: accountSize,
 // 	})
 
@@ -1513,7 +1790,7 @@ package main
 // 		defer file.Close()
 
 // 		writer := csv.NewWriter(file)
-// 		header := []string{"Symbol", "EntryPrice", "ExitPrice", "Shares", "ProfitLoss", "RiskReward", "EntryDate", "ExitDate", "ExitReason", "IsWinner", "AccountSize"}
+// 		header := []string{"Symbol", "EntryPrice", "ExitPrice", "Shares", "InitialRisk", "ProfitLoss", "RiskReward", "EntryDate", "ExitDate", "ExitReason", "IsWinner", "AccountSize"}
 // 		writer.Write(header)
 // 		writer.Flush()
 // 	}
@@ -1533,6 +1810,7 @@ package main
 // 		fmt.Sprintf("%.2f", result.EntryPrice),
 // 		fmt.Sprintf("%.2f", result.ExitPrice),
 // 		fmt.Sprintf("%.2f", result.Shares),
+// 		fmt.Sprintf("%.2f", result.InitialRisk),
 // 		fmt.Sprintf("%.2f", result.ProfitLoss),
 // 		fmt.Sprintf("%.2f", result.RiskReward),
 // 		result.EntryDate,
@@ -1640,9 +1918,9 @@ package main
 
 // 	for i := 1; i < len(records); i++ {
 // 		row := records[i]
-// 		isWinner := row[9] == "true"
-// 		pl, _ := strconv.ParseFloat(row[4], 64)
-// 		rr, _ := strconv.ParseFloat(row[5], 64)
+// 		isWinner := row[10] == "true"
+// 		pl, _ := strconv.ParseFloat(row[5], 64)
+// 		rr, _ := strconv.ParseFloat(row[6], 64)
 
 // 		totalPL += pl
 // 		if isWinner {
@@ -1708,19 +1986,36 @@ package main
 // 		daysHeld, _ = strconv.Atoi(strings.TrimSpace(row[6]))
 // 	}
 
+// 	// Parse profit taken flags from status
 // 	profitTaken := false
-// 	if status == "MONITORING" || strings.Contains(status, "Strong EP") {
+// 	profitTaken2 := false
+// 	profitTaken3 := false
+// 	if strings.Contains(status, "Lvl 1") {
+// 		profitTaken = true
+// 	} else if strings.Contains(status, "Lvl 2") {
+// 		profitTaken = true
+// 		profitTaken2 = true
+// 	} else if strings.Contains(status, "Lvl 3") {
+// 		profitTaken = true
+// 		profitTaken2 = true
+// 		profitTaken3 = true
+// 	} else if status == "MONITORING" || strings.Contains(status, "Strong EP") {
 // 		profitTaken = true
 // 	}
 
-// 	return &Position{
-// 		Symbol:       strings.TrimSpace(row[0]),
-// 		EntryPrice:   entryPrice,
-// 		StopLoss:     stopLoss,
-// 		Shares:       shares,
-// 		PurchaseDate: purchaseDate,
-// 		Status:       status,
-// 		ProfitTaken:  profitTaken,
-// 		DaysHeld:     daysHeld,
+// 	pos := &Position{
+// 		Symbol:        strings.TrimSpace(row[0]),
+// 		EntryPrice:    entryPrice,
+// 		StopLoss:      stopLoss,
+// 		Shares:        shares,
+// 		PurchaseDate:  purchaseDate,
+// 		Status:        status,
+// 		ProfitTaken:   profitTaken,
+// 		ProfitTaken2:  profitTaken2,
+// 		ProfitTaken3:  profitTaken3,
+// 		DaysHeld:      daysHeld,
+// 		InitialShares: shares, // Assume current shares if not tracking separately
 // 	}
+
+// 	return pos
 // }
