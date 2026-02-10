@@ -3153,3 +3153,613 @@
 [2026-01-28 14:48:31] Processing date: 2025-12-30
 [2026-01-28 14:50:56] Processing date: 2025-12-31
 [2026-01-28 14:52:46] All weekday backtest sequences for 2025 completed.
+[2026-01-31 22:23:39] Starting backtests from 2024-01-01 to 2024-12-31
+[2026-01-31 22:23:39] Processing date: 2024-01-01
+[2026-01-31 22:23:40] ERROR: Data gathering failed for 2024-01-01
+[2026-01-31 22:23:41] ERROR: Worker agent backtest failed for 2024-01-01
+[2026-01-31 22:23:41] ERROR: Main backtest failed for 2024-01-01
+[2026-01-31 22:23:41] Processing date: 2024-01-02
+[2026-01-31 22:23:41] ERROR: Data gathering failed for 2024-01-02
+[2026-01-31 22:23:42] ERROR: Worker agent backtest failed for 2024-01-02
+[2026-01-31 22:23:42] ERROR: Main backtest failed for 2024-01-02
+[2026-01-31 22:23:42] Processing date: 2024-01-03
+[2026-01-31 22:23:42] ERROR: Data gathering failed for 2024-01-03
+[2026-01-31 22:23:43] ERROR: Worker agent backtest failed for 2024-01-03
+[2026-01-31 22:23:43] ERROR: Main backtest failed for 2024-01-03
+[2026-01-31 22:23:43] Processing date: 2024-01-04
+[2026-01-31 22:23:43] ERROR: Data gathering failed for 2024-01-04
+[2026-01-31 22:23:44] ERROR: Worker agent backtest failed for 2024-01-04
+[2026-01-31 22:23:44] ERROR: Main backtest failed for 2024-01-04
+[2026-01-31 22:23:44] Processing date: 2024-01-05
+[2026-01-31 22:23:44] ERROR: Data gathering failed for 2024-01-05
+[2026-01-31 22:23:44] ERROR: Worker agent backtest failed for 2024-01-05
+[2026-01-31 22:23:45] ERROR: Main backtest failed for 2024-01-05
+[2026-01-31 22:23:45] Skipping weekend: 2024-01-06
+[2026-01-31 22:23:45] Skipping weekend: 2024-01-07
+[2026-01-31 22:23:45] Processing date: 2024-01-08
+[2026-01-31 22:23:45] ERROR: Data gathering failed for 2024-01-08
+[2026-01-31 22:23:46] ERROR: Worker agent backtest failed for 2024-01-08
+[2026-01-31 22:23:46] ERROR: Main backtest failed for 2024-01-08
+[2026-01-31 22:23:46] Processing date: 2024-01-09
+[2026-01-31 22:23:46] ERROR: Data gathering failed for 2024-01-09
+[2026-01-31 22:23:46] ERROR: Worker agent backtest failed for 2024-01-09
+[2026-01-31 22:23:47] ERROR: Main backtest failed for 2024-01-09
+[2026-01-31 22:23:47] Processing date: 2024-01-10
+[2026-01-31 22:23:47] ERROR: Data gathering failed for 2024-01-10
+[2026-01-31 22:23:47] ERROR: Worker agent backtest failed for 2024-01-10
+[2026-01-31 22:23:48] ERROR: Main backtest failed for 2024-01-10
+[2026-01-31 22:23:48] Processing date: 2024-01-11
+[2026-01-31 22:23:48] ERROR: Data gathering failed for 2024-01-11
+[2026-01-31 22:23:48] ERROR: Worker agent backtest failed for 2024-01-11
+[2026-01-31 22:23:49] ERROR: Main backtest failed for 2024-01-11
+[2026-01-31 22:23:49] Processing date: 2024-01-12
+[2026-01-31 22:23:49] ERROR: Data gathering failed for 2024-01-12
+[2026-01-31 22:23:49] ERROR: Worker agent backtest failed for 2024-01-12
+[2026-01-31 22:23:50] ERROR: Main backtest failed for 2024-01-12
+[2026-01-31 22:23:50] Skipping weekend: 2024-01-13
+[2026-01-31 22:23:50] Skipping weekend: 2024-01-14
+[2026-01-31 22:23:50] Processing date: 2024-01-15
+[2026-01-31 22:23:50] ERROR: Data gathering failed for 2024-01-15
+[2026-01-31 22:23:50] ERROR: Worker agent backtest failed for 2024-01-15
+[2026-01-31 22:23:51] ERROR: Main backtest failed for 2024-01-15
+[2026-01-31 22:23:51] Processing date: 2024-01-16
+[2026-01-31 22:23:52] ERROR: Data gathering failed for 2024-01-16
+[2026-01-31 22:23:52] ERROR: Worker agent backtest failed for 2024-01-16
+[2026-01-31 22:23:53] ERROR: Main backtest failed for 2024-01-16
+[2026-01-31 22:23:53] Processing date: 2024-01-17
+[2026-01-31 22:23:53] ERROR: Data gathering failed for 2024-01-17
+[2026-01-31 22:23:53] ERROR: Worker agent backtest failed for 2024-01-17
+[2026-01-31 22:23:54] ERROR: Main backtest failed for 2024-01-17
+[2026-01-31 22:23:54] Processing date: 2024-01-18
+[2026-01-31 22:23:54] ERROR: Data gathering failed for 2024-01-18
+[2026-01-31 22:23:54] ERROR: Worker agent backtest failed for 2024-01-18
+[2026-01-31 22:23:55] ERROR: Main backtest failed for 2024-01-18
+[2026-01-31 22:23:55] Processing date: 2024-01-19
+[2026-01-31 22:23:55] ERROR: Data gathering failed for 2024-01-19
+[2026-01-31 22:23:55] ERROR: Worker agent backtest failed for 2024-01-19
+[2026-01-31 22:23:56] ERROR: Main backtest failed for 2024-01-19
+[2026-01-31 22:23:56] Skipping weekend: 2024-01-20
+[2026-01-31 22:23:56] Skipping weekend: 2024-01-21
+[2026-01-31 22:23:56] Processing date: 2024-01-22
+[2026-01-31 22:23:56] ERROR: Data gathering failed for 2024-01-22
+[2026-01-31 22:23:56] ERROR: Worker agent backtest failed for 2024-01-22
+[2026-01-31 22:23:57] ERROR: Main backtest failed for 2024-01-22
+[2026-01-31 22:23:57] Processing date: 2024-01-23
+[2026-01-31 22:23:57] ERROR: Data gathering failed for 2024-01-23
+[2026-01-31 22:23:57] ERROR: Worker agent backtest failed for 2024-01-23
+[2026-01-31 22:23:58] ERROR: Main backtest failed for 2024-01-23
+[2026-01-31 22:23:58] Processing date: 2024-01-24
+[2026-01-31 22:23:58] ERROR: Data gathering failed for 2024-01-24
+[2026-01-31 22:23:58] ERROR: Worker agent backtest failed for 2024-01-24
+[2026-01-31 22:23:59] ERROR: Main backtest failed for 2024-01-24
+[2026-01-31 22:23:59] Processing date: 2024-01-25
+[2026-01-31 22:23:59] ERROR: Data gathering failed for 2024-01-25
+[2026-01-31 22:23:59] ERROR: Worker agent backtest failed for 2024-01-25
+[2026-01-31 22:24:00] ERROR: Main backtest failed for 2024-01-25
+[2026-01-31 22:24:00] Processing date: 2024-01-26
+[2026-01-31 22:24:00] ERROR: Data gathering failed for 2024-01-26
+[2026-01-31 22:24:01] ERROR: Worker agent backtest failed for 2024-01-26
+[2026-01-31 22:24:01] ERROR: Main backtest failed for 2024-01-26
+[2026-01-31 22:24:01] Skipping weekend: 2024-01-27
+[2026-01-31 22:24:01] Skipping weekend: 2024-01-28
+[2026-01-31 22:24:01] Processing date: 2024-01-29
+[2026-01-31 22:24:01] ERROR: Data gathering failed for 2024-01-29
+[2026-01-31 22:24:02] ERROR: Worker agent backtest failed for 2024-01-29
+[2026-01-31 22:24:02] ERROR: Main backtest failed for 2024-01-29
+[2026-01-31 22:24:02] Processing date: 2024-01-30
+[2026-01-31 22:24:02] ERROR: Data gathering failed for 2024-01-30
+[2026-01-31 22:24:03] ERROR: Worker agent backtest failed for 2024-01-30
+[2026-01-31 22:24:03] ERROR: Main backtest failed for 2024-01-30
+[2026-01-31 22:24:03] Processing date: 2024-01-31
+[2026-01-31 22:24:03] ERROR: Data gathering failed for 2024-01-31
+[2026-01-31 22:24:04] ERROR: Worker agent backtest failed for 2024-01-31
+[2026-01-31 22:24:04] ERROR: Main backtest failed for 2024-01-31
+[2026-01-31 22:24:04] Processing date: 2024-02-01
+[2026-01-31 22:24:05] ERROR: Data gathering failed for 2024-02-01
+[2026-01-31 22:24:05] ERROR: Worker agent backtest failed for 2024-02-01
+[2026-01-31 22:24:05] ERROR: Main backtest failed for 2024-02-01
+[2026-01-31 22:24:05] Processing date: 2024-02-02
+[2026-01-31 22:24:06] ERROR: Data gathering failed for 2024-02-02
+[2026-01-31 22:24:06] ERROR: Worker agent backtest failed for 2024-02-02
+[2026-01-31 22:24:06] ERROR: Main backtest failed for 2024-02-02
+[2026-01-31 22:24:06] Skipping weekend: 2024-02-03
+[2026-01-31 22:24:06] Skipping weekend: 2024-02-04
+[2026-01-31 22:24:06] Processing date: 2024-02-05
+[2026-01-31 22:24:07] ERROR: Data gathering failed for 2024-02-05
+[2026-01-31 22:24:07] ERROR: Worker agent backtest failed for 2024-02-05
+[2026-01-31 22:24:07] ERROR: Main backtest failed for 2024-02-05
+[2026-01-31 22:24:07] Processing date: 2024-02-06
+[2026-01-31 22:24:08] ERROR: Data gathering failed for 2024-02-06
+[2026-01-31 22:24:08] ERROR: Worker agent backtest failed for 2024-02-06
+[2026-01-31 22:32:17] Starting backtests from 2024-01-01 to 2024-12-31
+[2026-01-31 22:32:17] Processing date: 2024-01-01
+[2026-01-31 22:32:30] ERROR: Data gathering failed for 2024-01-01
+[2026-01-31 22:32:53] Starting backtests from 2024-01-02 to 2024-12-31
+[2026-01-31 22:32:53] Processing date: 2024-01-02
+[2026-01-31 22:34:44] ERROR: Worker agent backtest failed for 2024-01-02
+[2026-01-31 22:34:45] Processing date: 2024-01-03
+[2026-01-31 22:36:08] ERROR: Worker agent backtest failed for 2024-01-03
+[2026-01-31 22:36:09] Processing date: 2024-01-04
+[2026-01-31 22:37:35] ERROR: Worker agent backtest failed for 2024-01-04
+[2026-01-31 22:37:38] Processing date: 2024-01-05
+[2026-01-31 22:37:42] ERROR: Data gathering failed for 2024-01-05
+[2026-01-31 22:37:42] ERROR: Worker agent backtest failed for 2024-01-05
+[2026-01-31 22:37:42] ERROR: Main backtest failed for 2024-01-05
+[2026-01-31 22:37:42] Skipping weekend: 2024-01-06
+[2026-01-31 22:37:42] Skipping weekend: 2024-01-07
+[2026-01-31 22:37:42] Processing date: 2024-01-08
+[2026-01-31 22:37:44] ERROR: Data gathering failed for 2024-01-08
+[2026-01-31 22:37:44] ERROR: Worker agent backtest failed for 2024-01-08
+[2026-01-31 22:37:44] ERROR: Main backtest failed for 2024-01-08
+[2026-01-31 22:37:44] Processing date: 2024-01-09
+[2026-01-31 22:38:20] Starting backtests from 2024-01-02 to 2024-12-31
+[2026-01-31 22:38:20] Processing date: 2024-01-02
+[2026-01-31 22:40:18] ERROR: Worker agent backtest failed for 2024-01-02
+[2026-01-31 22:40:35] Processing date: 2024-01-03
+[2026-01-31 22:41:04] ERROR: Data gathering failed for 2024-01-03
+[2026-01-31 22:49:01] Starting backtests from 2024-01-02 to 2024-12-31
+[2026-01-31 22:49:01] Processing date: 2024-01-02
+[2026-01-31 22:50:51] ERROR: Worker agent backtest failed for 2024-01-02
+[2026-01-31 22:50:57] ERROR: Main backtest failed for 2024-01-02
+[2026-01-31 22:50:57] Processing date: 2024-01-03
+[2026-02-01 23:10:59] Starting backtests from 2024-01-02 to 2024-12-31
+[2026-02-01 23:10:59] Processing date: 2024-01-02
+[2026-02-01 23:15:08] Processing date: 2024-01-03
+[2026-02-01 23:17:23] Processing date: 2024-01-04
+[2026-02-01 23:19:08] Processing date: 2024-01-05
+[2026-02-01 23:20:56] Skipping weekend: 2024-01-06
+[2026-02-01 23:20:56] Skipping weekend: 2024-01-07
+[2026-02-01 23:20:56] Processing date: 2024-01-08
+[2026-02-01 23:22:54] Processing date: 2024-01-09
+[2026-02-01 23:24:12] Processing date: 2024-01-10
+[2026-02-01 23:27:14] Processing date: 2024-01-11
+[2026-02-01 23:30:22] Processing date: 2024-01-12
+[2026-02-01 23:31:41] Skipping weekend: 2024-01-13
+[2026-02-01 23:31:41] Skipping weekend: 2024-01-14
+[2026-02-01 23:31:41] Processing date: 2024-01-15
+[2026-02-01 23:32:45] ERROR: Data gathering failed for 2024-01-15
+[2026-02-01 23:32:46] ERROR: Worker agent backtest failed for 2024-01-15
+[2026-02-01 23:32:46] ERROR: Main backtest failed for 2024-01-15
+[2026-02-01 23:32:46] Processing date: 2024-01-16
+[2026-02-01 23:34:28] Processing date: 2024-01-17
+[2026-02-01 23:36:29] Processing date: 2024-01-18
+[2026-02-01 23:38:32] Processing date: 2024-01-19
+[2026-02-01 23:39:09] ERROR: Data gathering failed for 2024-01-19
+[2026-02-01 23:40:45] Starting backtests from 2024-01-02 to 2024-12-31
+[2026-02-01 23:40:45] Processing date: 2024-01-02
+[2026-02-01 23:45:11] Processing date: 2024-01-03
+[2026-02-01 23:46:58] Processing date: 2024-01-04
+[2026-02-01 23:48:46] Processing date: 2024-01-05
+[2026-02-01 23:50:38] Skipping weekend: 2024-01-06
+[2026-02-01 23:50:38] Skipping weekend: 2024-01-07
+[2026-02-01 23:50:38] Processing date: 2024-01-08
+[2026-02-01 23:52:56] Processing date: 2024-01-09
+[2026-02-01 23:54:12] Processing date: 2024-01-10
+[2026-02-01 23:57:03] Processing date: 2024-01-11
+[2026-02-02 00:00:00] Processing date: 2024-01-12
+[2026-02-02 00:01:15] Skipping weekend: 2024-01-13
+[2026-02-02 00:01:15] Skipping weekend: 2024-01-14
+[2026-02-02 00:01:15] Processing date: 2024-01-15
+[2026-02-02 00:02:38] ERROR: Data gathering failed for 2024-01-15
+[2026-02-02 00:02:39] ERROR: Worker agent backtest failed for 2024-01-15
+[2026-02-02 00:02:39] ERROR: Main backtest failed for 2024-01-15
+[2026-02-02 00:02:39] Processing date: 2024-01-16
+[2026-02-02 00:04:24] Processing date: 2024-01-17
+[2026-02-02 00:06:00] ERROR: Worker agent backtest failed for 2024-01-17
+[2026-02-02 00:16:33] Starting backtests from 2024-01-02 to 2024-12-31
+[2026-02-02 00:16:33] Processing date: 2024-01-02
+[2026-02-02 00:21:53] Processing date: 2024-01-03
+[2026-02-02 00:23:45] Processing date: 2024-01-04
+[2026-02-02 00:25:23] Processing date: 2024-01-05
+[2026-02-02 00:27:13] Skipping weekend: 2024-01-06
+[2026-02-02 00:27:13] Skipping weekend: 2024-01-07
+[2026-02-02 00:27:13] Processing date: 2024-01-08
+[2026-02-02 00:29:17] Processing date: 2024-01-09
+[2026-02-02 00:30:33] Processing date: 2024-01-10
+[2026-02-02 00:33:37] Processing date: 2024-01-11
+[2026-02-02 00:36:42] Processing date: 2024-01-12
+[2026-02-02 00:38:18] Skipping weekend: 2024-01-13
+[2026-02-02 00:38:18] Skipping weekend: 2024-01-14
+[2026-02-02 00:38:18] Processing date: 2024-01-15
+[2026-02-02 00:39:22] ERROR: Data gathering failed for 2024-01-15
+[2026-02-02 00:39:22] ERROR: Worker agent backtest failed for 2024-01-15
+[2026-02-02 00:39:22] ERROR: Main backtest failed for 2024-01-15
+[2026-02-02 00:39:22] Processing date: 2024-01-16
+[2026-02-02 00:41:13] Processing date: 2024-01-17
+[2026-02-02 00:43:07] Processing date: 2024-01-18
+[2026-02-02 00:45:09] Processing date: 2024-01-19
+[2026-02-02 00:47:04] Skipping weekend: 2024-01-20
+[2026-02-02 00:47:04] Skipping weekend: 2024-01-21
+[2026-02-02 00:47:04] Processing date: 2024-01-22
+[2026-02-02 00:49:27] Processing date: 2024-01-23
+[2026-02-02 00:52:01] Processing date: 2024-01-24
+[2026-02-02 00:54:24] Processing date: 2024-01-25
+[2026-02-02 00:57:00] Processing date: 2024-01-26
+[2026-02-02 00:58:36] Skipping weekend: 2024-01-27
+[2026-02-02 00:58:36] Skipping weekend: 2024-01-28
+[2026-02-02 00:58:36] Processing date: 2024-01-29
+[2026-02-02 01:01:45] Processing date: 2024-01-30
+[2026-02-02 01:03:31] Processing date: 2024-01-31
+[2026-02-02 01:05:21] Processing date: 2024-02-01
+[2026-02-02 01:06:48] Processing date: 2024-02-02
+[2026-02-02 01:08:59] Skipping weekend: 2024-02-03
+[2026-02-02 01:08:59] Skipping weekend: 2024-02-04
+[2026-02-02 01:08:59] Processing date: 2024-02-05
+[2026-02-02 01:11:04] Processing date: 2024-02-06
+[2026-02-02 01:12:46] Processing date: 2024-02-07
+[2026-02-02 01:15:11] Processing date: 2024-02-08
+[2026-02-02 01:18:23] Processing date: 2024-02-09
+[2026-02-02 01:21:59] Skipping weekend: 2024-02-10
+[2026-02-02 01:21:59] Skipping weekend: 2024-02-11
+[2026-02-02 01:21:59] Processing date: 2024-02-12
+[2026-02-02 01:24:40] Processing date: 2024-02-13
+[2026-02-02 01:26:52] Processing date: 2024-02-14
+[2026-02-02 01:32:35] Processing date: 2024-02-15
+[2026-02-02 01:37:50] Processing date: 2024-02-16
+[2026-02-02 01:40:09] Skipping weekend: 2024-02-17
+[2026-02-02 01:40:09] Skipping weekend: 2024-02-18
+[2026-02-02 01:40:09] Processing date: 2024-02-19
+[2026-02-02 01:41:13] ERROR: Data gathering failed for 2024-02-19
+[2026-02-02 01:41:14] ERROR: Worker agent backtest failed for 2024-02-19
+[2026-02-02 01:41:14] ERROR: Main backtest failed for 2024-02-19
+[2026-02-02 01:41:14] Processing date: 2024-02-20
+[2026-02-02 01:43:37] Processing date: 2024-02-21
+[2026-02-02 01:46:13] Processing date: 2024-02-22
+[2026-02-02 01:49:50] Processing date: 2024-02-23
+[2026-02-02 01:52:32] Skipping weekend: 2024-02-24
+[2026-02-02 01:52:32] Skipping weekend: 2024-02-25
+[2026-02-02 01:52:32] Processing date: 2024-02-26
+[2026-02-02 01:54:49] Processing date: 2024-02-27
+[2026-02-02 01:59:29] Processing date: 2024-02-28
+[2026-02-02 02:05:37] Processing date: 2024-02-29
+[2026-02-02 02:09:31] Processing date: 2024-03-01
+[2026-02-02 02:11:58] Skipping weekend: 2024-03-02
+[2026-02-02 02:11:58] Skipping weekend: 2024-03-03
+[2026-02-02 02:11:58] Processing date: 2024-03-04
+[2026-02-02 02:14:49] Processing date: 2024-03-05
+[2026-02-02 02:16:59] Processing date: 2024-03-06
+[2026-02-02 02:21:53] Processing date: 2024-03-07
+[2026-02-02 02:23:38] Processing date: 2024-03-08
+[2026-02-02 02:26:20] Skipping weekend: 2024-03-09
+[2026-02-02 02:26:20] Skipping weekend: 2024-03-10
+[2026-02-02 02:26:20] Processing date: 2024-03-11
+[2026-02-02 02:28:32] Processing date: 2024-03-12
+[2026-02-02 02:31:53] Processing date: 2024-03-13
+[2026-02-02 02:33:33] Processing date: 2024-03-14
+[2026-02-02 02:36:11] Processing date: 2024-03-15
+[2026-02-02 02:38:22] ERROR: Worker agent backtest failed for 2024-03-15
+[2026-02-02 02:38:35] Skipping weekend: 2024-03-16
+[2026-02-02 02:38:35] Skipping weekend: 2024-03-17
+[2026-02-02 02:38:35] Processing date: 2024-03-18
+[2026-02-02 02:41:14] Processing date: 2024-03-19
+[2026-02-02 02:42:58] Processing date: 2024-03-20
+[2026-02-02 02:45:12] Processing date: 2024-03-21
+[2026-02-02 02:47:32] Processing date: 2024-03-22
+[2026-02-02 02:49:30] Skipping weekend: 2024-03-23
+[2026-02-02 02:49:30] Skipping weekend: 2024-03-24
+[2026-02-02 02:49:30] Processing date: 2024-03-25
+[2026-02-02 02:52:40] Processing date: 2024-03-26
+[2026-02-02 02:54:48] Processing date: 2024-03-27
+[2026-02-02 02:57:31] Processing date: 2024-03-28
+[2026-02-02 02:59:53] Processing date: 2024-03-29
+[2026-02-02 03:01:15] ERROR: Data gathering failed for 2024-03-29
+[2026-02-02 03:01:15] ERROR: Worker agent backtest failed for 2024-03-29
+[2026-02-02 03:01:16] ERROR: Main backtest failed for 2024-03-29
+[2026-02-02 03:01:16] Skipping weekend: 2024-03-30
+[2026-02-02 03:01:16] Skipping weekend: 2024-03-31
+[2026-02-02 03:01:16] Processing date: 2024-04-01
+[2026-02-02 03:03:11] Processing date: 2024-04-02
+[2026-02-02 03:05:00] Processing date: 2024-04-03
+[2026-02-02 03:06:46] Processing date: 2024-04-04
+[2026-02-02 03:09:33] Processing date: 2024-04-05
+[2026-02-02 03:11:35] Skipping weekend: 2024-04-06
+[2026-02-02 03:11:35] Skipping weekend: 2024-04-07
+[2026-02-02 03:11:35] Processing date: 2024-04-08
+[2026-02-02 03:14:35] ERROR: Worker agent backtest failed for 2024-04-08
+[2026-02-02 03:14:49] Processing date: 2024-04-09
+[2026-02-02 03:17:03] Processing date: 2024-04-10
+[2026-02-02 03:18:30] Processing date: 2024-04-11
+[2026-02-02 03:21:18] Processing date: 2024-04-12
+[2026-02-02 03:23:25] Skipping weekend: 2024-04-13
+[2026-02-02 03:23:25] Skipping weekend: 2024-04-14
+[2026-02-02 03:23:25] Processing date: 2024-04-15
+[2026-02-02 03:24:37] Processing date: 2024-04-16
+[2026-02-02 03:25:59] Processing date: 2024-04-17
+[2026-02-02 03:27:25] ERROR: Worker agent backtest failed for 2024-04-17
+[2026-02-02 03:27:39] Processing date: 2024-04-18
+[2026-02-02 03:29:52] Processing date: 2024-04-19
+[2026-02-02 03:31:56] Skipping weekend: 2024-04-20
+[2026-02-02 03:31:56] Skipping weekend: 2024-04-21
+[2026-02-02 03:31:56] Processing date: 2024-04-22
+[2026-02-02 03:33:12] Processing date: 2024-04-23
+[2026-02-02 03:35:22] Processing date: 2024-04-24
+[2026-02-02 03:38:16] Processing date: 2024-04-25
+[2026-02-02 03:40:45] Processing date: 2024-04-26
+[2026-02-02 03:43:30] Skipping weekend: 2024-04-27
+[2026-02-02 03:43:30] Skipping weekend: 2024-04-28
+[2026-02-02 03:43:30] Processing date: 2024-04-29
+[2026-02-02 03:45:23] Processing date: 2024-04-30
+[2026-02-02 03:47:39] Processing date: 2024-05-01
+[2026-02-02 03:51:27] Processing date: 2024-05-02
+[2026-02-02 03:54:25] Processing date: 2024-05-03
+[2026-02-02 03:57:41] Skipping weekend: 2024-05-04
+[2026-02-02 03:57:41] Skipping weekend: 2024-05-05
+[2026-02-02 03:57:41] Processing date: 2024-05-06
+[2026-02-02 04:00:17] Processing date: 2024-05-07
+[2026-02-02 04:03:45] Processing date: 2024-05-08
+[2026-02-02 04:07:10] Processing date: 2024-05-09
+[2026-02-02 04:10:03] Processing date: 2024-05-10
+[2026-02-02 04:12:40] Skipping weekend: 2024-05-11
+[2026-02-02 04:12:40] Skipping weekend: 2024-05-12
+[2026-02-02 04:12:40] Processing date: 2024-05-13
+[2026-02-02 04:14:49] Processing date: 2024-05-14
+[2026-02-02 04:16:57] Processing date: 2024-05-15
+[2026-02-02 04:20:31] Processing date: 2024-05-16
+[2026-02-02 04:22:59] Processing date: 2024-05-17
+[2026-02-02 04:25:54] Skipping weekend: 2024-05-18
+[2026-02-02 04:25:54] Skipping weekend: 2024-05-19
+[2026-02-02 04:25:54] Processing date: 2024-05-20
+[2026-02-02 04:27:14] Processing date: 2024-05-21
+[2026-02-02 04:28:27] Processing date: 2024-05-22
+[2026-02-02 04:30:49] Processing date: 2024-05-23
+[2026-02-02 04:33:34] Processing date: 2024-05-24
+[2026-02-02 04:35:53] Skipping weekend: 2024-05-25
+[2026-02-02 04:35:54] Skipping weekend: 2024-05-26
+[2026-02-02 04:35:54] Processing date: 2024-05-27
+[2026-02-02 04:36:58] ERROR: Data gathering failed for 2024-05-27
+[2026-02-02 04:36:58] ERROR: Worker agent backtest failed for 2024-05-27
+[2026-02-02 04:36:59] ERROR: Main backtest failed for 2024-05-27
+[2026-02-02 04:36:59] Processing date: 2024-05-28
+[2026-02-02 04:40:55] Processing date: 2024-05-29
+[2026-02-02 04:43:15] Processing date: 2024-05-30
+[2026-02-02 04:46:15] Processing date: 2024-05-31
+[2026-02-02 04:48:30] Skipping weekend: 2024-06-01
+[2026-02-02 04:48:30] Skipping weekend: 2024-06-02
+[2026-02-02 04:48:30] Processing date: 2024-06-03
+[2026-02-02 04:50:50] Processing date: 2024-06-04
+[2026-02-02 04:53:11] Processing date: 2024-06-05
+[2026-02-02 04:57:09] Processing date: 2024-06-06
+[2026-02-02 04:59:50] Processing date: 2024-06-07
+[2026-02-02 05:01:38] Skipping weekend: 2024-06-08
+[2026-02-02 05:01:38] Skipping weekend: 2024-06-09
+[2026-02-02 05:01:38] Processing date: 2024-06-10
+[2026-02-02 05:04:19] ERROR: Worker agent backtest failed for 2024-06-10
+[2026-02-02 05:04:34] Processing date: 2024-06-11
+[2026-02-02 05:05:54] Processing date: 2024-06-12
+[2026-02-02 05:08:46] Processing date: 2024-06-13
+[2026-02-02 05:10:57] Processing date: 2024-06-14
+[2026-02-02 05:12:38] Skipping weekend: 2024-06-15
+[2026-02-02 05:12:38] Skipping weekend: 2024-06-16
+[2026-02-02 05:12:38] Processing date: 2024-06-17
+[2026-02-02 05:14:29] Processing date: 2024-06-18
+[2026-02-02 05:15:43] Processing date: 2024-06-19
+[2026-02-02 05:16:48] ERROR: Data gathering failed for 2024-06-19
+[2026-02-02 05:16:48] ERROR: Worker agent backtest failed for 2024-06-19
+[2026-02-02 05:16:48] ERROR: Main backtest failed for 2024-06-19
+[2026-02-02 05:16:48] Processing date: 2024-06-20
+[2026-02-02 05:18:06] Processing date: 2024-06-21
+[2026-02-02 05:19:19] Skipping weekend: 2024-06-22
+[2026-02-02 05:19:19] Skipping weekend: 2024-06-23
+[2026-02-02 05:19:19] Processing date: 2024-06-24
+[2026-02-02 05:21:21] Processing date: 2024-06-25
+[2026-02-02 05:23:24] Processing date: 2024-06-26
+[2026-02-02 05:25:43] Processing date: 2024-06-27
+[2026-02-02 05:27:45] Processing date: 2024-06-28
+[2026-02-02 05:30:04] Skipping weekend: 2024-06-29
+[2026-02-02 05:30:04] Skipping weekend: 2024-06-30
+[2026-02-02 05:30:04] Processing date: 2024-07-01
+[2026-02-02 05:33:22] Processing date: 2024-07-02
+[2026-02-02 05:35:16] Processing date: 2024-07-03
+[2026-02-02 05:37:02] Processing date: 2024-07-04
+[2026-02-02 05:38:06] ERROR: Data gathering failed for 2024-07-04
+[2026-02-02 05:38:06] ERROR: Worker agent backtest failed for 2024-07-04
+[2026-02-02 05:38:07] ERROR: Main backtest failed for 2024-07-04
+[2026-02-02 05:38:07] Processing date: 2024-07-05
+[2026-02-02 05:39:58] Skipping weekend: 2024-07-06
+[2026-02-02 05:39:58] Skipping weekend: 2024-07-07
+[2026-02-02 05:39:58] Processing date: 2024-07-08
+[2026-02-02 05:42:27] Processing date: 2024-07-09
+[2026-02-02 05:44:43] Processing date: 2024-07-10
+[2026-02-02 05:46:32] Processing date: 2024-07-11
+[2026-02-02 05:49:22] Processing date: 2024-07-12
+[2026-02-02 05:50:35] Skipping weekend: 2024-07-13
+[2026-02-02 05:50:35] Skipping weekend: 2024-07-14
+[2026-02-02 05:50:35] Processing date: 2024-07-15
+[2026-02-02 05:54:50] Processing date: 2024-07-16
+[2026-02-02 05:56:49] Processing date: 2024-07-17
+[2026-02-02 05:59:19] Processing date: 2024-07-18
+[2026-02-02 06:00:36] Processing date: 2024-07-19
+[2026-02-02 06:02:20] Skipping weekend: 2024-07-20
+[2026-02-02 06:02:20] Skipping weekend: 2024-07-21
+[2026-02-02 06:02:20] Processing date: 2024-07-22
+[2026-02-02 06:04:05] Processing date: 2024-07-23
+[2026-02-02 06:06:47] Processing date: 2024-07-24
+[2026-02-02 06:09:26] Processing date: 2024-07-25
+[2026-02-02 06:13:05] Processing date: 2024-07-26
+[2026-02-02 06:17:20] Skipping weekend: 2024-07-27
+[2026-02-02 06:17:20] Skipping weekend: 2024-07-28
+[2026-02-02 06:17:20] Processing date: 2024-07-29
+[2026-02-02 06:20:03] Processing date: 2024-07-30
+[2026-02-02 06:24:01] Processing date: 2024-07-31
+[2026-02-02 06:30:07] Processing date: 2024-08-01
+[2026-02-02 06:35:48] Processing date: 2024-08-02
+[2026-02-02 06:38:07] ERROR: Worker agent backtest failed for 2024-08-02
+[2026-02-02 06:38:30] Skipping weekend: 2024-08-03
+[2026-02-02 06:38:30] Skipping weekend: 2024-08-04
+[2026-02-02 06:38:30] Processing date: 2024-08-05
+[2026-02-02 06:40:34] Processing date: 2024-08-06
+[2026-02-02 06:45:29] Processing date: 2024-08-07
+[2026-02-02 06:49:53] Processing date: 2024-08-08
+[2026-02-02 06:56:40] Processing date: 2024-08-09
+[2026-02-02 07:01:26] Skipping weekend: 2024-08-10
+[2026-02-02 07:01:26] Skipping weekend: 2024-08-11
+[2026-02-02 07:01:26] Processing date: 2024-08-12
+[2026-02-02 07:05:15] Processing date: 2024-08-13
+[2026-02-02 07:07:42] Processing date: 2024-08-14
+[2026-02-02 07:10:54] Processing date: 2024-08-15
+[2026-02-02 07:13:29] Processing date: 2024-08-16
+[2026-02-02 07:15:59] Skipping weekend: 2024-08-17
+[2026-02-02 07:15:59] Skipping weekend: 2024-08-18
+[2026-02-02 07:15:59] Processing date: 2024-08-19
+[2026-02-02 07:18:22] Processing date: 2024-08-20
+[2026-02-02 07:21:05] Processing date: 2024-08-21
+[2026-02-02 07:23:37] Processing date: 2024-08-22
+[2026-02-02 07:24:51] Processing date: 2024-08-23
+[2026-02-02 07:26:28] Skipping weekend: 2024-08-24
+[2026-02-02 07:26:28] Skipping weekend: 2024-08-25
+[2026-02-02 07:26:28] Processing date: 2024-08-26
+[2026-02-02 07:28:25] Processing date: 2024-08-27
+[2026-02-02 07:30:13] Processing date: 2024-08-28
+[2026-02-02 07:33:41] Processing date: 2024-08-29
+[2026-02-02 07:35:56] Processing date: 2024-08-30
+[2026-02-02 07:38:48] Skipping weekend: 2024-08-31
+[2026-02-02 07:38:48] Skipping weekend: 2024-09-01
+[2026-02-02 07:38:48] Processing date: 2024-09-02
+[2026-02-02 07:39:52] ERROR: Data gathering failed for 2024-09-02
+[2026-02-02 07:39:53] ERROR: Worker agent backtest failed for 2024-09-02
+[2026-02-02 07:39:53] ERROR: Main backtest failed for 2024-09-02
+[2026-02-02 07:39:53] Processing date: 2024-09-03
+[2026-02-02 07:41:08] Processing date: 2024-09-04
+[2026-02-02 07:44:03] Processing date: 2024-09-05
+[2026-02-02 07:46:29] Processing date: 2024-09-06
+[2026-02-02 07:48:42] Skipping weekend: 2024-09-07
+[2026-02-02 07:48:42] Skipping weekend: 2024-09-08
+[2026-02-02 07:48:42] Processing date: 2024-09-09
+[2026-02-02 07:51:39] Processing date: 2024-09-10
+[2026-02-02 07:54:36] Processing date: 2024-09-11
+[2026-02-02 07:56:54] Processing date: 2024-09-12
+[2026-02-02 07:58:09] Processing date: 2024-09-13
+[2026-02-02 08:00:00] Skipping weekend: 2024-09-14
+[2026-02-02 08:00:00] Skipping weekend: 2024-09-15
+[2026-02-02 08:00:00] Processing date: 2024-09-16
+[2026-02-02 08:02:50] Processing date: 2024-09-17
+[2026-02-02 08:04:39] Processing date: 2024-09-18
+[2026-02-02 08:06:31] Processing date: 2024-09-19
+[2026-02-02 08:10:34] Processing date: 2024-09-20
+[2026-02-02 08:11:47] Skipping weekend: 2024-09-21
+[2026-02-02 08:11:47] Skipping weekend: 2024-09-22
+[2026-02-02 08:11:47] Processing date: 2024-09-23
+[2026-02-02 08:13:47] Processing date: 2024-09-24
+[2026-02-02 08:16:06] Processing date: 2024-09-25
+[2026-02-02 08:17:20] Processing date: 2024-09-26
+[2026-02-02 08:21:54] Processing date: 2024-09-27
+[2026-02-02 08:24:47] Skipping weekend: 2024-09-28
+[2026-02-02 08:24:47] Skipping weekend: 2024-09-29
+[2026-02-02 08:24:47] Processing date: 2024-09-30
+[2026-02-02 08:28:47] Processing date: 2024-10-01
+[2026-02-02 08:31:06] Processing date: 2024-10-02
+[2026-02-02 08:34:52] Processing date: 2024-10-03
+[2026-02-02 08:36:06] Processing date: 2024-10-04
+[2026-02-02 08:39:12] Skipping weekend: 2024-10-05
+[2026-02-02 08:39:12] Skipping weekend: 2024-10-06
+[2026-02-02 08:39:12] Processing date: 2024-10-07
+[2026-02-02 08:41:13] Processing date: 2024-10-08
+[2026-02-02 08:43:01] Processing date: 2024-10-09
+[2026-02-02 08:44:46] Processing date: 2024-10-10
+[2026-02-02 08:45:59] Processing date: 2024-10-11
+[2026-02-02 08:47:48] Skipping weekend: 2024-10-12
+[2026-02-02 08:47:48] Skipping weekend: 2024-10-13
+[2026-02-02 08:47:48] Processing date: 2024-10-14
+[2026-02-02 08:50:13] Processing date: 2024-10-15
+[2026-02-02 08:52:18] Processing date: 2024-10-16
+[2026-02-02 08:55:39] Processing date: 2024-10-17
+[2026-02-02 08:58:42] Processing date: 2024-10-18
+[2026-02-02 09:03:16] Skipping weekend: 2024-10-19
+[2026-02-02 09:03:16] Skipping weekend: 2024-10-20
+[2026-02-02 09:03:16] Processing date: 2024-10-21
+[2026-02-02 09:05:26] Processing date: 2024-10-22
+[2026-02-02 09:06:41] Processing date: 2024-10-23
+[2026-02-02 09:09:17] Processing date: 2024-10-24
+[2026-02-02 09:13:40] Processing date: 2024-10-25
+[2026-02-02 09:18:00] Skipping weekend: 2024-10-26
+[2026-02-02 09:18:00] Skipping weekend: 2024-10-27
+[2026-02-02 09:18:00] Processing date: 2024-10-28
+[2026-02-02 09:21:50] Processing date: 2024-10-29
+[2026-02-02 09:25:37] Processing date: 2024-10-30
+[2026-02-02 09:28:58] Processing date: 2024-10-31
+[2026-02-02 09:33:05] Processing date: 2024-11-01
+[2026-02-02 09:36:31] Skipping weekend: 2024-11-02
+[2026-02-02 09:36:31] Skipping weekend: 2024-11-03
+[2026-02-02 09:36:31] Processing date: 2024-11-04
+[2026-02-02 09:38:45] Processing date: 2024-11-05
+[2026-02-02 09:42:02] Processing date: 2024-11-06
+[2026-02-02 09:54:43] Processing date: 2024-11-07
+[2026-02-02 09:58:51] Processing date: 2024-11-08
+[2026-02-02 10:01:04] Skipping weekend: 2024-11-09
+[2026-02-02 10:01:04] Skipping weekend: 2024-11-10
+[2026-02-02 10:01:04] Processing date: 2024-11-11
+[2026-02-02 10:06:17] Processing date: 2024-11-12
+[2026-02-02 10:09:25] Processing date: 2024-11-13
+[2026-02-02 10:14:19] Processing date: 2024-11-14
+[2026-02-02 10:19:58] Processing date: 2024-11-15
+[2026-02-02 10:22:13] Skipping weekend: 2024-11-16
+[2026-02-02 10:22:13] Skipping weekend: 2024-11-17
+[2026-02-02 10:22:14] Processing date: 2024-11-18
+[2026-02-02 10:25:31] Processing date: 2024-11-19
+[2026-02-02 10:28:16] Processing date: 2024-11-20
+[2026-02-02 10:31:40] Processing date: 2024-11-21
+[2026-02-02 10:35:15] Processing date: 2024-11-22
+[2026-02-02 10:37:49] ERROR: Worker agent backtest failed for 2024-11-22
+[2026-02-02 10:38:10] Skipping weekend: 2024-11-23
+[2026-02-02 10:38:10] Skipping weekend: 2024-11-24
+[2026-02-02 10:38:10] Processing date: 2024-11-25
+[2026-02-02 10:42:39] Processing date: 2024-11-26
+[2026-02-02 10:45:42] Processing date: 2024-11-27
+[2026-02-02 10:49:59] Processing date: 2024-11-28
+[2026-02-02 10:51:20] ERROR: Data gathering failed for 2024-11-28
+[2026-02-02 10:51:20] ERROR: Worker agent backtest failed for 2024-11-28
+[2026-02-02 10:51:20] ERROR: Main backtest failed for 2024-11-28
+[2026-02-02 10:51:20] Processing date: 2024-11-29
+[2026-02-02 10:53:47] Skipping weekend: 2024-11-30
+[2026-02-02 10:53:47] Skipping weekend: 2024-12-01
+[2026-02-02 10:53:47] Processing date: 2024-12-02
+[2026-02-02 10:57:12] Processing date: 2024-12-03
+[2026-02-02 11:00:21] Processing date: 2024-12-04
+[2026-02-02 11:03:06] Processing date: 2024-12-05
+[2026-02-02 11:07:25] Processing date: 2024-12-06
+[2026-02-02 11:11:35] Skipping weekend: 2024-12-07
+[2026-02-02 11:11:35] Skipping weekend: 2024-12-08
+[2026-02-02 11:11:35] Processing date: 2024-12-09
+[2026-02-02 11:19:00] Processing date: 2024-12-10
+[2026-02-02 11:22:03] Processing date: 2024-12-11
+[2026-02-02 11:26:42] Processing date: 2024-12-12
+[2026-02-02 11:30:30] Processing date: 2024-12-13
+[2026-02-02 11:33:44] Skipping weekend: 2024-12-14
+[2026-02-02 11:33:44] Skipping weekend: 2024-12-15
+[2026-02-02 11:33:44] Processing date: 2024-12-16
+[2026-02-02 11:36:57] Processing date: 2024-12-17
+[2026-02-02 11:40:01] Processing date: 2024-12-18
+[2026-02-02 11:45:30] Processing date: 2024-12-19
+[2026-02-02 11:51:42] Processing date: 2024-12-20
+[2026-02-02 11:54:03] Skipping weekend: 2024-12-21
+[2026-02-02 11:54:03] Skipping weekend: 2024-12-22
+[2026-02-02 11:54:03] Processing date: 2024-12-23
+[2026-02-02 11:58:19] Processing date: 2024-12-24
+[2026-02-02 12:01:36] Processing date: 2024-12-25
+[2026-02-02 12:03:34] ERROR: Data gathering failed for 2024-12-25
+[2026-02-02 12:03:34] ERROR: Worker agent backtest failed for 2024-12-25
+[2026-02-02 12:03:35] ERROR: Main backtest failed for 2024-12-25
+[2026-02-02 12:03:35] Processing date: 2024-12-26
+[2026-02-02 12:07:58] Processing date: 2024-12-27
+[2026-02-02 12:12:42] Skipping weekend: 2024-12-28
+[2026-02-02 12:12:42] Skipping weekend: 2024-12-29
+[2026-02-02 12:12:42] Processing date: 2024-12-30
+[2026-02-02 12:15:38] Processing date: 2024-12-31
+[2026-02-02 12:19:30] All weekday backtest sequences for 2025 completed.
+[2026-02-09 22:56:05] Starting backtests from 2024-01-02 to 2024-12-31
+[2026-02-09 22:56:05] Processing date: 2024-01-02
+[2026-02-09 22:58:11] ERROR: Worker agent backtest failed for 2024-01-02
+[2026-02-09 23:12:03] Starting backtests from 2025-01-02 to 2025-12-31
+[2026-02-09 23:12:03] Processing date: 2025-01-02
+[2026-02-09 23:16:43] Processing date: 2025-01-03
+[2026-02-09 23:23:12] ERROR: Worker agent backtest failed for 2025-01-03
+[2026-02-09 23:23:15] Starting backtests from 2025-01-02 to 2025-12-31
+[2026-02-09 23:23:15] Processing date: 2025-01-02
+[2026-02-09 23:23:18] ERROR: Data gathering failed for 2025-01-02
+[2026-02-09 23:24:45] Starting backtests from 2025-01-02 to 2025-12-31
+[2026-02-09 23:24:45] Processing date: 2025-01-02
+[2026-02-09 23:29:26] Processing date: 2025-01-03
+[2026-02-09 23:36:02] Skipping weekend: 2025-01-04
+[2026-02-09 23:36:02] Skipping weekend: 2025-01-05
+[2026-02-09 23:36:02] Processing date: 2025-01-06
+[2026-02-09 23:37:07] ERROR: Data gathering failed for 2025-01-06
