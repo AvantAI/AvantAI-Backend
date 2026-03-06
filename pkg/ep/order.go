@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
@@ -18,38 +19,108 @@ var (
 )
 
 func init() {
-	// Load environment variables from .env file
-	if err := godotenv.Load(); err != nil {
-		log.Println("Warning: .env file not found")
+	loadEnv()
+	initClients()
+}
+
+// loadEnv walks up the directory tree from the current working directory
+// until it finds a .env file and loads it.  This means tests running from
+// a sub-package directory (e.g. cmd/avantai/ep/ep_watchlist/) will still
+// find the .env at the project root.
+func loadEnv() {
+	dir, err := os.Getwd()
+	if err != nil {
+		log.Println("Warning: cannot determine working directory")
+		return
 	}
 
+	for {
+		candidate := filepath.Join(dir, ".env")
+		if _, err := os.Stat(candidate); err == nil {
+			if err := godotenv.Load(candidate); err != nil {
+				log.Printf("Warning: found .env at %s but could not load it: %v", candidate, err)
+			}
+			return
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			log.Println("Warning: .env file not found in any parent directory")
+			return
+		}
+		dir = parent
+	}
+}
+
+// initClients builds the Alpaca clients from environment variables.
+// Separated from init() so that missing credentials during tests do not
+// call log.Fatal and kill the test binary at import time.
+func initClients() {
 	apiKey := os.Getenv("ALPACA_API_KEY")
 	apiSecret := os.Getenv("ALPACA_SECRET_KEY")
-	baseURL := os.Getenv("ALPACA_BASE_URL")
+	paperURL := os.Getenv("ALPACA_PAPER_URL")
 
 	if apiKey == "" || apiSecret == "" {
-		log.Fatal("ALPACA_API_KEY and ALPACA_SECRET_KEY must be set")
+		// Not fatal — tests run without real credentials.
+		// Any real call through apiClient/marketClient will panic,
+		// which is the correct signal that keys are missing in production.
+		log.Println("⚠️  ALPACA_API_KEY / ALPACA_SECRET_KEY not set — Alpaca client calls will fail")
+		return
 	}
 
-	// Initialize Alpaca client
 	apiClient = alpaca.NewClient(alpaca.ClientOpts{
 		APIKey:    apiKey,
 		APISecret: apiSecret,
-		BaseURL:   baseURL,
+		BaseURL:   paperURL,
 	})
 
-	// Initialize market data client
 	marketClient = marketdata.NewClient(marketdata.ClientOpts{
 		APIKey:    apiKey,
 		APISecret: apiSecret,
 	})
 }
 
-// CheckAllOrders retrieves and displays all open orders with detailed information
+// ─────────────────────────────────────────────────────────────────────────────
+// Account & Position helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+// AccountInfo holds key account information.
+type AccountInfo struct {
+	Status         string
+	Cash           string
+	BuyingPower    string
+	PortfolioValue string
+}
+
+// GetAccountInfo retrieves key account information.
+func GetAccountInfo() (*AccountInfo, error) {
+	account, err := apiClient.GetAccount()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get account: %w", err)
+	}
+	return &AccountInfo{
+		Status:         string(account.Status),
+		Cash:           account.Cash.StringFixed(2),
+		BuyingPower:    account.BuyingPower.StringFixed(2),
+		PortfolioValue: account.PortfolioValue.StringFixed(2),
+	}, nil
+}
+
+// GetAsset retrieves the Alpaca Asset object for a given symbol and ensures it is tradable.
+func GetAsset(symbol string) (*alpaca.Asset, error) {
+	asset, err := apiClient.GetAsset(symbol)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get asset %s: %w", symbol, err)
+	}
+	if !asset.Tradable {
+		return nil, fmt.Errorf("%s is not tradable", symbol)
+	}
+	return asset, nil
+}
+
+// CheckAllOrders retrieves and logs all open orders.
 func CheckAllOrders() ([]alpaca.Order, error) {
-	orders, err := apiClient.GetOrders(alpaca.GetOrdersRequest{
-		Status: "open",
-	})
+	orders, err := apiClient.GetOrders(alpaca.GetOrdersRequest{Status: "open"})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get orders: %w", err)
 	}
@@ -57,13 +128,8 @@ func CheckAllOrders() ([]alpaca.Order, error) {
 	fmt.Printf("\n=== All Open Orders (%d) ===\n", len(orders))
 	for _, order := range orders {
 		fmt.Printf("\nOrder ID: %s\n", order.ID)
-		fmt.Printf("  Symbol: %s\n", order.Symbol)
-		fmt.Printf("  Side: %s\n", order.Side)
-		fmt.Printf("  Type: %s\n", order.Type)
-		fmt.Printf("  Qty: %s\n", order.Qty)
-		fmt.Printf("  Status: %s\n", order.Status)
-		fmt.Printf("  Order Class: %s\n", order.OrderClass)
-
+		fmt.Printf("  Symbol: %s | Side: %s | Type: %s | Qty: %s | Status: %s\n",
+			order.Symbol, order.Side, order.Type, order.Qty, order.Status)
 		if order.LimitPrice != nil {
 			fmt.Printf("  Limit Price: $%s\n", order.LimitPrice.StringFixed(2))
 		}
@@ -71,61 +137,37 @@ func CheckAllOrders() ([]alpaca.Order, error) {
 			fmt.Printf("  Stop Price: $%s\n", order.StopPrice.StringFixed(2))
 		}
 	}
-
 	return orders, nil
 }
 
-// GetAsset retrieves the Alpaca Asset object for a given symbol and ensures it is tradable
-func GetAsset(symbol string) (*alpaca.Asset, error) {
-	asset, err := apiClient.GetAsset(symbol)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get asset: %w", err)
-	}
-
-	if !asset.Tradable {
-		return nil, fmt.Errorf("%s is not tradable", symbol)
-	}
-
-	return asset, nil
-}
-
-// CancelAllOrders cancels all open orders in the Alpaca account
+// CancelAllOrders cancels all open orders.
 func CancelAllOrders() error {
-	orders, err := apiClient.GetOrders(alpaca.GetOrdersRequest{
-		Status: "open",
-	})
+	orders, err := apiClient.GetOrders(alpaca.GetOrdersRequest{Status: "open"})
 	if err != nil {
 		return fmt.Errorf("failed to get orders: %w", err)
 	}
-
 	for _, order := range orders {
 		if err := apiClient.CancelOrder(order.ID); err != nil {
 			log.Printf("Failed to cancel order %s: %v", order.ID, err)
 		}
 	}
-
 	fmt.Printf("Cancelled %d open orders.\n", len(orders))
 	return nil
 }
 
-// LiquidateAllPositions sells all positions in the Alpaca account at market price
+// LiquidateAllPositions sells all positions at market price.
 func LiquidateAllPositions() error {
 	positions, err := apiClient.GetPositions()
 	if err != nil {
 		return fmt.Errorf("failed to get positions: %w", err)
 	}
-
 	for _, pos := range positions {
 		qty, _ := pos.Qty.Float64()
 		absQty := pos.Qty.Abs()
-
 		side := alpaca.Sell
 		if qty < 0 {
 			side = alpaca.Buy
 		}
-
-		fmt.Printf("Liquidating %s: %s shares (side: %s)\n", pos.Symbol, pos.Qty.String(), pos.Side)
-
 		_, err := apiClient.PlaceOrder(alpaca.PlaceOrderRequest{
 			Symbol:      pos.Symbol,
 			Qty:         &absQty,
@@ -135,84 +177,51 @@ func LiquidateAllPositions() error {
 		})
 		if err != nil {
 			log.Printf("Failed to liquidate %s: %v", pos.Symbol, err)
+		} else {
+			fmt.Printf("Liquidating %s: %s shares\n", pos.Symbol, pos.Qty.String())
 		}
 	}
-
 	fmt.Printf("Liquidated %d positions.\n", len(positions))
 	return nil
 }
 
-// AccountInfo holds key account information
-type AccountInfo struct {
-	Status         string
-	Cash           string
-	BuyingPower    string
-	PortfolioValue string
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Order placement
+// ─────────────────────────────────────────────────────────────────────────────
 
-// GetAccountInfo retrieves key account information
-func GetAccountInfo() (*AccountInfo, error) {
-	account, err := apiClient.GetAccount()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get account: %w", err)
-	}
-
-	return &AccountInfo{
-		Status:         string(account.Status),
-		Cash:           account.Cash.StringFixed(2),
-		BuyingPower:    account.BuyingPower.StringFixed(2),
-		PortfolioValue: account.PortfolioValue.StringFixed(2),
-	}, nil
-}
-
-// PlaceEntryWithStop places a bracket buy order with entry, stop-loss, and take-profit
+// PlaceEntryWithStop places a bracket limit buy order.
+// If entryPrice is nil, it uses market price + $0.10.
+// takeProfit is set to 7× entry by default — override as needed.
 func PlaceEntryWithStop(symbol string, stopLoss float64, shares int, entryPrice *float64) (*alpaca.Order, error) {
-	// Check if asset is tradable
-	_, err := GetAsset(symbol)
-	if err != nil {
+	if _, err := GetAsset(symbol); err != nil {
 		return nil, err
 	}
 
 	var entry float64
-	var marketPrice float64
-
-	// Fetch current market price if entry_price not provided
 	if entryPrice == nil {
-		trades, err := marketClient.GetLatestTrade(symbol, marketdata.GetLatestTradeRequest{})
+		trade, err := marketClient.GetLatestTrade(symbol, marketdata.GetLatestTradeRequest{})
 		if err != nil {
-			return nil, fmt.Errorf("failed to get latest trade: %w", err)
+			return nil, fmt.Errorf("failed to get latest trade for %s: %w", symbol, err)
 		}
-		marketPrice = trades.Price
-		entry = marketPrice + 0.1 // Buy at $0.1 above market
+		entry = roundCents(trade.Price + 0.10)
 	} else {
-		entry = *entryPrice
-		marketPrice = entry - 0.1
+		entry = roundCents(*entryPrice)
 	}
 
-	// Round all prices to 2 decimal places to avoid sub-penny issues
-	entry = float64(int(entry*100+0.5)) / 100
-	stopLoss = float64(int(stopLoss*100+0.5)) / 100
-	takeProfitPrice := float64(int((entry*7)*100+0.5)) / 100
+	stopLoss = roundCents(stopLoss)
+	takeProfitPrice := roundCents(entry * 7)
 
-	fmt.Printf("Market price for %s: $%.2f\n", symbol, marketPrice)
-	fmt.Printf("Entry price (market + $0.1): $%.2f\n", entry)
-	fmt.Printf("Stop loss: $%.2f\n", stopLoss)
-	fmt.Printf("Take profit: $%.2f\n", takeProfitPrice)
+	if stopLoss >= entry {
+		return nil, fmt.Errorf("stop loss $%.2f must be below entry $%.2f", stopLoss, entry)
+	}
 
-	fmt.Println("\n=== Submitting Order ===")
-	fmt.Printf("Symbol: %s\n", symbol)
-	fmt.Printf("Qty: %d\n", shares)
-	fmt.Println("Side: buy")
-	fmt.Println("Type: limit")
-	fmt.Printf("Limit Price: $%.2f\n", entry)
-	fmt.Printf("Stop Loss: $%.2f\n", stopLoss)
-	fmt.Printf("Take Profit: $%.2f\n", takeProfitPrice)
+	fmt.Printf("[%s] Entry: $%.2f | Stop: $%.2f | TP: $%.2f | Shares: %d\n",
+		symbol, entry, stopLoss, takeProfitPrice, shares)
 
-	// Prepare order request with properly rounded decimals
 	qty := decimal.NewFromInt(int64(shares))
-	limitPrice := decimal.NewFromFloat(entry).Round(2)
-	stopLossPrice := decimal.NewFromFloat(stopLoss).Round(2)
-	takeProfitLimitPrice := decimal.NewFromFloat(takeProfitPrice).Round(2)
+	limitPrice := decimal.NewFromFloat(entry)
+	stopLossPrice := decimal.NewFromFloat(stopLoss)
+	takeProfitLimit := decimal.NewFromFloat(takeProfitPrice)
 
 	order, err := apiClient.PlaceOrder(alpaca.PlaceOrderRequest{
 		Symbol:      symbol,
@@ -226,36 +235,26 @@ func PlaceEntryWithStop(symbol string, stopLoss float64, shares int, entryPrice 
 			StopPrice: &stopLossPrice,
 		},
 		TakeProfit: &alpaca.TakeProfit{
-			LimitPrice: &takeProfitLimitPrice,
+			LimitPrice: &takeProfitLimit,
 		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to place order: %w", err)
+		return nil, fmt.Errorf("failed to place bracket order for %s: %w", symbol, err)
 	}
 
-	fmt.Println("\n=== Order Response ===")
-	fmt.Printf("Order ID: %s\n", order.ID)
-	fmt.Printf("Side: %s\n", order.Side)
-	fmt.Printf("Symbol: %s\n", order.Symbol)
-	fmt.Printf("Status: %s\n", order.Status)
-	fmt.Printf("Order Class: %s\n", order.OrderClass)
-
-	if len(order.Legs) > 0 {
-		fmt.Println("\n=== Bracket Legs ===")
-		for i, leg := range order.Legs {
-			fmt.Printf("Leg %d: %s @ %s - %s\n", i+1, leg.Side, leg.Type, leg.OrderClass)
-		}
-	}
-
+	fmt.Printf("[%s] ✅ Bracket order placed (ID: %s, status: %s)\n", symbol, order.ID, order.Status)
 	return order, nil
 }
 
-// PlaceSellOrder places a sell order for a given symbol, either market or limit
+// PlaceSellOrder places a sell order for a given symbol.
+// If sellPrice is nil, a market order is placed; otherwise a limit order.
 func PlaceSellOrder(symbol string, shares int, sellPrice *float64) (*alpaca.Order, error) {
-	// Check if asset is tradable
-	_, err := GetAsset(symbol)
-	if err != nil {
+	if _, err := GetAsset(symbol); err != nil {
 		return nil, err
+	}
+
+	if shares <= 0 {
+		return nil, fmt.Errorf("shares must be positive, got %d", shares)
 	}
 
 	qty := decimal.NewFromInt(int64(shares))
@@ -269,102 +268,77 @@ func PlaceSellOrder(symbol string, shares int, sellPrice *float64) (*alpaca.Orde
 
 	if sellPrice == nil {
 		orderReq.Type = alpaca.Market
+		log.Printf("[%s] Placing MARKET sell for %d shares", symbol, shares)
 	} else {
+		rounded := roundCents(*sellPrice)
+		limitPrice := decimal.NewFromFloat(rounded)
 		orderReq.Type = alpaca.Limit
-		limitPrice := decimal.NewFromFloat(*sellPrice)
 		orderReq.LimitPrice = &limitPrice
+		log.Printf("[%s] Placing LIMIT sell for %d shares @ $%.2f", symbol, shares, rounded)
 	}
 
 	order, err := apiClient.PlaceOrder(orderReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to place sell order: %w", err)
+		return nil, fmt.Errorf("failed to place sell order for %s: %w", symbol, err)
 	}
 
+	log.Printf("[%s] ✅ Sell order placed (ID: %s, status: %s)", symbol, order.ID, order.Status)
 	return order, nil
 }
 
+// CancelOrder cancels a single order by ID.
+func CancelOrder(orderID string) error {
+	if err := apiClient.CancelOrder(orderID); err != nil {
+		return fmt.Errorf("failed to cancel order %s: %w", orderID, err)
+	}
+	log.Printf("Cancelled order %s", orderID)
+	return nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Internal helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+// roundCents rounds a float to 2 decimal places (avoids sub-penny issues).
+func roundCents(f float64) float64 {
+	return float64(int(f*100+0.5)) / 100
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// main (manual test / smoke-test only — remove or gate before production)
+// ─────────────────────────────────────────────────────────────────────────────
+
 func main() {
-	apiKey := os.Getenv("ALPACA_API_KEY")
-	apiSecret := os.Getenv("ALPACA_SECRET_KEY")
-	baseURL := os.Getenv("ALPACA_BASE_URL")
-
-	fmt.Printf("API_KEY loaded: %v\n", apiKey != "")
-	fmt.Printf("API_SECRET loaded: %v\n", apiSecret != "")
-	fmt.Printf("BASE_URL: %s\n", baseURL)
-
-	fmt.Println("\n=== Account Info ===")
-	accountInfo, err := GetAccountInfo()
+	fmt.Println("=== Account Info ===")
+	info, err := GetAccountInfo()
 	if err != nil {
 		log.Fatalf("Failed to get account info: %v", err)
 	}
-	fmt.Printf("Status: %s\n", accountInfo.Status)
-	fmt.Printf("Cash: $%s\n", accountInfo.Cash)
-	fmt.Printf("Buying Power: $%s\n", accountInfo.BuyingPower)
-	fmt.Printf("Portfolio Value: $%s\n", accountInfo.PortfolioValue)
+	fmt.Printf("Status: %s | Cash: $%s | Buying Power: $%s | Portfolio: $%s\n",
+		info.Status, info.Cash, info.BuyingPower, info.PortfolioValue)
 
-	// Clean slate for testing
 	fmt.Println("\n=== Cleaning Up ===")
-	if err := CancelAllOrders(); err != nil {
-		log.Printf("Error cancelling orders: %v", err)
-	}
-	if err := LiquidateAllPositions(); err != nil {
-		log.Printf("Error liquidating positions: %v", err)
-	}
-	time.Sleep(3 * time.Second) // Wait for liquidations to process
+	_ = CancelAllOrders()
+	_ = LiquidateAllPositions()
+	time.Sleep(3 * time.Second)
 
-	// Check positions are cleared
-	fmt.Println("\n=== Checking Positions ===")
-	positions, err := apiClient.GetPositions()
-	if err != nil {
-		log.Printf("Failed to get positions: %v", err)
-	} else {
-		fmt.Printf("Current positions: %d\n", len(positions))
-		for _, pos := range positions {
-			fmt.Printf("  %s: %s shares\n", pos.Symbol, pos.Qty.String())
-		}
-	}
-
-	// Submit buy orders for 3 different stocks
-	fmt.Println("\n=== Placing Orders for 3 Stocks ===")
+	fmt.Println("\n=== Test Orders ===")
 	symbols := []string{"AAPL", "NVDA", "AMD"}
-	shares := 10 // Reduced shares for testing multiple
-
-	for _, symbol := range symbols {
-		fmt.Printf("\n--- Processing %s ---\n", symbol)
-
-		// 1. Get current price to calculate a valid stop loss
-		trade, err := marketClient.GetLatestTrade(symbol, marketdata.GetLatestTradeRequest{})
+	for _, sym := range symbols {
+		trade, err := marketClient.GetLatestTrade(sym, marketdata.GetLatestTradeRequest{})
 		if err != nil {
-			log.Printf("Failed to get price for %s: %v", symbol, err)
+			log.Printf("Skip %s — price fetch error: %v", sym, err)
 			continue
 		}
-
-		currentPrice := trade.Price
-		stopLoss := currentPrice * 0.95 // 5% stop loss
-		fmt.Printf("Current Price: $%.2f, Calculated Stop Loss: $%.2f\n", currentPrice, stopLoss)
-
-		// 2. Place the order
-		buyOrder, err := PlaceEntryWithStop(symbol, stopLoss, shares, nil)
+		stopLoss := roundCents(trade.Price * 0.95)
+		order, err := PlaceEntryWithStop(sym, stopLoss, 10, nil)
 		if err != nil {
-			log.Printf("✗ Error submitting buy order for %s: %v", symbol, err)
+			log.Printf("✗ %s order error: %v", sym, err)
 			continue
 		}
-
-		fmt.Printf("✓ Buy order submitted successfully for %s (ID: %s)\n", symbol, buyOrder.ID)
+		fmt.Printf("✓ %s order placed (ID: %s)\n", sym, order.ID)
 	}
 
-	// Wait a moment for orders to be processed
 	time.Sleep(2 * time.Second)
-
-	// Check all orders in the account
-	if _, err := CheckAllOrders(); err != nil {
-		log.Printf("Error checking orders: %v", err)
-	}
-
-	/*
-		err = LiquidateAllPositions()
-		if err != nil {
-			log.Printf("Error liquidating position: %v", err)
-		}
-	*/
+	_, _ = CheckAllOrders()
 }
