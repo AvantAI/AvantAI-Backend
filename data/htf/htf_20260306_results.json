@@ -1,0 +1,57 @@
+{
+  "scan_date": "2026-03-06",
+  "generated_at": "2026-03-06T12:18:16-08:00",
+  "total_candidates": 2,
+  "qualifying_stocks": [
+    {
+      "symbol": "OIS",
+      "resistance_level": 12.79,
+      "support_level": 11.86,
+      "flagpole": {
+        "base_date": "2026-01-02T05:00:00Z",
+        "base_price": 6.71,
+        "peak_date": "2026-03-03T05:00:00Z",
+        "peak_price": 12.96,
+        "gain_pct": 93.14456035767512,
+        "duration_trading_days": 40
+      },
+      "flag": {
+        "flag_high": 12.79,
+        "flag_low": 11.86,
+        "range_pct": 7.271305707584048,
+        "pullback_from_peak_pct": 1.3117283950617415,
+        "trading_days": 3
+      },
+      "current_price": 12.24,
+      "avg_dollar_volume": 17686197.130952384,
+      "avg_share_volume": 1484200.9047619049,
+      "sma_20": 11.325000000000001,
+      "sma_50": 9.288599999999997
+    },
+    {
+      "symbol": "PVLA",
+      "resistance_level": 138.01,
+      "support_level": 129.52,
+      "flagpole": {
+        "base_date": "2026-01-30T05:00:00Z",
+        "base_price": 72.225,
+        "peak_date": "2026-03-03T05:00:00Z",
+        "peak_price": 138.795,
+        "gain_pct": 92.17030114226375,
+        "duration_trading_days": 21
+      },
+      "flag": {
+        "flag_high": 138.01,
+        "flag_low": 129.52,
+        "range_pct": 6.1517281356423315,
+        "pullback_from_peak_pct": 0.5655823336575501,
+        "trading_days": 3
+      },
+      "current_price": 134.37,
+      "avg_dollar_volume": 45621185.73761905,
+      "avg_share_volume": 407058.95238095237,
+      "sma_20": 105.0305,
+      "sma_50": 97.89189999999999
+    }
+  ]
+}

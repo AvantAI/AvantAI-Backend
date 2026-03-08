@@ -692,8 +692,12 @@ func runManagerAgent(stockdata []ep.StockData, symbol string, goroutineId int, c
 	fmt.Printf("[Goroutine %d] Processing %d stock data points for %s (up to minute %d)\n",
 		goroutineId, len(stockdata), symbol, currentMinute)
 	stock_data := ""
+	var latest_stock_instance ep.StockData
 
 	for i, stockdataPoint := range stockdata {
+		if i == len(stockdata)-1 {
+			latest_stock_instance = stockdataPoint
+		}
 		stock_data += fmt.Sprintf("%d min - Open: %v Close: %v High: %v Low: %v\n",
 			i+1, stockdataPoint.Open, stockdataPoint.PreviousClose, stockdataPoint.High, stockdataPoint.Low)
 		if i < 3 || i == len(stockdata)-1 {
@@ -775,7 +779,7 @@ func runManagerAgent(stockdata []ep.StockData, symbol string, goroutineId int, c
 	stringPercent := strings.TrimSpace(strings.TrimSuffix(managerResp.RiskPercent, "%"))
 	riskPercent, err := strconv.ParseFloat(stringPercent, 64)
 	if err != nil {
-		fmt.Printf("[Goroutine %d] ❌ Failed to parse risk percent '%s': %v\n", 
+		fmt.Printf("[Goroutine %d] ❌ Failed to parse risk percent '%s': %v\n",
 			goroutineId, stringPercent, err)
 		return false
 	}
@@ -794,22 +798,28 @@ func runManagerAgent(stockdata []ep.StockData, symbol string, goroutineId int, c
 
 	entryPrice, err := strconv.ParseFloat(strings.ReplaceAll(managerResp.EntryPrice, "$", ""), 64)
 	if err != nil {
-		fmt.Printf("[Goroutine %d] ❌ Failed to parse entry price '%s': %v\n", 
+		fmt.Printf("[Goroutine %d] ❌ Failed to parse entry price '%s': %v\n",
 			goroutineId, managerResp.EntryPrice, err)
 		return false
 	}
 
-	stopLoss, err := strconv.ParseFloat(strings.ReplaceAll(managerResp.StopLoss, "$", ""), 64)
-	if err != nil {
-		fmt.Printf("[Goroutine %d] ❌ Failed to parse stop loss '%s': %v\n", 
-			goroutineId, managerResp.StopLoss, err)
-		return false
+	// stopLoss, err := strconv.ParseFloat(strings.ReplaceAll(managerResp.StopLoss, "$", ""), 64)
+	// if err != nil {
+	// 	fmt.Printf("[Goroutine %d] ❌ Failed to parse stop loss '%s': %v\n",
+	// 		goroutineId, managerResp.StopLoss, err)
+	// 	return false
+	// }
+
+	stopLoss := latest_stock_instance.Low
+
+	if stopLoss == 0 {
+		fmt.Print("❌ Stop Loss Error")
 	}
 
 	// Validate the risk calculation
 	riskPerShare := entryPrice - stopLoss
 	if riskPerShare <= 0 {
-		fmt.Printf("[Goroutine %d] ❌ Invalid risk calculation: entry %.2f <= stop loss %.2f\n", 
+		fmt.Printf("[Goroutine %d] ❌ Invalid risk calculation: entry %.2f <= stop loss %.2f\n",
 			goroutineId, entryPrice, stopLoss)
 		return false
 	}
@@ -819,7 +829,7 @@ func runManagerAgent(stockdata []ep.StockData, symbol string, goroutineId int, c
 	shares := math.Round(totalRisk / riskPerShare)
 
 	if shares <= 0 {
-		fmt.Printf("[Goroutine %d] ❌ Invalid share calculation resulted in %.0f shares\n", 
+		fmt.Printf("[Goroutine %d] ❌ Invalid share calculation resulted in %.0f shares\n",
 			goroutineId, shares)
 		return false
 	}
