@@ -11,13 +11,12 @@ package main
 // 	"sync"
 // 	"time"
 
-// 	"path/filepath"
-
 // 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 // 	"github.com/alpacahq/alpaca-trade-api-go/v3/marketdata"
 // 	"github.com/joho/godotenv"
+// 	"path/filepath"
 
-// 	ep "avantai/pkg/ep" // ← update to match your go.mod module path
+// 	ep "avantai/pkg/ep"
 // )
 
 // // ─────────────────────────────────────────────────────────────────────────────
@@ -25,13 +24,9 @@ package main
 // // ─────────────────────────────────────────────────────────────────────────────
 
 // const (
-// 	// How often to poll while market is open
-// 	POLL_INTERVAL = 60 * time.Second
-
-// 	// How often to re-check market open/close status when sleeping
+// 	POLL_INTERVAL         = 60 * time.Second
 // 	MARKET_CHECK_INTERVAL = 1 * time.Minute
 
-// 	// Exit / stop logic (mirrors backtest)
 // 	BREAKEVEN_TRIGGER_PERCENT = 0.02
 // 	BREAKEVEN_TRIGGER_DAYS    = 2
 
@@ -47,63 +42,57 @@ package main
 // 	STRONG_EP_TAKE_PERCENT = 0.30
 
 // 	MAX_DAYS_NO_FOLLOWTHROUGH = 8
+// 	WEAK_CLOSE_THRESHOLD      = 0.30
 
-// 	// Weak close: if close is more than 30% below session high, exit
-// 	WEAK_CLOSE_THRESHOLD = 0.30
-
-// 	// Entry filters
 // 	MIN_PRICE = 2.0
 // 	MAX_PRICE = 200.0
 
-// 	// NYSE / NASDAQ regular session (Eastern Time)
 // 	MARKET_OPEN_HOUR  = 9
 // 	MARKET_OPEN_MIN   = 30
 // 	MARKET_CLOSE_HOUR = 16
 // 	MARKET_CLOSE_MIN  = 0
 // 	EASTERN_TZ        = "America/New_York"
+
+// 	// How often to re-sync the full position list from Alpaca.
+// 	// Runs once at startup, then every POSITION_SYNC_INTERVAL while the market
+// 	// is open (catches new fills without any manual watchlist editing).
+// 	POSITION_SYNC_INTERVAL = 5 * time.Minute
 // )
 
 // // ─────────────────────────────────────────────────────────────────────────────
 // // Data structures
 // // ─────────────────────────────────────────────────────────────────────────────
 
-// // RealtimePosition tracks a live position and all of its exit-rule state.
 // type RealtimePosition struct {
 // 	Symbol          string
 // 	EntryPrice      float64
 // 	StopLoss        float64
 // 	InitialStopLoss float64
 // 	InitialRisk     float64
-// 	Shares          float64 // decremented on partial exits
+// 	Shares          float64
 // 	InitialShares   float64
 // 	PurchaseDate    time.Time
 // 	DaysHeld        int
-// 	LastCheckDate   time.Time // tracks last calendar date we incremented DaysHeld
+// 	LastCheckDate   time.Time
 
-// 	// Profit-taking flags
 // 	ProfitTaken  bool
 // 	ProfitTaken2 bool
 // 	ProfitTaken3 bool
 
-// 	// Trailing / advanced stop state
 // 	TrailingStopMode bool
-// 	HighestPrice     float64 // highest intraday high seen since entry
+// 	HighestPrice     float64
 
-// 	// Running tally of realised profit from partial exits
 // 	CumulativeProfit float64
 
-// 	// Per-session daily OHLC — reset each morning at open
 // 	SessionHigh float64
 // 	SessionLow  float64
 // 	SessionOpen float64
 
-// 	// Set true on EP day if a weak close was detected
 // 	WeakCloseDetected bool
 
 // 	mu sync.Mutex
 // }
 
-// // TradeRecord is appended to trade_results.csv on every full or partial exit.
 // type TradeRecord struct {
 // 	Symbol      string
 // 	EntryPrice  float64
@@ -123,34 +112,25 @@ package main
 // // ─────────────────────────────────────────────────────────────────────────────
 
 // var (
-// 	activePositions  = make(map[string]*RealtimePosition)
-// 	processedSymbols = make(map[string]bool)
-// 	lastWatchlistMod time.Time
-// 	watchlistPath    string
-
-// 	positionsMu    sync.RWMutex
-// 	processedMu    sync.Mutex
-// 	tradeResultsMu sync.Mutex
+// 	activePositions map[string]*RealtimePosition = make(map[string]*RealtimePosition)
+// 	positionsMu     sync.RWMutex
+// 	tradeResultsMu  sync.Mutex
 
 // 	alpacaClient *alpaca.Client
 // 	mdClient     *marketdata.Client
+// 	easternLoc   *time.Location
 
-// 	easternLoc *time.Location
+// 	lastPositionSync time.Time // tracks when we last called syncPositionsFromAlpaca
 // )
 
 // // ─────────────────────────────────────────────────────────────────────────────
-// // Injectable function variables
-// // Tests swap these for fakes so no real network calls are made.
+// // Injectable function variables (tests swap these for stubs)
 // // ─────────────────────────────────────────────────────────────────────────────
 
-// // Bar is a single OHLCV bar.  Mirrors marketdata.Bar so tests need not import
-// // the Alpaca SDK.
 // type Bar struct {
 // 	Open, High, Low, Close float64
 // }
 
-// // getAlpacaPositionFn returns the share quantity held in Alpaca for symbol,
-// // or an error if the position does not exist.
 // var getAlpacaPositionFn = func(symbol string) (float64, error) {
 // 	pos, err := alpacaClient.GetPosition(symbol)
 // 	if err != nil {
@@ -160,7 +140,6 @@ package main
 // 	return qty, nil
 // }
 
-// // getIntradayBarsFn returns 1-minute bars for symbol from sessionStart to now.
 // var getIntradayBarsFn = func(symbol string, sessionStart, now time.Time) ([]Bar, error) {
 // 	raw, err := mdClient.GetBars(symbol, marketdata.GetBarsRequest{
 // 		TimeFrame: marketdata.OneMin,
@@ -178,20 +157,13 @@ package main
 // 	return bars, nil
 // }
 
-// // openPositionFn is called by processWatchlist for each new symbol.
-// // Tests replace it with a stub that skips the Alpaca API call.
-// var openPositionFn = tryOpenPosition
-
-// // AccountSnapshot holds the key numbers we care about from Alpaca.
 // type AccountSnapshot struct {
-// 	Equity      float64 // total account value (cash + positions)
-// 	Cash        float64 // settled cash available
-// 	BuyingPower float64 // overnight buying power
-// 	DayPL       float64 // today's P/L = equity minus yesterday's close equity
+// 	Equity      float64
+// 	Cash        float64
+// 	BuyingPower float64
+// 	DayPL       float64
 // }
 
-// // getAccountFn fetches account figures from Alpaca.
-// // Tests replace it with a stub.
 // var getAccountFn = func() (*AccountSnapshot, error) {
 // 	acct, err := alpacaClient.GetAccount()
 // 	if err != nil {
@@ -201,42 +173,37 @@ package main
 // 	cash, _ := acct.Cash.Float64()
 // 	bp, _ := acct.BuyingPower.Float64()
 // 	lastEquity, _ := acct.LastEquity.Float64()
-// 	// DayPL = how much equity has changed since yesterday's close.
-// 	dayPL := equity - lastEquity
 // 	return &AccountSnapshot{
 // 		Equity:      equity,
 // 		Cash:        cash,
 // 		BuyingPower: bp,
-// 		DayPL:       dayPL,
+// 		DayPL:       equity - lastEquity,
 // 	}, nil
+// }
+
+// // getAllAlpacaPositionsFn returns all open positions from Alpaca.
+// // Tests replace this with a stub.
+// var getAllAlpacaPositionsFn = func() ([]alpaca.Position, error) {
+// 	return alpacaClient.GetPositions()
 // }
 
 // // ─────────────────────────────────────────────────────────────────────────────
 // // main
 // // ─────────────────────────────────────────────────────────────────────────────
 
-// // loadEnv walks up the directory tree from the current working directory
-// // until it finds a .env file and loads it.  This means the binary and tests
-// // running from any sub-directory will still find the .env at the project root.
 // func loadEnv() {
 // 	dir, err := os.Getwd()
 // 	if err != nil {
-// 		log.Println("Warning: cannot determine working directory")
 // 		return
 // 	}
-
 // 	for {
 // 		candidate := filepath.Join(dir, ".env")
 // 		if _, err := os.Stat(candidate); err == nil {
-// 			if err := godotenv.Load(candidate); err != nil {
-// 				log.Printf("Warning: found .env at %s but could not load it: %v", candidate, err)
-// 			}
+// 			godotenv.Load(candidate)
 // 			return
 // 		}
-
 // 		parent := filepath.Dir(dir)
 // 		if parent == dir {
-// 			log.Println("Warning: .env file not found in any parent directory")
 // 			return
 // 		}
 // 		dir = parent
@@ -248,7 +215,7 @@ package main
 
 // 	apiKey := os.Getenv("ALPACA_API_KEY")
 // 	apiSecret := os.Getenv("ALPACA_SECRET_KEY")
-// 	baseURL := os.Getenv("ALPACA_PAPER_URL") // e.g. https://paper-api.alpaca.markets
+// 	baseURL := os.Getenv("ALPACA_PAPER_URL")
 
 // 	if apiKey == "" || apiSecret == "" {
 // 		log.Fatal("ALPACA_API_KEY and ALPACA_SECRET_KEY must be set")
@@ -259,7 +226,6 @@ package main
 // 		APISecret: apiSecret,
 // 		BaseURL:   baseURL,
 // 	})
-
 // 	mdClient = marketdata.NewClient(marketdata.ClientOpts{
 // 		APIKey:    apiKey,
 // 		APISecret: apiSecret,
@@ -272,19 +238,22 @@ package main
 // 	}
 
 // 	initTradeResultsFile()
-
-// 	// Print account status immediately so the operator knows the starting equity.
 // 	printAccountStatus("startup")
 
-// 	log.Println("🚀 Real-time EP monitor started.")
-// 	log.Println("   Drop symbols into watchlist.csv (same columns as backtest) to begin tracking.")
-// 	log.Println("   Process sleeps automatically outside NYSE market hours.")
+// 	// ── Immediately sync positions from Alpaca so we start monitoring right away
+// 	syncPositionsFromAlpaca()
+
+// 	log.Println("🚀 Real-time EP monitor started (Alpaca-sync mode).")
+// 	log.Println("   Positions are fetched directly from your Alpaca account every 5 minutes.")
+// 	log.Println("   No watchlist.csv required.")
 // 	log.Println("   Press Ctrl+C to stop.")
 
-// 	// ── Main loop ─────────────────────────────────────────────────────────────
 // 	for {
 // 		if isMarketOpen() {
-// 			checkAndProcessWatchlist()
+// 			// Re-sync the full position list from Alpaca on the configured interval.
+// 			if time.Since(lastPositionSync) >= POSITION_SYNC_INTERVAL {
+// 				syncPositionsFromAlpaca()
+// 			}
 // 			evaluatePositions()
 // 			time.Sleep(POLL_INTERVAL)
 // 		} else {
@@ -297,8 +266,190 @@ package main
 // 				nextOpen.In(easternLoc).Format("Mon 2006-01-02 15:04 MST"),
 // 				sleepDur.Round(time.Minute))
 // 			time.Sleep(sleepDur)
+
+// 			// Sync once when market re-opens so overnight fills are picked up.
+// 			if isMarketOpen() {
+// 				syncPositionsFromAlpaca()
+// 			}
 // 		}
 // 	}
+// }
+
+// // ─────────────────────────────────────────────────────────────────────────────
+// // syncPositionsFromAlpaca — the core replacement for checkAndProcessWatchlist
+// // ─────────────────────────────────────────────────────────────────────────────
+
+// // syncPositionsFromAlpaca fetches every open position from Alpaca and:
+// //   - Adds a new RealtimePosition for any symbol not already monitored.
+// //   - Updates share count for positions already being monitored.
+// //   - Removes any position from activePositions that is no longer open in Alpaca
+// //     (e.g. stopped out by a bracket order while the monitor was sleeping).
+// func syncPositionsFromAlpaca() {
+// 	lastPositionSync = time.Now()
+
+// 	alpacaPositions, err := getAllAlpacaPositionsFn()
+// 	if err != nil {
+// 		log.Printf("⚠️  Could not fetch positions from Alpaca: %v", err)
+// 		return
+// 	}
+
+// 	// Build a quick lookup set of symbols currently open in Alpaca.
+// 	alpacaSymbols := make(map[string]alpaca.Position, len(alpacaPositions))
+// 	for _, p := range alpacaPositions {
+// 		alpacaSymbols[p.Symbol] = p
+// 	}
+
+// 	// ── 1. Add or update positions ────────────────────────────────────────────
+// 	for _, ap := range alpacaPositions {
+// 		qty, _ := ap.Qty.Float64()
+// 		if qty <= 0 {
+// 			continue // skip short / empty positions
+// 		}
+
+// 		avgEntry, _ := ap.AvgEntryPrice.Float64()
+// 		if avgEntry <= 0 {
+// 			log.Printf("[%s] ⚠️  Avg entry price unavailable — skipping", ap.Symbol)
+// 			continue
+// 		}
+
+// 		// Filter by price range (same guard as before)
+// 		if avgEntry < MIN_PRICE || avgEntry > MAX_PRICE {
+// 			log.Printf("[%s] ⚠️  Avg entry $%.2f outside range ($%.0f–$%.0f) — skipping",
+// 				ap.Symbol, avgEntry, MIN_PRICE, MAX_PRICE)
+// 			continue
+// 		}
+
+// 		positionsMu.RLock()
+// 		existing, alreadyTracked := activePositions[ap.Symbol]
+// 		positionsMu.RUnlock()
+
+// 		if alreadyTracked {
+// 			// Just keep share count in sync.
+// 			existing.mu.Lock()
+// 			if existing.Shares != qty {
+// 				log.Printf("[%s] 🔄 Share sync: %.0f → %.0f", ap.Symbol, existing.Shares, qty)
+// 				existing.Shares = qty
+// 			}
+// 			existing.mu.Unlock()
+// 			continue
+// 		}
+
+// 		// ── New position: build a RealtimePosition from the Alpaca data ───────
+// 		//
+// 		// Stop loss: we derive a conservative default (5% below avg entry) because
+// 		// Alpaca does not expose the stop leg of a bracket order via GetPositions.
+// 		// If you want a tighter/wider default, adjust DEFAULT_STOP_PCT below.
+// 		//
+// 		// You can also add a stop_overrides.csv (symbol,stop_price) file in the
+// 		// working directory to provide exact stops for specific tickers; see
+// 		// loadStopOverrides() below.
+// 		const DEFAULT_STOP_PCT = 0.05
+// 		stopOverrides := loadStopOverrides()
+
+// 		stopPrice, hasOverride := stopOverrides[ap.Symbol]
+// 		if !hasOverride {
+// 			stopPrice = avgEntry * (1.0 - DEFAULT_STOP_PCT)
+// 		}
+
+// 		initialRisk := avgEntry - stopPrice
+// 		if initialRisk <= 0 {
+// 			log.Printf("[%s] ⚠️  Derived stop $%.2f >= entry $%.2f — skipping",
+// 				ap.Symbol, stopPrice, avgEntry)
+// 			continue
+// 		}
+
+// 		// Use today as the purchase date if we can't determine it otherwise.
+// 		// For a more accurate date you could cross-reference order history, but
+// 		// today is safe for all exit-timing calculations on the first monitoring day.
+// 		now := time.Now().In(easternLoc)
+// 		purchaseDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, easternLoc)
+
+// 		pos := &RealtimePosition{
+// 			Symbol:          ap.Symbol,
+// 			EntryPrice:      avgEntry,
+// 			StopLoss:        stopPrice,
+// 			InitialStopLoss: stopPrice,
+// 			InitialRisk:     initialRisk,
+// 			Shares:          qty,
+// 			InitialShares:   qty,
+// 			PurchaseDate:    purchaseDate,
+// 			HighestPrice:    avgEntry,
+// 			LastCheckDate:   purchaseDate,
+// 			SessionHigh:     0,
+// 			SessionLow:      math.MaxFloat64,
+// 			SessionOpen:     0,
+// 		}
+
+// 		positionsMu.Lock()
+// 		activePositions[ap.Symbol] = pos
+// 		positionsMu.Unlock()
+
+// 		log.Printf("[%s] 🟢 NEW POSITION DETECTED | Entry: $%.2f | Stop: $%.2f | Risk/share: $%.2f | Shares: %.0f%s",
+// 			ap.Symbol, avgEntry, stopPrice, initialRisk, qty,
+// 			func() string {
+// 				if hasOverride {
+// 					return " (stop from overrides file)"
+// 				}
+// 				return fmt.Sprintf(" (default stop %.0f%% below entry)", DEFAULT_STOP_PCT*100)
+// 			}())
+// 	}
+
+// 	// ── 2. Remove positions no longer open in Alpaca ──────────────────────────
+// 	positionsMu.Lock()
+// 	for sym := range activePositions {
+// 		if _, stillOpen := alpacaSymbols[sym]; !stillOpen {
+// 			log.Printf("[%s] 🔴 No longer open in Alpaca — removing from monitor", sym)
+// 			delete(activePositions, sym)
+// 		}
+// 	}
+// 	positionsMu.Unlock()
+
+// 	log.Printf("🔁 Position sync complete — %d position(s) being monitored", func() int {
+// 		positionsMu.RLock()
+// 		defer positionsMu.RUnlock()
+// 		return len(activePositions)
+// 	}())
+// }
+
+// // loadStopOverrides reads an optional stop_overrides.csv in the working directory.
+// // Format: two columns, no header required — Symbol,StopPrice
+// // e.g.
+// //
+// //	AAPL,174.50
+// //	NVDA,820.00
+// //
+// // If the file does not exist the function returns an empty map silently.
+// func loadStopOverrides() map[string]float64 {
+// 	out := make(map[string]float64)
+
+// 	f, err := os.Open("stop_overrides.csv")
+// 	if err != nil {
+// 		return out // file is optional
+// 	}
+// 	defer f.Close()
+
+// 	records, err := csv.NewReader(f).ReadAll()
+// 	if err != nil {
+// 		log.Printf("⚠️  stop_overrides.csv parse error: %v", err)
+// 		return out
+// 	}
+
+// 	for _, row := range records {
+// 		if len(row) < 2 {
+// 			continue
+// 		}
+// 		sym := strings.TrimSpace(row[0])
+// 		price, err := strconv.ParseFloat(strings.TrimSpace(row[1]), 64)
+// 		if err != nil || price <= 0 {
+// 			continue
+// 		}
+// 		out[sym] = price
+// 	}
+
+// 	if len(out) > 0 {
+// 		log.Printf("📌 Loaded %d stop override(s) from stop_overrides.csv", len(out))
+// 	}
+// 	return out
 // }
 
 // // ─────────────────────────────────────────────────────────────────────────────
@@ -318,17 +469,13 @@ package main
 // 	return now.After(open) && now.Before(close_)
 // }
 
-// // nextMarketOpen returns the next weekday 09:30 ET after the current moment.
 // func nextMarketOpen() time.Time {
 // 	now := time.Now().In(easternLoc)
 // 	candidate := time.Date(now.Year(), now.Month(), now.Day(),
 // 		MARKET_OPEN_HOUR, MARKET_OPEN_MIN, 0, 0, easternLoc)
-
-// 	// If today's open is still in the future and today is a weekday, use today.
 // 	if now.Before(candidate) && now.Weekday() != time.Saturday && now.Weekday() != time.Sunday {
 // 		return candidate
 // 	}
-// 	// Otherwise advance day-by-day until we land on a weekday.
 // 	for {
 // 		candidate = candidate.AddDate(0, 0, 1)
 // 		if candidate.Weekday() != time.Saturday && candidate.Weekday() != time.Sunday {
@@ -338,166 +485,7 @@ package main
 // }
 
 // // ─────────────────────────────────────────────────────────────────────────────
-// // Watchlist processing
-// // ─────────────────────────────────────────────────────────────────────────────
-
-// func checkAndProcessWatchlist() {
-// 	path := "watchlist.csv"
-// 	info, err := os.Stat(path)
-// 	if err != nil {
-// 		path = "cmd/avantai/ep/ep_watchlist/watchlist.csv"
-// 		info, err = os.Stat(path)
-// 		if err != nil {
-// 			return
-// 		}
-// 	}
-// 	watchlistPath = path
-
-// 	if info.ModTime().After(lastWatchlistMod) {
-// 		lastWatchlistMod = info.ModTime()
-// 		log.Println("📋 Watchlist file updated — scanning for new entries...")
-// 		processWatchlist(path)
-// 	}
-// }
-
-// func processWatchlist(path string) {
-// 	file, err := os.Open(path)
-// 	if err != nil {
-// 		log.Printf("⚠️  Cannot open watchlist: %v", err)
-// 		return
-// 	}
-// 	defer file.Close()
-
-// 	records, err := csv.NewReader(file).ReadAll()
-// 	if err != nil || len(records) <= 1 {
-// 		return
-// 	}
-
-// 	for i := 1; i < len(records); i++ {
-// 		pos := parsePosition(records[i])
-// 		if pos == nil {
-// 			continue
-// 		}
-
-// 		processedMu.Lock()
-// 		already := processedSymbols[pos.Symbol]
-// 		processedMu.Unlock()
-
-// 		positionsMu.RLock()
-// 		active := activePositions[pos.Symbol] != nil
-// 		positionsMu.RUnlock()
-
-// 		if already || active {
-// 			continue
-// 		}
-
-// 		// Mark processed immediately to prevent duplicate goroutines
-// 		processedMu.Lock()
-// 		processedSymbols[pos.Symbol] = true
-// 		processedMu.Unlock()
-
-// 		go openPositionFn(pos)
-// 	}
-// }
-
-// // parsePosition parses a CSV row into a RealtimePosition.
-// // Expected columns: Symbol, EntryPrice, StopLoss, Shares, InitialRisk, PurchaseDate
-// func parsePosition(row []string) *RealtimePosition {
-// 	if len(row) < 6 {
-// 		return nil
-// 	}
-// 	trim := func(s string) string {
-// 		return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(s), "$"))
-// 	}
-
-// 	entryPrice, e1 := strconv.ParseFloat(trim(row[1]), 64)
-// 	stopLoss, e2 := strconv.ParseFloat(trim(row[2]), 64)
-// 	shares, e3 := strconv.ParseFloat(trim(row[3]), 64)
-// 	initialRisk, e4 := strconv.ParseFloat(trim(row[4]), 64)
-
-// 	if e1 != nil || e2 != nil || e3 != nil || e4 != nil {
-// 		log.Printf("⚠️  Skipping row with parse error: %v", row)
-// 		return nil
-// 	}
-
-// 	purchaseDate, err := time.Parse("2006-01-02", strings.TrimSpace(row[5]))
-// 	if err != nil {
-// 		log.Printf("⚠️  Cannot parse date '%s': %v", row[5], err)
-// 		return nil
-// 	}
-
-// 	return &RealtimePosition{
-// 		Symbol:        strings.TrimSpace(row[0]),
-// 		EntryPrice:    entryPrice,
-// 		StopLoss:      stopLoss,
-// 		InitialRisk:   initialRisk,
-// 		Shares:        shares,
-// 		InitialShares: shares,
-// 		PurchaseDate:  purchaseDate,
-// 		HighestPrice:  entryPrice,
-// 		LastCheckDate: purchaseDate,
-// 	}
-// }
-
-// // ─────────────────────────────────────────────────────────────────────────────
-// // Opening / registering a position
-// // ─────────────────────────────────────────────────────────────────────────────
-
-// // tryOpenPosition validates the position, syncs share count from Alpaca,
-// // and registers it for ongoing monitoring.
-// func tryOpenPosition(pos *RealtimePosition) {
-// 	// Basic sanity filters
-// 	if pos.EntryPrice < MIN_PRICE || pos.EntryPrice > MAX_PRICE {
-// 		log.Printf("[%s] ⚠️  Price $%.2f outside range ($%.0f–$%.0f), skipping",
-// 			pos.Symbol, pos.EntryPrice, MIN_PRICE, MAX_PRICE)
-// 		return
-// 	}
-// 	if pos.StopLoss <= 0 || pos.StopLoss >= pos.EntryPrice {
-// 		log.Printf("[%s] ⚠️  Invalid stop loss $%.2f vs entry $%.2f, skipping",
-// 			pos.Symbol, pos.StopLoss, pos.EntryPrice)
-// 		return
-// 	}
-
-// 	pos.InitialStopLoss = pos.StopLoss
-// 	pos.InitialRisk = pos.EntryPrice - pos.StopLoss
-
-// 	// Try to sync actual share count from the live Alpaca position.
-// 	// If the position doesn't exist yet (order pending), we keep the CSV shares
-// 	// and will re-sync on the first evaluation tick.
-// 	if alpacaPos, err := alpacaClient.GetPosition(pos.Symbol); err == nil {
-// 		qty, _ := alpacaPos.Qty.Float64()
-// 		if qty > 0 {
-// 			pos.Shares = qty
-// 			pos.InitialShares = qty
-// 			entryAvg, _ := alpacaPos.AvgEntryPrice.Float64()
-// 			// Trust Alpaca's avg entry price when available
-// 			if entryAvg > 0 {
-// 				pos.EntryPrice = entryAvg
-// 				pos.InitialRisk = pos.EntryPrice - pos.StopLoss
-// 			}
-// 			log.Printf("[%s] 🔄 Synced from Alpaca: %.0f shares @ avg $%.2f",
-// 				pos.Symbol, qty, entryAvg)
-// 		}
-// 	} else {
-// 		log.Printf("[%s] ℹ️  No open Alpaca position yet (order may be pending). Monitoring with CSV values.", pos.Symbol)
-// 	}
-
-// 	// Reset per-session OHLC — will be populated on first bar fetch
-// 	pos.SessionHigh = 0
-// 	pos.SessionLow = math.MaxFloat64
-// 	pos.SessionOpen = 0
-
-// 	positionsMu.Lock()
-// 	activePositions[pos.Symbol] = pos
-// 	positionsMu.Unlock()
-
-// 	log.Printf("[%s] 🟢 MONITORING STARTED | Entry: $%.2f | Stop: $%.2f | Risk/share: $%.2f | Shares: %.0f | Since: %s",
-// 		pos.Symbol, pos.EntryPrice, pos.StopLoss, pos.InitialRisk,
-// 		pos.Shares, pos.PurchaseDate.Format("2006-01-02"))
-// }
-
-// // ─────────────────────────────────────────────────────────────────────────────
-// // Evaluation loop
+// // Evaluation loop  (unchanged from original)
 // // ─────────────────────────────────────────────────────────────────────────────
 
 // func evaluatePositions() {
@@ -506,7 +494,6 @@ package main
 // 		positionsMu.RUnlock()
 // 		return
 // 	}
-// 	// Snapshot symbol list so we can release the read-lock while goroutines run
 // 	symbols := make([]string, 0, len(activePositions))
 // 	for sym := range activePositions {
 // 		symbols = append(symbols, sym)
@@ -527,7 +514,6 @@ package main
 // 		if !ok {
 // 			continue
 // 		}
-
 // 		wg.Add(1)
 // 		go func(p *RealtimePosition) {
 // 			defer wg.Done()
@@ -553,7 +539,7 @@ package main
 // }
 
 // // ─────────────────────────────────────────────────────────────────────────────
-// // Per-position evaluation — mirrors simulateNextDay() from the backtest
+// // Per-position evaluation  (unchanged from original)
 // // ─────────────────────────────────────────────────────────────────────────────
 
 // func evaluatePosition(pos *RealtimePosition) bool {
@@ -562,13 +548,9 @@ package main
 
 // 	now := time.Now().In(easternLoc)
 
-// 	// ── 1. Re-sync shares from Alpaca (handles partial fills, etc.) ──────────
 // 	qty, err := getAlpacaPositionFn(pos.Symbol)
 // 	if err != nil {
-// 		// Position no longer exists in Alpaca — stopped out by bracket leg or
-// 		// closed manually. Remove from monitoring.
 // 		log.Printf("[%s] ⚠️  Position no longer found in Alpaca — removing from monitor", pos.Symbol)
-// 		removeFromWatchlist(pos.Symbol)
 // 		return true
 // 	}
 // 	if qty != pos.Shares && qty > 0 {
@@ -577,7 +559,6 @@ package main
 // 		pos.Shares = qty
 // 	}
 
-// 	// ── 2. Fetch today's intraday bars to build session OHLC ─────────────────
 // 	today := now.Format("2006-01-02")
 // 	sessionStart := time.Date(now.Year(), now.Month(), now.Day(),
 // 		MARKET_OPEN_HOUR, MARKET_OPEN_MIN, 0, 0, easternLoc)
@@ -588,7 +569,6 @@ package main
 // 		return false
 // 	}
 
-// 	// Build session OHLC from all bars since open
 // 	sessionHigh := 0.0
 // 	sessionLow := math.MaxFloat64
 // 	sessionOpen := bars[0].Open
@@ -611,11 +591,9 @@ package main
 // 		pos.HighestPrice = sessionHigh
 // 	}
 
-// 	// ── 3. Increment DaysHeld once per calendar day ───────────────────────────
 // 	if today != pos.LastCheckDate.Format("2006-01-02") {
 // 		pos.DaysHeld++
 // 		pos.LastCheckDate = now
-// 		// Reset session OHLC tracking at the start of a new day
 // 		pos.SessionHigh = 0
 // 		pos.SessionLow = math.MaxFloat64
 // 	}
@@ -633,9 +611,6 @@ package main
 // 		currentGain, (currentGain/pos.EntryPrice)*100,
 // 		currentRR, pos.StopLoss, pos.Shares)
 
-// 	// ── 4. Weak close detection (mirrors backtest checkWeakCloseIntraday) ─────
-// 	// On any day, if the session closes more than WEAK_CLOSE_THRESHOLD below
-// 	// the session high, exit immediately (same logic as the backtest).
 // 	if sessionHigh > 0 && !pos.WeakCloseDetected {
 // 		closeFromHigh := (sessionHigh - currentPrice) / sessionHigh
 // 		if closeFromHigh >= WEAK_CLOSE_THRESHOLD {
@@ -646,13 +621,10 @@ package main
 // 		}
 // 	}
 
-// 	// ── 5. Stop loss ──────────────────────────────────────────────────────────
-// 	// Use session low (not just latest close) so intraday wicks are caught.
 // 	if sessionLow <= pos.StopLoss || currentPrice <= pos.StopLoss {
 // 		return executeStopOut(pos, pos.StopLoss, now)
 // 	}
 
-// 	// ── 6. Move to breakeven ──────────────────────────────────────────────────
 // 	if pos.DaysHeld >= BREAKEVEN_TRIGGER_DAYS && !pos.ProfitTaken {
 // 		pctGain := (sessionHigh - pos.EntryPrice) / pos.EntryPrice
 // 		if pctGain >= BREAKEVEN_TRIGGER_PERCENT && pos.StopLoss < pos.EntryPrice {
@@ -662,7 +634,6 @@ package main
 // 		}
 // 	}
 
-// 	// ── 7. Tighten stop if no follow-through after N days ────────────────────
 // 	if pos.DaysHeld >= MAX_DAYS_NO_FOLLOWTHROUGH && currentRR < 0.5 && !pos.ProfitTaken {
 // 		tighter := math.Max(pos.EntryPrice-(pos.InitialRisk*0.3), pos.EntryPrice)
 // 		if tighter > pos.StopLoss {
@@ -672,7 +643,6 @@ package main
 // 		}
 // 	}
 
-// 	// ── 8. Strong EP — big gain in first few days ────────────────────────────
 // 	pctGain := (currentPrice - pos.EntryPrice) / pos.EntryPrice
 // 	if pos.DaysHeld <= STRONG_EP_DAYS && pctGain >= STRONG_EP_GAIN && !pos.ProfitTaken {
 // 		closed := executeStrongEPProfit(pos, currentPrice, now)
@@ -682,61 +652,46 @@ package main
 // 		return false
 // 	}
 
-// 	// ── 9. Graduated profit taking ────────────────────────────────────────────
 // 	if currentRR >= PROFIT_TAKE_1_RR && !pos.ProfitTaken {
 // 		executeProfitPartial(pos, currentPrice, now, PROFIT_TAKE_1_PERCENT, 1)
 // 		pos.TrailingStopMode = true
 // 		pos.ProfitTaken = true
 // 		if pos.DaysHeld >= BREAKEVEN_TRIGGER_DAYS {
 // 			pos.StopLoss = math.Max(pos.StopLoss, pos.EntryPrice)
-// 			log.Printf("[%s] 🔒 Stop locked at breakeven after Level 1 profit", pos.Symbol)
 // 		}
 // 		return pos.Shares <= 0
 // 	}
-
 // 	if currentRR >= PROFIT_TAKE_2_RR && pos.ProfitTaken && !pos.ProfitTaken2 {
 // 		executeProfitPartial(pos, currentPrice, now, PROFIT_TAKE_2_PERCENT, 2)
-// 		newStop := pos.EntryPrice + (pos.InitialRisk * 1.0)
-// 		pos.StopLoss = math.Max(pos.StopLoss, newStop)
+// 		pos.StopLoss = math.Max(pos.StopLoss, pos.EntryPrice+(pos.InitialRisk*1.0))
 // 		pos.ProfitTaken2 = true
-// 		log.Printf("[%s] 🔒 Stop locked at +1R ($%.2f) after Level 2 profit", pos.Symbol, pos.StopLoss)
 // 		return pos.Shares <= 0
 // 	}
-
 // 	if currentRR >= PROFIT_TAKE_3_RR && pos.ProfitTaken2 && !pos.ProfitTaken3 {
 // 		executeProfitPartial(pos, currentPrice, now, PROFIT_TAKE_3_PERCENT, 3)
-// 		newStop := pos.EntryPrice + (pos.InitialRisk * 2.0)
-// 		pos.StopLoss = math.Max(pos.StopLoss, newStop)
+// 		pos.StopLoss = math.Max(pos.StopLoss, pos.EntryPrice+(pos.InitialRisk*2.0))
 // 		pos.ProfitTaken3 = true
-// 		log.Printf("[%s] 🔒 Stop locked at +2R ($%.2f) after Level 3 profit", pos.Symbol, pos.StopLoss)
 // 		return pos.Shares <= 0
 // 	}
 
-// 	// ── 10. Trailing stop (active after first profit taken) ───────────────────
 // 	if pos.TrailingStopMode {
 // 		pctFromEntry := (currentPrice - pos.EntryPrice) / pos.EntryPrice
-
 // 		var newStop float64
 // 		switch {
 // 		case pctFromEntry > 0.20:
-// 			// Wide trail — give big runners room
 // 			newStop = currentPrice * 0.94
 // 		case pctFromEntry > 0.10:
 // 			newStop = currentPrice * 0.95
 // 		case pctFromEntry > 0.05:
 // 			newStop = currentPrice * 0.96
 // 		default:
-// 			newStop = pos.EntryPrice // floor at breakeven
+// 			newStop = pos.EntryPrice
 // 		}
-
 // 		if newStop > pos.StopLoss {
 // 			pos.StopLoss = newStop
 // 			log.Printf("[%s] 📈 Trailing stop → $%.2f (%.1f%% from entry)",
 // 				pos.Symbol, pos.StopLoss, pctFromEntry*100)
 // 		}
-
-// 		// If price slips back below the session's 20-MA proxy (entry + 10% band),
-// 		// and we're not yet in meaningful profit, close the position.
 // 		if pctFromEntry < 0.05 && currentPrice < pos.EntryPrice*0.96 {
 // 			exitPrice := math.Max(pos.StopLoss, pos.EntryPrice)
 // 			return executeExit(pos, exitPrice, now, "Trailing — retreated below threshold")
@@ -747,29 +702,24 @@ package main
 // }
 
 // // ─────────────────────────────────────────────────────────────────────────────
-// // Exit execution helpers — each calls ep.PlaceSellOrder
+// // Exit helpers  (unchanged from original)
 // // ─────────────────────────────────────────────────────────────────────────────
 
-// // executeStopOut sells all remaining shares at the stop price.
 // func executeStopOut(pos *RealtimePosition, stopPrice float64, t time.Time) bool {
 // 	shares := int(math.Round(pos.Shares))
 // 	if shares < 1 {
 // 		return true
 // 	}
-
 // 	log.Printf("[%s] 🛑 STOP OUT @ $%.2f — selling %d shares", pos.Symbol, stopPrice, shares)
-
 // 	if _, err := ep.PlaceSellOrder(pos.Symbol, shares, &stopPrice); err != nil {
-// 		log.Printf("[%s] ❌ PlaceSellOrder error: %v — position removed from monitor anyway", pos.Symbol, err)
+// 		log.Printf("[%s] ❌ PlaceSellOrder error: %v", pos.Symbol, err)
 // 	}
-
 // 	pl := (stopPrice - pos.EntryPrice) * float64(shares)
 // 	totalPL := pl + pos.CumulativeProfit
 // 	rr := 0.0
 // 	if pos.InitialRisk > 0 {
 // 		rr = (stopPrice - pos.EntryPrice) / pos.InitialRisk
 // 	}
-
 // 	reason := "Stop Loss Hit"
 // 	if pos.ProfitTaken {
 // 		reason = "Trailing Stop Hit (partial profit protected)"
@@ -777,27 +727,16 @@ package main
 // 	if pos.CumulativeProfit > 0 {
 // 		reason = fmt.Sprintf("%s — cumulative P/L incl. partials: $%.2f", reason, totalPL)
 // 	}
-
 // 	recordTrade(TradeRecord{
-// 		Symbol:      pos.Symbol,
-// 		EntryPrice:  pos.EntryPrice,
-// 		ExitPrice:   stopPrice,
-// 		Shares:      float64(shares),
-// 		InitialRisk: pos.InitialRisk,
-// 		ProfitLoss:  pl,
-// 		RiskReward:  rr,
-// 		EntryDate:   pos.PurchaseDate.Format("2006-01-02"),
-// 		ExitDate:    t.Format("2006-01-02"),
-// 		ExitReason:  reason,
-// 		IsWinner:    totalPL > 0,
+// 		Symbol: pos.Symbol, EntryPrice: pos.EntryPrice, ExitPrice: stopPrice,
+// 		Shares: float64(shares), InitialRisk: pos.InitialRisk, ProfitLoss: pl,
+// 		RiskReward: rr, EntryDate: pos.PurchaseDate.Format("2006-01-02"),
+// 		ExitDate: t.Format("2006-01-02"), ExitReason: reason, IsWinner: totalPL > 0,
 // 	})
-
-// 	removeFromWatchlist(pos.Symbol)
 // 	pos.Shares = 0
 // 	return true
 // }
 
-// // executeStrongEPProfit sells STRONG_EP_TAKE_PERCENT of shares on a strong move.
 // func executeStrongEPProfit(pos *RealtimePosition, currentPrice float64, t time.Time) bool {
 // 	sharesToSell := int(math.Floor(pos.Shares * STRONG_EP_TAKE_PERCENT))
 // 	if sharesToSell < 1 {
@@ -806,44 +745,31 @@ package main
 // 	if sharesToSell > int(pos.Shares) {
 // 		sharesToSell = int(pos.Shares)
 // 	}
-
 // 	log.Printf("[%s] 🚀 STRONG EP! Selling %.0f%% (%d shares) @ $%.2f",
 // 		pos.Symbol, STRONG_EP_TAKE_PERCENT*100, sharesToSell, currentPrice)
-
 // 	if _, err := ep.PlaceSellOrder(pos.Symbol, sharesToSell, &currentPrice); err != nil {
 // 		log.Printf("[%s] ❌ PlaceSellOrder error: %v", pos.Symbol, err)
 // 	}
-
 // 	pl := (currentPrice - pos.EntryPrice) * float64(sharesToSell)
 // 	rr := (currentPrice - pos.EntryPrice) / pos.InitialRisk
-
 // 	recordTrade(TradeRecord{
-// 		Symbol:      pos.Symbol,
-// 		EntryPrice:  pos.EntryPrice,
-// 		ExitPrice:   currentPrice,
-// 		Shares:      float64(sharesToSell),
-// 		InitialRisk: pos.InitialRisk,
-// 		ProfitLoss:  pl,
-// 		RiskReward:  rr,
-// 		EntryDate:   pos.PurchaseDate.Format("2006-01-02"),
-// 		ExitDate:    t.Format("2006-01-02"),
-// 		ExitReason:  fmt.Sprintf("Strong EP — %.0f%% sold", STRONG_EP_TAKE_PERCENT*100),
-// 		IsWinner:    true,
+// 		Symbol: pos.Symbol, EntryPrice: pos.EntryPrice, ExitPrice: currentPrice,
+// 		Shares: float64(sharesToSell), InitialRisk: pos.InitialRisk, ProfitLoss: pl,
+// 		RiskReward: rr, EntryDate: pos.PurchaseDate.Format("2006-01-02"),
+// 		ExitDate: t.Format("2006-01-02"),
+// 		ExitReason: fmt.Sprintf("Strong EP — %.0f%% sold", STRONG_EP_TAKE_PERCENT*100),
+// 		IsWinner: true,
 // 	})
-
 // 	pos.CumulativeProfit += pl
 // 	pos.Shares -= float64(sharesToSell)
 // 	pos.StopLoss = math.Max(pos.EntryPrice, pos.StopLoss)
 // 	pos.ProfitTaken = true
 // 	pos.TrailingStopMode = true
-
-// 	log.Printf("[%s] ✅ %.0f shares remain | Cumulative P/L: $%.2f | Stop moved to BE: $%.2f",
+// 	log.Printf("[%s] ✅ %.0f shares remain | Cumulative P/L: $%.2f | Stop → BE: $%.2f",
 // 		pos.Symbol, pos.Shares, pos.CumulativeProfit, pos.StopLoss)
-
 // 	return pos.Shares <= 0
 // }
 
-// // executeProfitPartial sells pct of remaining shares at a profit level.
 // func executeProfitPartial(pos *RealtimePosition, currentPrice float64, t time.Time, pct float64, level int) {
 // 	sharesToSell := int(math.Floor(pos.Shares * pct))
 // 	if sharesToSell < 1 {
@@ -852,132 +778,58 @@ package main
 // 	if sharesToSell > int(pos.Shares) {
 // 		sharesToSell = int(pos.Shares)
 // 	}
-
 // 	rr := (currentPrice - pos.EntryPrice) / pos.InitialRisk
 // 	log.Printf("[%s] 🎯 PROFIT LEVEL %d (%.2fR) — selling %d shares @ $%.2f",
 // 		pos.Symbol, level, rr, sharesToSell, currentPrice)
-
 // 	if _, err := ep.PlaceSellOrder(pos.Symbol, sharesToSell, &currentPrice); err != nil {
 // 		log.Printf("[%s] ❌ PlaceSellOrder error: %v", pos.Symbol, err)
 // 	}
-
 // 	pl := (currentPrice - pos.EntryPrice) * float64(sharesToSell)
-
 // 	recordTrade(TradeRecord{
-// 		Symbol:      pos.Symbol,
-// 		EntryPrice:  pos.EntryPrice,
-// 		ExitPrice:   currentPrice,
-// 		Shares:      float64(sharesToSell),
-// 		InitialRisk: pos.InitialRisk,
-// 		ProfitLoss:  pl,
-// 		RiskReward:  rr,
-// 		EntryDate:   pos.PurchaseDate.Format("2006-01-02"),
-// 		ExitDate:    t.Format("2006-01-02"),
-// 		ExitReason:  fmt.Sprintf("Profit Level %d at %.2fR", level, rr),
-// 		IsWinner:    true,
+// 		Symbol: pos.Symbol, EntryPrice: pos.EntryPrice, ExitPrice: currentPrice,
+// 		Shares: float64(sharesToSell), InitialRisk: pos.InitialRisk, ProfitLoss: pl,
+// 		RiskReward: rr, EntryDate: pos.PurchaseDate.Format("2006-01-02"),
+// 		ExitDate: t.Format("2006-01-02"),
+// 		ExitReason: fmt.Sprintf("Profit Level %d at %.2fR", level, rr),
+// 		IsWinner: true,
 // 	})
-
 // 	pos.CumulativeProfit += pl
 // 	pos.Shares -= float64(sharesToSell)
-
 // 	log.Printf("[%s] ✅ %.0f shares remain | Cumulative P/L: $%.2f | Stop: $%.2f",
 // 		pos.Symbol, pos.Shares, pos.CumulativeProfit, pos.StopLoss)
 // }
 
-// // executeExit closes the full remaining position for a given reason.
 // func executeExit(pos *RealtimePosition, exitPrice float64, t time.Time, reason string) bool {
 // 	shares := int(math.Round(pos.Shares))
 // 	if shares < 1 {
 // 		return true
 // 	}
-
 // 	log.Printf("[%s] 📤 EXIT — %s | Selling %d shares @ $%.2f", pos.Symbol, reason, shares, exitPrice)
-
 // 	if _, err := ep.PlaceSellOrder(pos.Symbol, shares, &exitPrice); err != nil {
-// 		log.Printf("[%s] ❌ PlaceSellOrder error: %v — removing from monitor anyway", pos.Symbol, err)
+// 		log.Printf("[%s] ❌ PlaceSellOrder error: %v", pos.Symbol, err)
 // 	}
-
 // 	pl := (exitPrice - pos.EntryPrice) * float64(shares)
 // 	totalPL := pl + pos.CumulativeProfit
 // 	rr := 0.0
 // 	if pos.InitialRisk > 0 {
 // 		rr = (exitPrice - pos.EntryPrice) / pos.InitialRisk
 // 	}
-
 // 	fullReason := reason
 // 	if pos.CumulativeProfit != 0 {
 // 		fullReason = fmt.Sprintf("%s (prev. partial P/L: $%.2f, total: $%.2f)", reason, pos.CumulativeProfit, totalPL)
 // 	}
-
 // 	recordTrade(TradeRecord{
-// 		Symbol:      pos.Symbol,
-// 		EntryPrice:  pos.EntryPrice,
-// 		ExitPrice:   exitPrice,
-// 		Shares:      float64(shares),
-// 		InitialRisk: pos.InitialRisk,
-// 		ProfitLoss:  pl,
-// 		RiskReward:  rr,
-// 		EntryDate:   pos.PurchaseDate.Format("2006-01-02"),
-// 		ExitDate:    t.Format("2006-01-02"),
-// 		ExitReason:  fullReason,
-// 		IsWinner:    totalPL > 0,
+// 		Symbol: pos.Symbol, EntryPrice: pos.EntryPrice, ExitPrice: exitPrice,
+// 		Shares: float64(shares), InitialRisk: pos.InitialRisk, ProfitLoss: pl,
+// 		RiskReward: rr, EntryDate: pos.PurchaseDate.Format("2006-01-02"),
+// 		ExitDate: t.Format("2006-01-02"), ExitReason: fullReason, IsWinner: totalPL > 0,
 // 	})
-
-// 	removeFromWatchlist(pos.Symbol)
 // 	pos.Shares = 0
 // 	return true
 // }
 
 // // ─────────────────────────────────────────────────────────────────────────────
-// // Watchlist file helper
-// // ─────────────────────────────────────────────────────────────────────────────
-
-// func removeFromWatchlist(symbol string) {
-// 	if watchlistPath == "" {
-// 		return
-// 	}
-
-// 	f, err := os.Open(watchlistPath)
-// 	if err != nil {
-// 		return
-// 	}
-// 	records, err := csv.NewReader(f).ReadAll()
-// 	f.Close()
-// 	if err != nil {
-// 		return
-// 	}
-
-// 	var kept [][]string
-// 	removed := false
-// 	for i, rec := range records {
-// 		if i == 0 || len(rec) == 0 || strings.TrimSpace(rec[0]) != symbol {
-// 			kept = append(kept, rec)
-// 		} else {
-// 			removed = true
-// 		}
-// 	}
-
-// 	if !removed {
-// 		return
-// 	}
-
-// 	f, err = os.Create(watchlistPath)
-// 	if err != nil {
-// 		log.Printf("[%s] ⚠️  Cannot rewrite watchlist: %v", symbol, err)
-// 		return
-// 	}
-// 	defer f.Close()
-
-// 	w := csv.NewWriter(f)
-// 	if err := w.WriteAll(kept); err != nil {
-// 		log.Printf("[%s] ⚠️  Cannot write watchlist: %v", symbol, err)
-// 	}
-
-// 	log.Printf("[%s] 🗑️  Removed from watchlist", symbol)
-// }
-
-// // ─────────────────────────────────────────────────────────────────────────────
-// // Trade results CSV
+// // Trade results CSV  (unchanged)
 // // ─────────────────────────────────────────────────────────────────────────────
 
 // func initTradeResultsFile() {
@@ -1002,14 +854,12 @@ package main
 // func recordTrade(r TradeRecord) {
 // 	tradeResultsMu.Lock()
 // 	defer tradeResultsMu.Unlock()
-
 // 	f, err := os.OpenFile("trade_results.csv", os.O_APPEND|os.O_WRONLY, 0644)
 // 	if err != nil {
 // 		log.Printf("⚠️  Cannot open trade_results.csv: %v", err)
 // 		return
 // 	}
 // 	defer f.Close()
-
 // 	w := csv.NewWriter(f)
 // 	_ = w.Write([]string{
 // 		r.Symbol,
@@ -1025,29 +875,24 @@ package main
 // 		fmt.Sprintf("%t", r.IsWinner),
 // 	})
 // 	w.Flush()
-
 // 	log.Printf("[%s] ✍️  Recorded | P/L: $%.2f | R/R: %.2fR | Winner: %t",
 // 		r.Symbol, r.ProfitLoss, r.RiskReward, r.IsWinner)
 // }
 
 // // ─────────────────────────────────────────────────────────────────────────────
-// // Account status
+// // Account status + stats  (unchanged)
 // // ─────────────────────────────────────────────────────────────────────────────
 
-// // printAccountStatus fetches live account figures from Alpaca and prints them.
-// // Called at startup and after every position closes.
 // func printAccountStatus(label string) {
 // 	snap, err := getAccountFn()
 // 	if err != nil {
 // 		log.Printf("⚠️  Could not fetch account info: %v", err)
 // 		return
 // 	}
-
 // 	dayPLSign := "+"
 // 	if snap.DayPL < 0 {
 // 		dayPLSign = ""
 // 	}
-
 // 	sep := strings.Repeat("─", 65)
 // 	fmt.Println("\n" + sep)
 // 	if label != "" {
@@ -1063,32 +908,24 @@ package main
 // 	fmt.Println(sep + "\n")
 // }
 
-// // ─────────────────────────────────────────────────────────────────────────────
-// // Stats summary — printed after every position closes
-// // ─────────────────────────────────────────────────────────────────────────────
-
 // func printCurrentStats() {
 // 	tradeResultsMu.Lock()
 // 	defer tradeResultsMu.Unlock()
-
 // 	f, err := os.Open("trade_results.csv")
 // 	if err != nil {
 // 		return
 // 	}
 // 	defer f.Close()
-
 // 	records, err := csv.NewReader(f).ReadAll()
 // 	if err != nil || len(records) <= 1 {
 // 		return
 // 	}
-
 // 	type stat struct {
 // 		winners, losers int
 // 		totalPL         float64
 // 		winRR, lossRR   float64
 // 	}
 // 	var s stat
-
 // 	for i := 1; i < len(records); i++ {
 // 		row := records[i]
 // 		if len(row) < 11 {
@@ -1097,7 +934,6 @@ package main
 // 		pl, _ := strconv.ParseFloat(row[5], 64)
 // 		rr, _ := strconv.ParseFloat(row[6], 64)
 // 		isWinner := row[10] == "true"
-
 // 		s.totalPL += pl
 // 		if isWinner {
 // 			s.winners++
@@ -1107,12 +943,10 @@ package main
 // 			s.lossRR += rr
 // 		}
 // 	}
-
 // 	total := s.winners + s.losers
 // 	if total == 0 {
 // 		return
 // 	}
-
 // 	winRate := float64(s.winners) / float64(total) * 100
 // 	avgWinRR, avgLossRR := 0.0, 0.0
 // 	if s.winners > 0 {
@@ -1121,7 +955,6 @@ package main
 // 	if s.losers > 0 {
 // 		avgLossRR = s.lossRR / float64(s.losers)
 // 	}
-
 // 	sep := strings.Repeat("─", 65)
 // 	fmt.Println("\n" + sep)
 // 	fmt.Println("  📈  LIVE TRADING STATS")
