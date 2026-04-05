@@ -33,6 +33,18 @@ func EarningsReportAgentReqInfo(stock string) {
 		log.Fatalf("Error reading file: %v\n", err)
 	}
 
+	file, err = os.Open(filepath.Join(dirPath, "historical_earnings_report.txt"))
+	if err != nil {
+		log.Fatalf("Error opening file: %v\n", err)
+	}
+	defer file.Close()
+
+	// Read the entire file content
+	historical_earnings_report, err := io.ReadAll(file)
+	if err != nil {
+		log.Fatalf("Error reading file: %v\n", err)
+	}
+
 	err = godotenv.Load()
 	if err != nil {
 		log.Fatal("Error loading .env file")
@@ -46,6 +58,7 @@ func EarningsReportAgentReqInfo(stock string) {
 		AgentName:      EpEarningsReportAgent,
 		Input: []spec.NameValueTypeV3{
 			{Name: "ep_earnings", Value: string(earnings_report)},
+			{Name: "ep_past_earnings", Value: string(historical_earnings_report)},
 		},
 	}, jsonResp, logger)
 

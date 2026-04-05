@@ -239,9 +239,9 @@ package main
 // 		log.Fatalf("error unmarshalling JSON: %v", err)
 // 	}
 // 	result := scanResponse.QualifyingStocks
-// 	stocks := make([]ep.FilteredStock, len(result))
+// 	stocks := make([]ep.RealtimeResult, len(result))
 // 	for i, r := range result {
-// 		stocks[i] = r.FilteredStock
+// 		stocks[i] = r
 // 	}
 // 	fmt.Printf("Loaded %d filtered symbols\n", len(stocks))
 // 	var symbols []string
@@ -253,6 +253,7 @@ package main
 // 		sentimentData := map[string]interface{}{
 // 			"Stock_name": s.Symbol,
 // 			"Stock_info": s.StockInfo,
+// 			"Stock_status": s.Status,
 // 		}
 // 		sentimentJSON, err := json.Marshal(sentimentData)
 // 		if err != nil {
@@ -527,7 +528,12 @@ package main
 // 	defer fmt.Printf("[Goroutine %d] ✓ runManagerAgent completed for %s\n", goroutineId, symbol)
 // 	fmt.Printf("[Goroutine %d] Processing %d stock data points for %s\n", goroutineId, len(stockdata), symbol)
 // 	stock_data := ""
+// 	var latest_stock_instance ep.StockData
+
 // 	for i, stockdataPoint := range stockdata {
+// 		if i == len(stockdata)-1 {
+// 			latest_stock_instance = stockdataPoint
+// 		}
 // 		stock_data += fmt.Sprintf("%d min - Open: %v Close: %v High: %v Low: %v\n",
 // 			i, stockdataPoint.Open, stockdataPoint.PreviousClose, stockdataPoint.High, stockdataPoint.Low)
 // 		if i < 3 {
@@ -598,67 +604,69 @@ package main
 // 	if err := godotenv.Load(); err != nil {
 // 		log.Fatal("Error loading .env file")
 // 	}
-	
-// 		// Save JSON response to file
-// 		if err := saveJSONResponse(symbol, currentMinute, managerResp); err != nil {
-// 			fmt.Printf("[Goroutine %d] ❌ Failed to save JSON response (minute %d): %v\n",
-// 				goroutineId, currentMinute, err)
-// 		} else {
-// 			fmt.Printf("[Goroutine %d] ✓ JSON response saved for minute %d\n", goroutineId, currentMinute)
-// 		}
 
-// 		// Check if recommendation is "Buy" and add to watchlist
-// 		stringPercent := strings.TrimSpace(strings.TrimSuffix(managerResp.RiskPercent, "%"))
-// 		riskPercent, err := strconv.ParseFloat(stringPercent, 64)
-// 		if err != nil {
-// 			fmt.Printf("[Goroutine %d] ❌ Failed to parse risk percent '%s': %v\n", 
-// 				goroutineId, stringPercent, err)
-// 			return false
-// 		}
+// 	// Save JSON response to file
+// 	if err := saveJSONResponse(symbol, currentMinute, managerResp); err != nil {
+// 		fmt.Printf("[Goroutine %d] ❌ Failed to save JSON response (minute %d): %v\n",
+// 			goroutineId, currentMinute, err)
+// 	} else {
+// 		fmt.Printf("[Goroutine %d] ✓ JSON response saved for minute %d\n", goroutineId, currentMinute)
+// 	}
 
-// 		accSize, err := strconv.ParseFloat(os.Getenv("ACCOUNT_SIZE"), 64)
-// 		if err != nil {
-// 			fmt.Printf("[Goroutine %d] ❌ Failed to parse account size: %v\n", goroutineId, err)
-// 			return false
-// 		}
+// 	// Check if recommendation is "Buy" and add to watchlist
+// 	stringPercent := strings.TrimSpace(strings.TrimSuffix(managerResp.RiskPercent, "%"))
+// 	riskPercent, err := strconv.ParseFloat(stringPercent, 64)
+// 	if err != nil {
+// 		fmt.Printf("[Goroutine %d] ❌ Failed to parse risk percent '%s': %v\n",
+// 			goroutineId, stringPercent, err)
+// 		return false
+// 	}
 
-// 		riskPerTrade, err := strconv.ParseFloat(os.Getenv("RISK_PER_TRADE"), 64)
-// 		if err != nil {
-// 			fmt.Printf("[Goroutine %d] ❌ Failed to parse risk per trade: %v\n", goroutineId, err)
-// 			return false
-// 		}
+// 	accSize, err := strconv.ParseFloat(os.Getenv("ACCOUNT_SIZE"), 64)
+// 	if err != nil {
+// 		fmt.Printf("[Goroutine %d] ❌ Failed to parse account size: %v\n", goroutineId, err)
+// 		return false
+// 	}
 
-// 		entryPrice, err := strconv.ParseFloat(strings.ReplaceAll(managerResp.EntryPrice, "$", ""), 64)
-// 		if err != nil {
-// 			fmt.Printf("[Goroutine %d] ❌ Failed to parse entry price '%s': %v\n", 
-// 				goroutineId, managerResp.EntryPrice, err)
-// 			return false
-// 		}
+// 	riskPerTrade, err := strconv.ParseFloat(os.Getenv("RISK_PER_TRADE"), 64)
+// 	if err != nil {
+// 		fmt.Printf("[Goroutine %d] ❌ Failed to parse risk per trade: %v\n", goroutineId, err)
+// 		return false
+// 	}
 
-// 		stopLoss, err := strconv.ParseFloat(strings.ReplaceAll(managerResp.StopLoss, "$", ""), 64)
-// 		if err != nil {
-// 			fmt.Printf("[Goroutine %d] ❌ Failed to parse stop loss '%s': %v\n", 
-// 				goroutineId, managerResp.StopLoss, err)
-// 			return false
-// 		}
+// 	entryPrice, err := strconv.ParseFloat(strings.ReplaceAll(managerResp.EntryPrice, "$", ""), 64)
+// 	if err != nil {
+// 		fmt.Printf("[Goroutine %d] ❌ Failed to parse entry price '%s': %v\n",
+// 			goroutineId, managerResp.EntryPrice, err)
+// 		return false
+// 	}
 
-// 		// Validate the risk calculation
-// 		riskPerShare := entryPrice - stopLoss
-// 		if riskPerShare <= 0 {
-// 			fmt.Printf("[Goroutine %d] ❌ Invalid risk calculation: entry %.2f <= stop loss %.2f\n", 
-// 				goroutineId, entryPrice, stopLoss)
-// 			return false
-// 		}
+// 	// stopLoss, err := strconv.ParseFloat(strings.ReplaceAll(managerResp.StopLoss, "$", ""), 64)
+// 	// if err != nil {
+// 	// 	fmt.Printf("[Goroutine %d] ❌ Failed to parse stop loss '%s': %v\n",
+// 	// 		goroutineId, managerResp.StopLoss, err)
+// 	// 	return false
+// 	// }
 
-// 		// Calculate shares
-// 		totalRisk := riskPerTrade * accSize
-// 		shares := math.Round(totalRisk / riskPerShare)
+// 	stopLoss := latest_stock_instance.Low
 
-// 		if shares <= 0 {
-// 			fmt.Printf("[Goroutine %d] ❌ Invalid share calculation resulted in %.0f shares\n", 
-// 				goroutineId, shares)
-// 			return false
-// 		}	
+// 	// Validate the risk calculation
+// 	riskPerShare := entryPrice - stopLoss
+// 	if riskPerShare <= 0 {
+// 		fmt.Printf("[Goroutine %d] ❌ Invalid risk calculation: entry %.2f <= stop loss %.2f\n",
+// 			goroutineId, entryPrice, stopLoss)
+// 		return false
+// 	}
+
+// 	// Calculate shares
+// 	totalRisk := riskPerTrade * accSize
+// 	shares := math.Round(totalRisk / riskPerShare)
+
+// 	if shares <= 0 {
+// 		fmt.Printf("[Goroutine %d] ❌ Invalid share calculation resulted in %.0f shares\n",
+// 			goroutineId, shares)
+// 		return false
+// 	}
 
 // 	if strings.ToLower(strings.TrimSpace(managerResp.Recommendation)) == "buy" {
 // 		if managerResp.EntryPrice != "" && managerResp.StopLoss != "" {

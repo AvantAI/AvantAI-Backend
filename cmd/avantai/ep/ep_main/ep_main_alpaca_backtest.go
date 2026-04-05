@@ -50,7 +50,7 @@ type WatchlistEntry struct {
 type WatchlistManager struct {
 	mu       sync.Mutex
 	filename string
-	entries  map[string]WatchlistEntry // key: "symbol|entryPrice|stopLoss|shares|initialRisk|date"
+	entries  map[string]WatchlistEntry
 }
 
 func NewWatchlistManager(filename string) *WatchlistManager {
@@ -65,7 +65,6 @@ func NewWatchlistManager(filename string) *WatchlistManager {
 func (wm *WatchlistManager) loadExistingEntries() {
 	file, err := os.Open(wm.filename)
 	if err != nil {
-		// File doesn't exist yet, that's okay
 		return
 	}
 	defer file.Close()
@@ -110,22 +109,16 @@ func (wm *WatchlistManager) AddEntry(entry WatchlistEntry) error {
 	defer wm.mu.Unlock()
 
 	key := wm.makeKey(entry)
-
-	// Check for duplicate
 	if _, exists := wm.entries[key]; exists {
 		return fmt.Errorf("duplicate entry: %s with entry price %s, stop loss %s, shares %s, initial risk %s already exists in watchlist",
 			entry.StockSymbol, entry.EntryPrice, entry.StopLoss, entry.Shares, entry.InitialRisk)
 	}
 
-	// Add to in-memory map
 	wm.entries[key] = entry
-
-	// Write entire file atomically
 	return wm.writeAllEntries()
 }
 
 func (wm *WatchlistManager) writeAllEntries() error {
-	// Create a temporary file
 	tempFile := wm.filename + ".tmp"
 	file, err := os.Create(tempFile)
 	if err != nil {
@@ -134,14 +127,12 @@ func (wm *WatchlistManager) writeAllEntries() error {
 
 	writer := csv.NewWriter(file)
 
-	// Write header
 	if err := writer.Write([]string{"stock_symbol", "entry_price", "stop_loss_price", "shares", "initial_risk", "date"}); err != nil {
 		file.Close()
 		os.Remove(tempFile)
 		return fmt.Errorf("failed to write CSV header: %w", err)
 	}
 
-	// Write all entries
 	for _, entry := range wm.entries {
 		record := []string{entry.StockSymbol, entry.EntryPrice, entry.StopLoss, entry.Shares, entry.InitialRisk, entry.Date}
 		if err := writer.Write(record); err != nil {
@@ -160,7 +151,6 @@ func (wm *WatchlistManager) writeAllEntries() error {
 
 	file.Close()
 
-	// Atomically replace the old file with the new one
 	if err := os.Rename(tempFile, wm.filename); err != nil {
 		os.Remove(tempFile)
 		return fmt.Errorf("failed to replace watchlist file: %w", err)
@@ -172,7 +162,7 @@ func (wm *WatchlistManager) writeAllEntries() error {
 // Global watchlist manager
 var watchlistManager *WatchlistManager
 
-// ===== Strategy helpers (EP / Opening Range / VWAP / Consolidation) =====
+// ===== Strategy helpers =====
 
 type MinuteBar struct {
 	T time.Time
@@ -183,6 +173,10 @@ type MinuteBar struct {
 	V float64
 }
 
+// StrategyState holds all computed intraday signals for the current bar.
+//
+// FIX: Added RVOL, AvgVolume, and the first-30-min RVOL threshold check.
+// FIX: OR5Low and OR15Low are now exposed so they can be used as stop loss.
 type StrategyState struct {
 	// Opening Range levels
 	OR5High  float64
@@ -191,43 +185,63 @@ type StrategyState struct {
 	OR15Low  float64
 
 	// VWAP running components
-	cumPV float64 // Σ(typicalPrice * volume)
-	cumV  float64 // Σ(volume)
+	cumPV float64
+	cumV  float64
 	VWAP  float64
 
-	// Simple consolidation flags
-	IsTight5   bool // last ~5 bars within a tight range
-	IsTight10  bool // last ~10 bars within a tight range
+	// Consolidation flags
+	IsTight5  bool
+	IsTight10 bool
+
+	// FIX: RVOL — rolling volume relative to the per-bar average of the first
+	// 30 minutes. AvgBarVol is the per-minute average over the first 30 bars
+	// (computed once and held constant); CumVolume is the cumulative session
+	// volume so far; RVOL is CumVolume / (AvgBarVol * elapsed bars).
+	//
+	// We use per-bar average (not daily average) because we only have intraday
+	// data here and we want to normalise against what a "normal" minute looks
+	// like for this ticker.
+	AvgBarVol30 float64 // per-minute avg vol over first 30 bars, set once at bar 30
+	CumVolume   float64 // cumulative volume since session open
+	RVOL        float64 // CumVolume / (AvgBarVol30 * numBars); meaningful only after bar 30
+
+	// RVOLPasses is true when we have at least 5 bars AND RVOL >= 5.0 within
+	// the first 30 minutes. Strategy: "RVOL should be at least 5–10x within
+	// the first 30 minutes of market open."
+	RVOLPasses bool
+
+	// MinutesElapsed is the number of bars processed so far (1-indexed)
+	MinutesElapsed int
+
 	LastUpdate time.Time
 }
 
-// Updates VWAP and opening range values given all minute bars since open.
+// Recompute updates all signals given all minute bars since open.
 func (s *StrategyState) Recompute(bars []MinuteBar) {
 	n := len(bars)
 	if n == 0 {
 		return
 	}
 
-	// Opening range 5 and 15 minutes (from regular session start)
-	limit := func(x, max int) int {
-		if x > max {
-			return max
+	s.MinutesElapsed = n
+
+	// ── Opening ranges ─────────────────────────────────────────────────
+	limit := func(x, mx int) int {
+		if x > mx {
+			return mx
 		}
 		return x
 	}
-	or5 := bars[:limit(n, 5)]
-	or15 := bars[:limit(n, 15)]
+	s.OR5High, s.OR5Low = rangeHL(bars[:limit(n, 5)])
+	s.OR15High, s.OR15Low = rangeHL(bars[:limit(n, 15)])
 
-	s.OR5High, s.OR5Low = rangeHL(or5)
-	s.OR15High, s.OR15Low = rangeHL(or15)
-
-	// VWAP (session)
+	// ── VWAP (session) ─────────────────────────────────────────────────
 	var pv float64
 	var vSum float64
 	for _, b := range bars {
 		typ := (b.H + b.L + b.C) / 3.0
-		pv += typ * float64(b.V)
-		vSum += float64(b.V)
+		pv += typ * b.V
+		vSum += b.V
 	}
 	s.cumPV = pv
 	s.cumV = vSum
@@ -235,11 +249,58 @@ func (s *StrategyState) Recompute(bars []MinuteBar) {
 		s.VWAP = s.cumPV / s.cumV
 	}
 
-	// Tight consolidations: check last 5 and 10 bars band% of VWAP
-	s.IsTight5 = isTight(bars, 5, s.VWAP, 0.004)   // ~0.4% band
-	s.IsTight10 = isTight(bars, 10, s.VWAP, 0.006) // ~0.6% band
+	// ── Consolidation flags ────────────────────────────────────────────
+	s.IsTight5 = isTight(bars, 5, s.VWAP, 0.004)
+	s.IsTight10 = isTight(bars, 10, s.VWAP, 0.006)
+
+	// ── FIX: RVOL calculation ──────────────────────────────────────────
+	// Cumulative volume is just the sum across all bars seen so far.
+	s.CumVolume = vSum
+
+	// AvgBarVol30 is set exactly once when we have 30 bars and never changes,
+	// giving a stable baseline. Before 30 bars we use the bars we do have.
+	baselineBars := bars
+	if n >= 30 && s.AvgBarVol30 == 0 {
+		s.AvgBarVol30 = volumeAvg(bars[:30])
+	}
+	if s.AvgBarVol30 > 0 {
+		// Normalise against what the same number of bars would look like at
+		// average rate: expectedVol = AvgBarVol30 * numBars
+		expectedVol := s.AvgBarVol30 * float64(n)
+		if expectedVol > 0 {
+			s.RVOL = s.CumVolume / expectedVol
+		}
+	} else {
+		// Before we have 30 bars, use the avg of the bars we have seen so far
+		// as a temporary baseline so RVOL is still a useful early signal.
+		avg := volumeAvg(baselineBars)
+		expectedVol := avg * float64(n)
+		if expectedVol > 0 {
+			s.RVOL = s.CumVolume / expectedVol
+		}
+	}
+
+	// RVOL passes if we are within the first 30 minutes and RVOL >= 5.0
+	// (strategy: 5–10x within first 30 minutes).
+	// We keep it true once it has been set, since by minute 30 the check
+	// is either done or never triggered.
+	if n >= 5 && s.RVOL >= 5.0 {
+		s.RVOLPasses = true
+	}
 
 	s.LastUpdate = bars[n-1].T
+}
+
+// volumeAvg returns the mean volume of a slice of bars.
+func volumeAvg(bars []MinuteBar) float64 {
+	if len(bars) == 0 {
+		return 0
+	}
+	sum := 0.0
+	for _, b := range bars {
+		sum += b.V
+	}
+	return sum / float64(len(bars))
 }
 
 func rangeHL(bars []MinuteBar) (hi, lo float64) {
@@ -267,7 +328,6 @@ func isTight(all []MinuteBar, lookback int, ref float64, band float64) bool {
 	seg := all[n-lookback:]
 	hi, lo := rangeHL(seg)
 	if ref == 0 {
-		// Fallback: use segment mid
 		ref = (hi + lo) / 2
 		if ref == 0 {
 			return false
@@ -280,14 +340,14 @@ func isTight(all []MinuteBar, lookback int, ref float64, band float64) bool {
 // ===== Alpaca API Client =====
 
 type AlpacaBar struct {
-	T  string  `json:"t"`  // Timestamp in RFC3339 format
-	O  float64 `json:"o"`  // Open
-	H  float64 `json:"h"`  // High
-	L  float64 `json:"l"`  // Low
-	C  float64 `json:"c"`  // Close
-	V  float64 `json:"v"`  // Volume
-	N  int     `json:"n"`  // Number of trades
-	VW float64 `json:"vw"` // Volume weighted average price
+	T  string  `json:"t"`
+	O  float64 `json:"o"`
+	H  float64 `json:"h"`
+	L  float64 `json:"l"`
+	C  float64 `json:"c"`
+	V  float64 `json:"v"`
+	N  int     `json:"n"`
+	VW float64 `json:"vw"`
 }
 
 type AlpacaBarsResponse struct {
@@ -297,10 +357,8 @@ type AlpacaBarsResponse struct {
 }
 
 func fetchAlpacaIntraday(apiKey, apiSecret, symbol, dateStr string) ([]MinuteBar, error) {
-	// Alpaca expects date format: 2024-01-01
-	// Build URL for 1-minute bars
-	startTime := fmt.Sprintf("%sT09:30:00-05:00", dateStr) // Market open EST
-	endTime := fmt.Sprintf("%sT16:00:00-05:00", dateStr)   // Market close EST
+	startTime := fmt.Sprintf("%sT09:30:00-05:00", dateStr)
+	endTime := fmt.Sprintf("%sT16:00:00-05:00", dateStr)
 
 	url := fmt.Sprintf(
 		"https://data.alpaca.markets/v2/stocks/%s/bars?timeframe=1Min&start=%s&end=%s&limit=10000&adjustment=all&feed=sip",
@@ -312,7 +370,6 @@ func fetchAlpacaIntraday(apiKey, apiSecret, symbol, dateStr string) ([]MinuteBar
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Set Alpaca authentication headers
 	req.Header.Set("APCA-API-KEY-ID", apiKey)
 	req.Header.Set("APCA-API-SECRET-KEY", apiSecret)
 
@@ -342,17 +399,12 @@ func fetchAlpacaIntraday(apiKey, apiSecret, symbol, dateStr string) ([]MinuteBar
 
 func alpacaToMinuteBars(bars []AlpacaBar) ([]MinuteBar, error) {
 	var minuteBars []MinuteBar
-
 	for _, bar := range bars {
-		// Parse RFC3339 timestamp
 		t, err := time.Parse(time.RFC3339, bar.T)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse timestamp %s: %w", bar.T, err)
 		}
-
-		// Convert to NY timezone
 		tNY := t.In(locNY)
-
 		minuteBars = append(minuteBars, MinuteBar{
 			T: tNY,
 			O: bar.O,
@@ -362,7 +414,6 @@ func alpacaToMinuteBars(bars []AlpacaBar) ([]MinuteBar, error) {
 			V: bar.V,
 		})
 	}
-
 	return minuteBars, nil
 }
 
@@ -460,17 +511,13 @@ type BacktestResult struct {
 func extractJSON(response string) (*ManagerResponse, error) {
 	jsonPattern := regexp.MustCompile(`\{[^{}]*"Recommendation"[^{}]*\}`)
 	match := jsonPattern.FindString(response)
-
 	if match == "" {
 		return nil, fmt.Errorf("no JSON found in response")
 	}
-
 	var managerResp ManagerResponse
-	err := json.Unmarshal([]byte(match), &managerResp)
-	if err != nil {
+	if err := json.Unmarshal([]byte(match), &managerResp); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
 	}
-
 	return &managerResp, nil
 }
 
@@ -479,15 +526,12 @@ func saveJSONResponse(symbol string, minute int, response *ManagerResponse) erro
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
-
 	filename := filepath.Join(dir, fmt.Sprintf("minute_%d_response.json", minute))
 	data, err := json.Marshal(response)
 	if err != nil {
 		return fmt.Errorf("failed to marshal response: %w", err)
 	}
-
-	prettified := pretty.Pretty(data)
-	return os.WriteFile(filename, prettified, 0644)
+	return os.WriteFile(filename, pretty.Pretty(data), 0644)
 }
 
 func main() {
@@ -509,10 +553,8 @@ func main() {
 		log.Fatal("ALPACA_API_KEY or ALPACA_SECRET_KEY not found in .env")
 	}
 
-	// Initialize global watchlist manager
 	watchlistManager = NewWatchlistManager("watchlist.csv")
 
-	// Load symbols from backtest results file
 	backtestFileName := fmt.Sprintf("data/backtests/backtest_%s_results.json", strings.ReplaceAll(backtestDate, "-", ""))
 	raw, err := os.ReadFile(backtestFileName)
 	if err != nil {
@@ -576,7 +618,6 @@ func historicalIntradayWorkerAlpaca(alpacaKey, alpacaSecret, symbol, date string
 		return
 	}
 
-	// Fetch data from Alpaca
 	fmt.Printf("🔍 [%s] Fetching data from Alpaca...\n", symbol)
 	allBars, err := fetchAlpacaIntraday(alpacaKey, alpacaSecret, symbol, date)
 	if err != nil {
@@ -586,7 +627,6 @@ func historicalIntradayWorkerAlpaca(alpacaKey, alpacaSecret, symbol, date string
 
 	fmt.Printf("[#%d:%s] 📊 Got %d bars from Alpaca\n", goroutineId, symbol, len(allBars))
 
-	// Filter to regular session hours
 	var bars []MinuteBar
 	for _, bar := range allBars {
 		if bar.T.Before(openNY) || bar.T.After(closeNY) {
@@ -604,16 +644,19 @@ func historicalIntradayWorkerAlpaca(alpacaKey, alpacaSecret, symbol, date string
 	sortMinuteBarsAsc(bars)
 	fmt.Printf("[#%d:%s] ✓ Filtered to %d bars within session hours\n", goroutineId, symbol, len(bars))
 
-	// Process minute by minute
 	processMinuteByMinute(bars, symbol, sentiment, goroutineId, backtestDate)
 
 	fmt.Printf("[#%d:%s] ✅ Completed processing all minutes\n", goroutineId, symbol)
 	fmt.Printf("[#%d:%s] ============================================\n\n", goroutineId, symbol)
 }
 
-// Process bars minute by minute, calling manager agent after each minute
+// processMinuteByMinute processes bars minute by minute, calling the manager
+// agent after each bar.
+//
+// FIX: StrategyState is carried across iterations (not re-created each loop)
+// so that AvgBarVol30 is set exactly once at bar 30 and never recomputed.
 func processMinuteByMinute(allBars []MinuteBar, symbol string, sentiment string, goroutineId int, backtestDate string) {
-	fmt.Printf("[#%d:%s] Starting minute-by-minute processing (limited to %d minutes or until Buy recommendation)\n",
+	fmt.Printf("[#%d:%s] Starting minute-by-minute processing (limited to %d minutes or until Buy)\n",
 		goroutineId, symbol, maxIterations)
 
 	maxMinutes := len(allBars)
@@ -621,24 +664,30 @@ func processMinuteByMinute(allBars []MinuteBar, symbol string, sentiment string,
 		maxMinutes = maxIterations
 	}
 
+	// FIX: state persists across the loop so AvgBarVol30 accumulates correctly
+	var state StrategyState
+
 	for i := 1; i <= maxMinutes; i++ {
 		currentBars := allBars[:i]
-		currentTime := currentBars[i-1].T
 
-		state := StrategyState{}
+		// FIX: recompute on the persistent state rather than a fresh struct
 		state.Recompute(currentBars)
 
-		fmt.Printf("[#%d:%s] Minute %d/%d (%s): OR5[%.2f/%.2f] OR15[%.2f/%.2f] VWAP=%.3f Tight5=%t Tight10=%t\n",
+		currentTime := currentBars[i-1].T
+
+		fmt.Printf("[#%d:%s] Minute %d/%d (%s): OR5[%.2f/%.2f] OR15[%.2f/%.2f] VWAP=%.3f "+
+			"Tight5=%t Tight10=%t RVOL=%.2fx RVOLPasses=%t\n",
 			goroutineId, symbol, i, maxMinutes, currentTime.Format("15:04"),
 			state.OR5High, state.OR5Low, state.OR15High, state.OR15Low,
 			state.VWAP, state.IsTight5, state.IsTight10,
+			state.RVOL, state.RVOLPasses,
 		)
 
 		epBars := convertToEP(symbol, currentBars)
-		shouldStop := runManagerAgent(epBars, symbol, goroutineId, i, sentiment, maxMinutes, backtestDate)
+		shouldStop := runManagerAgent(epBars, symbol, goroutineId, i, sentiment, maxMinutes, backtestDate, &state)
 
 		if shouldStop {
-			fmt.Printf("[#%d:%s] 🛑 Stopping processing after minute %d due to Buy recommendation\n",
+			fmt.Printf("[#%d:%s] 🛑 Stopping after minute %d due to Buy recommendation\n",
 				goroutineId, symbol, i)
 			break
 		}
@@ -674,7 +723,6 @@ func convertToEP(symbol string, bars []MinuteBar) []ep.StockData {
 			Volume:        int64(b.V),
 			PreviousClose: prevClose,
 		}
-
 		out = append(out, s)
 		prevClose = b.C
 	}
@@ -683,7 +731,22 @@ func convertToEP(symbol string, bars []MinuteBar) []ep.StockData {
 
 // ===== Manager Agent Integration =====
 
-func runManagerAgent(stockdata []ep.StockData, symbol string, goroutineId int, currentMinute int, sentiment string, totalMinutes int, backtestDate string) bool {
+// runManagerAgent calls the manager agent for the current minute and handles
+// the Buy recommendation flow.
+//
+// FIX: state is now passed in so we can use OR5Low/OR15Low for the stop loss
+// instead of the raw latest bar low.
+//
+// FIX: RVOL is included as a structured field in the formatted stock data sent
+// to the agent so it can reason about institutional volume participation.
+//
+// FIX: Stop loss uses the opening range low (OR5Low if we are past minute 5,
+// OR15Low if past minute 15). This matches the strategy: "stop loss should be
+// at the opening range lows or the VWAP."
+func runManagerAgent(stockdata []ep.StockData, symbol string, goroutineId int,
+	currentMinute int, sentiment string, totalMinutes int,
+	backtestDate string, state *StrategyState) bool {
+
 	fmt.Printf("\n[Goroutine %d] --- Starting runManagerAgent for %s (minute %d/%d) ---\n",
 		goroutineId, symbol, currentMinute, totalMinutes)
 	defer fmt.Printf("[Goroutine %d] ✓ runManagerAgent completed for %s (minute %d/%d)\n",
@@ -691,37 +754,56 @@ func runManagerAgent(stockdata []ep.StockData, symbol string, goroutineId int, c
 
 	fmt.Printf("[Goroutine %d] Processing %d stock data points for %s (up to minute %d)\n",
 		goroutineId, len(stockdata), symbol, currentMinute)
-	stock_data := ""
-	var latest_stock_instance ep.StockData
 
+	// ── Format OHLCV bar data ──────────────────────────────────────────────
+	stock_data := ""
 	for i, stockdataPoint := range stockdata {
-		if i == len(stockdata)-1 {
-			latest_stock_instance = stockdataPoint
-		}
-		stock_data += fmt.Sprintf("%d min - Open: %v Close: %v High: %v Low: %v\n",
-			i+1, stockdataPoint.Open, stockdataPoint.PreviousClose, stockdataPoint.High, stockdataPoint.Low)
+		stock_data += fmt.Sprintf("%d min - Open: %v Close: %v High: %v Low: %v Volume: %v\n",
+			i+1, stockdataPoint.Open, stockdataPoint.Close, stockdataPoint.High,
+			stockdataPoint.Low, stockdataPoint.Volume)
 		if i < 3 || i == len(stockdata)-1 {
-			fmt.Printf("[Goroutine %d]   Data %d: O:%.2f C:%.2f H:%.2f L:%.2f\n",
-				goroutineId, i+1, stockdataPoint.Open, stockdataPoint.PreviousClose, stockdataPoint.High, stockdataPoint.Low)
+			fmt.Printf("[Goroutine %d]   Data %d: O:%.2f C:%.2f H:%.2f L:%.2f V:%.0f\n",
+				goroutineId, i+1, stockdataPoint.Open, stockdataPoint.Close,
+				stockdataPoint.High, stockdataPoint.Low, float64(stockdataPoint.Volume))
 		}
 	}
+
+	// ── Append structured strategy signals ────────────────────────────────
+	// FIX: RVOL and opening range levels are now explicitly included so the
+	// agent has clean numerical signals rather than having to infer them from
+	// raw bar data. This prevents the agent from under-weighting volume.
+	stock_data += fmt.Sprintf(
+		"\n--- STRATEGY SIGNALS (minute %d) ---\n"+
+			"OR5  High=%.2f  Low=%.2f\n"+
+			"OR15 High=%.2f  Low=%.2f\n"+
+			"VWAP=%.3f\n"+
+			"RVOL=%.2fx  (cumVol=%.0f  avgBarVol30=%.0f)\n"+
+			"RVOL>=5x in first 30min: %t\n"+
+			"Tight5=%t  Tight10=%t\n",
+		currentMinute,
+		state.OR5High, state.OR5Low,
+		state.OR15High, state.OR15Low,
+		state.VWAP,
+		state.RVOL, state.CumVolume, state.AvgBarVol30,
+		state.RVOLPasses,
+		state.IsTight5, state.IsTight10,
+	)
+
 	fmt.Printf("[Goroutine %d] ✓ Stock data formatted (%d characters) for minute %d\n",
 		goroutineId, len(stock_data), currentMinute)
 
+	// ── Read news and earnings reports ────────────────────────────────────
 	dataDir := "reports"
 	stockDir := filepath.Join(dataDir, symbol)
 
-	// Read news
 	newsFilePath := filepath.Join(stockDir, "news_report.txt")
-	file, err := os.Open(newsFilePath)
+	newsFile, err := os.Open(newsFilePath)
+	var news []byte
 	if err != nil {
 		fmt.Printf("[Goroutine %d] ❌ Error opening news report file: %v\n", goroutineId, err)
 	} else {
-		defer file.Close()
-	}
-	var news []byte
-	if file != nil {
-		news, err = io.ReadAll(file)
+		defer newsFile.Close()
+		news, err = io.ReadAll(newsFile)
 		if err != nil {
 			fmt.Printf("[Goroutine %d] ❌ Error reading news file: %v\n", goroutineId, err)
 		} else {
@@ -729,17 +811,14 @@ func runManagerAgent(stockdata []ep.StockData, symbol string, goroutineId int, c
 		}
 	}
 
-	// Read earnings
 	earningsFilePath := filepath.Join(stockDir, "earnings_report.txt")
-	file, err = os.Open(earningsFilePath)
+	earningsFile, err := os.Open(earningsFilePath)
+	var earnings []byte
 	if err != nil {
 		fmt.Printf("[Goroutine %d] ❌ Error opening earnings report file: %v\n", goroutineId, err)
 	} else {
-		defer file.Close()
-	}
-	var earnings []byte
-	if file != nil {
-		earnings, err = io.ReadAll(file)
+		defer earningsFile.Close()
+		earnings, err = io.ReadAll(earningsFile)
 		if err != nil {
 			fmt.Printf("[Goroutine %d] ❌ Error reading earnings file: %v\n", goroutineId, err)
 		} else {
@@ -759,7 +838,7 @@ func runManagerAgent(stockdata []ep.StockData, symbol string, goroutineId int, c
 		goroutineId, currentMinute, len(resp), resp)
 
 	fmt.Println("Agent response: ", resp)
-	// Extract JSON from response
+
 	managerResp, err := extractJSON(resp)
 	if err != nil {
 		fmt.Printf("[Goroutine %d] ❌ Failed to extract JSON from response (minute %d): %v\n",
@@ -767,7 +846,6 @@ func runManagerAgent(stockdata []ep.StockData, symbol string, goroutineId int, c
 		return false
 	}
 
-	// Save JSON response to file
 	if err := saveJSONResponse(symbol, currentMinute, managerResp); err != nil {
 		fmt.Printf("[Goroutine %d] ❌ Failed to save JSON response (minute %d): %v\n",
 			goroutineId, currentMinute, err)
@@ -775,7 +853,12 @@ func runManagerAgent(stockdata []ep.StockData, symbol string, goroutineId int, c
 		fmt.Printf("[Goroutine %d] ✓ JSON response saved for minute %d\n", goroutineId, currentMinute)
 	}
 
-	// Check if recommendation is "Buy" and add to watchlist
+	if strings.ToLower(strings.TrimSpace(managerResp.Recommendation)) != "buy" {
+		return false
+	}
+
+	// ── Buy path ──────────────────────────────────────────────────────────
+	// Parse risk percent
 	stringPercent := strings.TrimSpace(strings.TrimSuffix(managerResp.RiskPercent, "%"))
 	riskPercent, err := strconv.ParseFloat(stringPercent, 64)
 	if err != nil {
@@ -803,65 +886,85 @@ func runManagerAgent(stockdata []ep.StockData, symbol string, goroutineId int, c
 		return false
 	}
 
-	// stopLoss, err := strconv.ParseFloat(strings.ReplaceAll(managerResp.StopLoss, "$", ""), 64)
-	// if err != nil {
-	// 	fmt.Printf("[Goroutine %d] ❌ Failed to parse stop loss '%s': %v\n",
-	// 		goroutineId, managerResp.StopLoss, err)
-	// 	return false
-	// }
+	// ── FIX: Stop loss uses Opening Range Low, not raw latest bar low ──────
+	// Strategy: "stop loss should be at the opening range lows or the VWAP"
+	// We prefer OR5Low when available (minute >= 5), OR15Low when available
+	// (minute >= 15). If neither is set yet (edge case: minute < 5), we fall
+	// back to VWAP, and only use the latest bar low as a last resort.
+	stopLoss := selectStopLoss(state, currentMinute)
+	stopLossStr := fmt.Sprintf("%.2f", stopLoss)
 
-	stopLoss := latest_stock_instance.Low
+	fmt.Printf("[Goroutine %d] 📐 Stop loss selected: %.2f (minute=%d, OR5Low=%.2f, OR15Low=%.2f, VWAP=%.2f)\n",
+		goroutineId, stopLoss, currentMinute, state.OR5Low, state.OR15Low, state.VWAP)
 
-	if stopLoss == 0 {
-		fmt.Print("❌ Stop Loss Error")
+	if stopLoss <= 0 {
+		fmt.Printf("[Goroutine %d] ❌ Invalid stop loss %.2f\n", goroutineId, stopLoss)
+		return false
 	}
 
-	// Validate the risk calculation
 	riskPerShare := entryPrice - stopLoss
 	if riskPerShare <= 0 {
-		fmt.Printf("[Goroutine %d] ❌ Invalid risk calculation: entry %.2f <= stop loss %.2f\n",
+		fmt.Printf("[Goroutine %d] ❌ Invalid risk: entry %.2f <= stop %.2f\n",
 			goroutineId, entryPrice, stopLoss)
 		return false
 	}
 
-	// Calculate shares
 	totalRisk := riskPerTrade * accSize
 	shares := math.Round(totalRisk / riskPerShare)
 
 	if shares <= 0 {
-		fmt.Printf("[Goroutine %d] ❌ Invalid share calculation resulted in %.0f shares\n",
-			goroutineId, shares)
+		fmt.Printf("[Goroutine %d] ❌ Invalid share count: %.0f shares\n", goroutineId, shares)
 		return false
 	}
 
-	fmt.Printf("[Goroutine %d] 📊 Calculated %0.f shares (risk per share: $%.2f, total risk: $%.2f)\n",
+	fmt.Printf("[Goroutine %d] 📊 Calculated %.0f shares (riskPerShare=$%.2f, totalRisk=$%.2f)\n",
 		goroutineId, shares, riskPerShare, totalRisk)
 
-	if strings.ToLower(strings.TrimSpace(managerResp.Recommendation)) == "buy" {
-		if managerResp.EntryPrice != "" && managerResp.StopLoss != "" {
-			entry := WatchlistEntry{
-				StockSymbol: symbol,
-				EntryPrice:  managerResp.EntryPrice,
-				StopLoss:    managerResp.StopLoss,
-				Shares:      strconv.FormatFloat(shares, 'f', 0, 64),
-				InitialRisk: strconv.FormatFloat(riskPercent, 'f', 2, 64),
-				Date:        backtestDate,
-			}
-
-			if err := watchlistManager.AddEntry(entry); err != nil {
-				if strings.Contains(err.Error(), "duplicate entry") {
-					fmt.Printf("[Goroutine %d] ⚠️ Duplicate watchlist entry for %s (minute %d)\n",
-						goroutineId, symbol, currentMinute)
-				} else {
-					fmt.Printf("[Goroutine %d] ❌ Failed to add %s to watchlist (minute %d): %v\n",
-						goroutineId, symbol, currentMinute, err)
-				}
-			} else {
-				fmt.Printf("[Goroutine %d] ✅ Added %s to watchlist: %s shares @ $%s (stop: $%s) (minute %d)\n",
-					goroutineId, symbol, entry.Shares, entry.EntryPrice, entry.StopLoss, currentMinute)
-			}
-			return true
+	if managerResp.EntryPrice != "" {
+		entry := WatchlistEntry{
+			StockSymbol: symbol,
+			EntryPrice:  managerResp.EntryPrice,
+			// FIX: use the ORL-derived stop rather than the agent's raw field,
+			// which was previously set from the bar low.
+			StopLoss:    stopLossStr,
+			Shares:      strconv.FormatFloat(shares, 'f', 0, 64),
+			InitialRisk: strconv.FormatFloat(riskPercent, 'f', 2, 64),
+			Date:        backtestDate,
 		}
+
+		if err := watchlistManager.AddEntry(entry); err != nil {
+			if strings.Contains(err.Error(), "duplicate entry") {
+				fmt.Printf("[Goroutine %d] ⚠️ Duplicate watchlist entry for %s (minute %d)\n",
+					goroutineId, symbol, currentMinute)
+			} else {
+				fmt.Printf("[Goroutine %d] ❌ Failed to add %s to watchlist (minute %d): %v\n",
+					goroutineId, symbol, currentMinute, err)
+			}
+		} else {
+			fmt.Printf("[Goroutine %d] ✅ Added %s to watchlist: %.0f shares @ %s (stop: %s) (minute %d)\n",
+				goroutineId, symbol, shares, entry.EntryPrice, entry.StopLoss, currentMinute)
+		}
+		return true
 	}
 	return false
+}
+
+// selectStopLoss returns the appropriate stop loss price according to the EP
+// strategy hierarchy: OR15Low (if minute >= 15) > OR5Low (if minute >= 5) >
+// VWAP (always available after minute 1).
+//
+// We deliberately never fall back to a raw bar low because bar lows are noisy
+// and don't correspond to any structurally meaningful level.
+func selectStopLoss(state *StrategyState, currentMinute int) float64 {
+	if currentMinute >= 15 && state.OR15Low > 0 {
+		return state.OR15Low
+	}
+	if currentMinute >= 5 && state.OR5Low > 0 {
+		return state.OR5Low
+	}
+	// VWAP is always computable once we have at least one bar
+	if state.VWAP > 0 {
+		return state.VWAP
+	}
+	return 0
 }

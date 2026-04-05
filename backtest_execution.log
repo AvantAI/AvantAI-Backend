@@ -1,0 +1,908 @@
+[2026-03-09 22:51:24] Starting backtests from 2025-01-02 to 2025-01-02
+[2026-03-09 22:51:24] Processing date: 2025-01-02
+[2026-03-09 22:52:50] ERROR: Worker agent backtest failed for 2025-01-02
+[2026-03-09 22:52:53] All weekday backtest sequences for 2025 completed.
+[2026-03-09 22:58:20] Starting backtests from 2025-01-02 to 2025-01-02
+[2026-03-09 22:58:20] Processing date: 2025-01-02
+[2026-03-09 23:00:05] ERROR: Worker agent backtest failed for 2025-01-02
+[2026-03-09 23:00:07] All weekday backtest sequences for 2025 completed.
+[2026-03-09 23:01:49] Starting backtests from 2025-01-02 to 2025-01-02
+[2026-03-09 23:01:49] Processing date: 2025-01-02
+[2026-03-09 23:03:14] ERROR: Worker agent backtest failed for 2025-01-02
+[2026-03-09 23:03:36] All weekday backtest sequences for 2025 completed.
+[2026-03-09 23:07:57] Starting backtests from 2025-01-02 to 2025-01-10
+[2026-03-09 23:07:57] Processing date: 2025-01-02
+[2026-03-09 23:10:11] Processing date: 2025-01-03
+[2026-03-09 23:12:31] Skipping weekend: 2025-01-04
+[2026-03-09 23:12:31] Skipping weekend: 2025-01-05
+[2026-03-09 23:12:31] Processing date: 2025-01-06
+[2026-03-09 23:13:37] ERROR: Data gathering failed for 2025-01-06
+[2026-03-09 23:14:32] Starting backtests from 2025-01-02 to 2025-01-10
+[2026-03-09 23:14:32] Processing date: 2025-01-02
+[2026-03-09 23:14:57] ERROR: Data gathering failed for 2025-01-02
+[2026-03-09 23:15:29] Starting backtests from 2025-01-02 to 2025-01-10
+[2026-03-09 23:15:29] Processing date: 2025-01-02
+[2026-03-09 23:16:15] ERROR: Data gathering failed for 2025-01-02
+[2026-03-09 23:19:24] Starting backtests from 2025-01-02 to 2025-01-10
+[2026-03-09 23:19:24] Processing date: 2025-01-02
+[2026-03-09 23:21:30] Processing date: 2025-01-03
+[2026-03-09 23:22:07] ERROR: Data gathering failed for 2025-01-03
+[2026-03-09 23:35:41] Starting backtests from 2025-01-14 to 2025-01-14
+[2026-03-09 23:35:41] Processing date: 2025-01-14
+[2026-03-09 23:37:31] All weekday backtest sequences for 2025 completed.
+[2026-03-10 00:21:37] Starting backtests from 2025-01-14 to 2025-01-14
+[2026-03-10 00:21:37] Processing date: 2025-01-14
+[2026-03-10 00:23:09] All weekday backtest sequences for 2025 completed.
+[2026-03-10 00:24:24] Starting backtests from 2025-04-09 to 2025-04-09
+[2026-03-10 00:24:24] Processing date: 2025-04-09
+[2026-03-10 00:24:26] ERROR: Data gathering failed for 2025-04-09
+[2026-03-10 00:24:42] Starting backtests from 2025-04-09 to 2025-04-09
+[2026-03-10 00:24:42] Processing date: 2025-04-09
+[2026-03-10 00:26:05] All weekday backtest sequences for 2025 completed.
+[2026-03-10 00:35:16] Starting backtests from 2025-01-02 to 2025-12-31
+[2026-03-10 00:35:16] Processing date: 2025-01-02
+[2026-03-10 00:36:55] Processing date: 2025-01-03
+[2026-03-10 00:38:33] ERROR: Worker agent backtest failed for 2025-01-03
+[2026-03-10 00:39:00] Skipping weekend: 2025-01-04
+[2026-03-10 00:39:00] Skipping weekend: 2025-01-05
+[2026-03-10 00:39:00] Processing date: 2025-01-06
+[2026-03-10 00:40:35] Processing date: 2025-01-07
+[2026-03-10 00:41:48] Processing date: 2025-01-08
+[2026-03-10 00:42:49] Processing date: 2025-01-09
+[2026-03-10 00:43:52] ERROR: Data gathering failed for 2025-01-09
+[2026-03-10 00:43:52] ERROR: Worker agent backtest failed for 2025-01-09
+[2026-03-10 00:43:52] ERROR: Main backtest failed for 2025-01-09
+[2026-03-10 00:43:52] Processing date: 2025-01-10
+[2026-03-10 00:45:18] Skipping weekend: 2025-01-11
+[2026-03-10 00:45:18] Skipping weekend: 2025-01-12
+[2026-03-10 00:45:18] Processing date: 2025-01-13
+[2026-03-10 00:46:31] Processing date: 2025-01-14
+[2026-03-10 00:47:55] Processing date: 2025-01-15
+[2026-03-10 00:49:21] Processing date: 2025-01-16
+[2026-03-10 00:50:35] Processing date: 2025-01-17
+[2026-03-10 00:51:58] ERROR: Worker agent backtest failed for 2025-01-17
+[2026-03-10 00:52:21] Skipping weekend: 2025-01-18
+[2026-03-10 00:52:21] Skipping weekend: 2025-01-19
+[2026-03-10 00:52:21] Processing date: 2025-01-20
+[2026-03-10 00:53:03] ERROR: Data gathering failed for 2025-01-20
+[2026-03-10 00:53:03] ERROR: Worker agent backtest failed for 2025-01-20
+[2026-03-10 00:53:04] ERROR: Main backtest failed for 2025-01-20
+[2026-03-10 00:53:04] Processing date: 2025-01-21
+[2026-03-10 00:54:19] Processing date: 2025-01-22
+[2026-03-10 00:55:32] Processing date: 2025-01-23
+[2026-03-10 00:56:40] Processing date: 2025-01-24
+[2026-03-10 00:58:09] ERROR: Worker agent backtest failed for 2025-01-24
+[2026-03-10 00:58:42] Skipping weekend: 2025-01-25
+[2026-03-10 00:58:42] Skipping weekend: 2025-01-26
+[2026-03-10 00:58:42] Processing date: 2025-01-27
+[2026-03-10 00:59:50] Processing date: 2025-01-28
+[2026-03-10 01:01:04] Processing date: 2025-01-29
+[2026-03-10 01:02:53] ERROR: Worker agent backtest failed for 2025-01-29
+[2026-03-10 01:03:46] Processing date: 2025-01-30
+[2026-03-10 01:05:54] Processing date: 2025-01-31
+[2026-03-10 01:07:25] ERROR: Worker agent backtest failed for 2025-01-31
+[2026-03-10 01:07:52] Skipping weekend: 2025-02-01
+[2026-03-10 01:07:52] Skipping weekend: 2025-02-02
+[2026-03-10 01:07:52] Processing date: 2025-02-03
+[2026-03-10 01:09:07] Processing date: 2025-02-04
+[2026-03-10 01:10:17] Processing date: 2025-02-05
+[2026-03-10 01:12:02] ERROR: Worker agent backtest failed for 2025-02-05
+[2026-03-10 01:12:37] Processing date: 2025-02-06
+[2026-03-10 01:14:51] ERROR: Worker agent backtest failed for 2025-02-06
+[2026-03-10 01:15:31] Processing date: 2025-02-07
+[2026-03-10 01:17:23] ERROR: Worker agent backtest failed for 2025-02-07
+[2026-03-10 01:19:41] Skipping weekend: 2025-02-08
+[2026-03-10 01:19:41] Skipping weekend: 2025-02-09
+[2026-03-10 01:19:41] Processing date: 2025-02-10
+[2026-03-10 01:21:19] ERROR: Worker agent backtest failed for 2025-02-10
+[2026-03-10 01:21:40] Processing date: 2025-02-11
+[2026-03-10 01:23:27] Processing date: 2025-02-12
+[2026-03-10 01:26:48] ERROR: Worker agent backtest failed for 2025-02-12
+[2026-03-10 01:27:09] Processing date: 2025-02-13
+[2026-03-10 01:31:11] ERROR: Worker agent backtest failed for 2025-02-13
+[2026-03-10 01:31:33] Processing date: 2025-02-14
+[2026-03-10 01:33:39] ERROR: Worker agent backtest failed for 2025-02-14
+[2026-03-10 01:34:21] Skipping weekend: 2025-02-15
+[2026-03-10 01:34:21] Skipping weekend: 2025-02-16
+[2026-03-10 01:34:21] Processing date: 2025-02-17
+[2026-03-10 01:35:03] ERROR: Data gathering failed for 2025-02-17
+[2026-03-10 01:35:03] ERROR: Worker agent backtest failed for 2025-02-17
+[2026-03-10 01:35:04] ERROR: Main backtest failed for 2025-02-17
+[2026-03-10 01:35:04] Processing date: 2025-02-18
+[2026-03-10 01:36:23] Processing date: 2025-02-19
+[2026-03-10 01:37:39] Processing date: 2025-02-20
+[2026-03-10 01:39:19] ERROR: Worker agent backtest failed for 2025-02-20
+[2026-03-10 01:39:52] Processing date: 2025-02-21
+[2026-03-10 01:41:41] Skipping weekend: 2025-02-22
+[2026-03-10 01:41:41] Skipping weekend: 2025-02-23
+[2026-03-10 01:41:41] Processing date: 2025-02-24
+[2026-03-10 01:42:53] Processing date: 2025-02-25
+[2026-03-10 01:44:40] ERROR: Worker agent backtest failed for 2025-02-25
+[2026-03-10 01:45:24] Processing date: 2025-02-26
+[2026-03-10 01:47:23] ERROR: Worker agent backtest failed for 2025-02-26
+[2026-03-10 01:47:50] Processing date: 2025-02-27
+[2026-03-10 01:49:59] ERROR: Worker agent backtest failed for 2025-02-27
+[2026-03-10 01:50:47] Processing date: 2025-02-28
+[2026-03-10 01:52:02] Skipping weekend: 2025-03-01
+[2026-03-10 01:52:02] Skipping weekend: 2025-03-02
+[2026-03-10 01:52:02] Processing date: 2025-03-03
+[2026-03-10 01:53:30] Processing date: 2025-03-04
+[2026-03-10 01:55:54] ERROR: Worker agent backtest failed for 2025-03-04
+[2026-03-10 01:56:33] Processing date: 2025-03-05
+[2026-03-10 01:57:56] Processing date: 2025-03-06
+[2026-03-10 01:59:10] Processing date: 2025-03-07
+[2026-03-10 02:00:53] Skipping weekend: 2025-03-08
+[2026-03-10 02:00:53] Skipping weekend: 2025-03-09
+[2026-03-10 02:00:53] Processing date: 2025-03-10
+[2026-03-10 02:02:06] Processing date: 2025-03-11
+[2026-03-10 02:03:18] Processing date: 2025-03-12
+[2026-03-10 02:04:47] Processing date: 2025-03-13
+[2026-03-10 02:05:57] Processing date: 2025-03-14
+[2026-03-10 02:07:16] Skipping weekend: 2025-03-15
+[2026-03-10 02:07:16] Skipping weekend: 2025-03-16
+[2026-03-10 02:07:16] Processing date: 2025-03-17
+[2026-03-10 02:09:23] ERROR: Worker agent backtest failed for 2025-03-17
+[2026-03-10 02:11:55] Processing date: 2025-03-18
+[2026-03-10 02:13:03] Processing date: 2025-03-19
+[2026-03-10 02:14:15] Processing date: 2025-03-20
+[2026-03-10 02:15:23] Processing date: 2025-03-21
+[2026-03-10 02:16:25] Skipping weekend: 2025-03-22
+[2026-03-10 02:16:25] Skipping weekend: 2025-03-23
+[2026-03-10 02:16:25] Processing date: 2025-03-24
+[2026-03-10 02:17:38] Processing date: 2025-03-25
+[2026-03-10 02:18:49] Processing date: 2025-03-26
+[2026-03-10 02:20:27] ERROR: Worker agent backtest failed for 2025-03-26
+[2026-03-10 02:20:51] Processing date: 2025-03-27
+[2026-03-10 02:22:00] Processing date: 2025-03-28
+[2026-03-10 02:23:04] Skipping weekend: 2025-03-29
+[2026-03-10 02:23:04] Skipping weekend: 2025-03-30
+[2026-03-10 02:23:04] Processing date: 2025-03-31
+[2026-03-10 02:24:08] Processing date: 2025-04-01
+[2026-03-10 02:25:19] Processing date: 2025-04-02
+[2026-03-10 02:26:49] Processing date: 2025-04-03
+[2026-03-10 02:27:57] Processing date: 2025-04-04
+[2026-03-10 02:29:01] Skipping weekend: 2025-04-05
+[2026-03-10 02:29:01] Skipping weekend: 2025-04-06
+[2026-03-10 02:29:01] Processing date: 2025-04-07
+[2026-03-10 02:30:33] Processing date: 2025-04-08
+[2026-03-10 02:32:56] Processing date: 2025-04-09
+[2026-03-10 02:34:09] Processing date: 2025-04-10
+[2026-03-10 02:35:27] Processing date: 2025-04-11
+[2026-03-10 02:36:42] Skipping weekend: 2025-04-12
+[2026-03-10 02:36:42] Skipping weekend: 2025-04-13
+[2026-03-10 02:36:42] Processing date: 2025-04-14
+[2026-03-10 02:38:19] Processing date: 2025-04-15
+[2026-03-10 02:39:31] Processing date: 2025-04-16
+[2026-03-10 02:40:47] Processing date: 2025-04-17
+[2026-03-10 02:41:59] Processing date: 2025-04-18
+[2026-03-10 02:42:42] ERROR: Data gathering failed for 2025-04-18
+[2026-03-10 02:42:43] ERROR: Worker agent backtest failed for 2025-04-18
+[2026-03-10 02:42:43] ERROR: Main backtest failed for 2025-04-18
+[2026-03-10 02:42:43] Skipping weekend: 2025-04-19
+[2026-03-10 02:42:43] Skipping weekend: 2025-04-20
+[2026-03-10 02:42:43] Processing date: 2025-04-21
+[2026-03-10 02:43:50] Processing date: 2025-04-22
+[2026-03-10 02:45:06] Processing date: 2025-04-23
+[2026-03-10 02:46:59] Processing date: 2025-04-24
+[2026-03-10 02:48:13] Processing date: 2025-04-25
+[2026-03-10 02:49:16] Skipping weekend: 2025-04-26
+[2026-03-10 02:49:16] Skipping weekend: 2025-04-27
+[2026-03-10 02:49:16] Processing date: 2025-04-28
+[2026-03-10 02:50:30] Processing date: 2025-04-29
+[2026-03-10 02:52:00] ERROR: Worker agent backtest failed for 2025-04-29
+[2026-03-10 02:54:19] Processing date: 2025-04-30
+[2026-03-10 02:55:29] Processing date: 2025-05-01
+[2026-03-10 02:56:54] Processing date: 2025-05-02
+[2026-03-10 02:58:34] ERROR: Worker agent backtest failed for 2025-05-02
+[2026-03-10 02:59:14] Skipping weekend: 2025-05-03
+[2026-03-10 02:59:14] Skipping weekend: 2025-05-04
+[2026-03-10 02:59:14] Processing date: 2025-05-05
+[2026-03-10 03:00:33] Processing date: 2025-05-06
+[2026-03-10 03:01:48] Processing date: 2025-05-07
+[2026-03-10 03:03:49] ERROR: Worker agent backtest failed for 2025-05-07
+[2026-03-10 03:05:08] Processing date: 2025-05-08
+[2026-03-10 03:07:30] ERROR: Worker agent backtest failed for 2025-05-08
+[2026-03-10 03:09:44] Processing date: 2025-05-09
+[2026-03-10 03:11:10] Skipping weekend: 2025-05-10
+[2026-03-10 03:11:10] Skipping weekend: 2025-05-11
+[2026-03-10 03:11:10] Processing date: 2025-05-12
+[2026-03-10 03:13:53] Processing date: 2025-05-13
+[2026-03-10 03:15:26] Processing date: 2025-05-14
+[2026-03-10 03:17:14] ERROR: Worker agent backtest failed for 2025-05-14
+[2026-03-10 03:18:25] Processing date: 2025-05-15
+[2026-03-10 03:19:35] Processing date: 2025-05-16
+[2026-03-10 03:21:23] ERROR: Worker agent backtest failed for 2025-05-16
+[2026-03-10 03:22:50] Skipping weekend: 2025-05-17
+[2026-03-10 03:22:50] Skipping weekend: 2025-05-18
+[2026-03-10 03:22:50] Processing date: 2025-05-19
+[2026-03-10 03:24:13] ERROR: Worker agent backtest failed for 2025-05-19
+[2026-03-10 03:25:46] Processing date: 2025-05-20
+[2026-03-10 03:27:40] ERROR: Worker agent backtest failed for 2025-05-20
+[2026-03-10 03:30:29] Processing date: 2025-05-21
+[2026-03-10 03:31:50] Processing date: 2025-05-22
+[2026-03-10 03:34:32] ERROR: Worker agent backtest failed for 2025-05-22
+[2026-03-10 03:35:20] Processing date: 2025-05-23
+[2026-03-10 03:36:51] ERROR: Worker agent backtest failed for 2025-05-23
+[2026-03-10 03:37:11] Skipping weekend: 2025-05-24
+[2026-03-10 03:37:11] Skipping weekend: 2025-05-25
+[2026-03-10 03:37:11] Processing date: 2025-05-26
+[2026-03-10 03:37:53] ERROR: Data gathering failed for 2025-05-26
+[2026-03-10 03:37:54] ERROR: Worker agent backtest failed for 2025-05-26
+[2026-03-10 03:37:54] ERROR: Main backtest failed for 2025-05-26
+[2026-03-10 03:37:54] Processing date: 2025-05-27
+[2026-03-10 03:39:15] Processing date: 2025-05-28
+[2026-03-10 03:41:01] ERROR: Worker agent backtest failed for 2025-05-28
+[2026-03-10 03:41:45] Processing date: 2025-05-29
+[2026-03-10 03:43:49] ERROR: Worker agent backtest failed for 2025-05-29
+[2026-03-10 03:44:33] Processing date: 2025-05-30
+[2026-03-10 03:46:12] ERROR: Worker agent backtest failed for 2025-05-30
+[2026-03-10 03:46:46] Skipping weekend: 2025-05-31
+[2026-03-10 03:46:46] Skipping weekend: 2025-06-01
+[2026-03-10 03:46:46] Processing date: 2025-06-02
+[2026-03-10 03:48:01] Processing date: 2025-06-03
+[2026-03-10 03:49:40] ERROR: Worker agent backtest failed for 2025-06-03
+[2026-03-10 03:50:23] Processing date: 2025-06-04
+[2026-03-10 03:52:05] ERROR: Worker agent backtest failed for 2025-06-04
+[2026-03-10 03:52:20] Processing date: 2025-06-05
+[2026-03-10 03:53:54] ERROR: Worker agent backtest failed for 2025-06-05
+[2026-03-10 03:54:12] Processing date: 2025-06-06
+[2026-03-10 03:55:52] Skipping weekend: 2025-06-07
+[2026-03-10 03:55:52] Skipping weekend: 2025-06-08
+[2026-03-10 03:55:52] Processing date: 2025-06-09
+[2026-03-10 03:57:15] Processing date: 2025-06-10
+[2026-03-10 03:59:00] ERROR: Worker agent backtest failed for 2025-06-10
+[2026-03-10 03:59:58] Processing date: 2025-06-11
+[2026-03-10 04:01:12] Processing date: 2025-06-12
+[2026-03-10 04:02:22] Processing date: 2025-06-13
+[2026-03-10 04:03:31] Skipping weekend: 2025-06-14
+[2026-03-10 04:03:31] Skipping weekend: 2025-06-15
+[2026-03-10 04:03:31] Processing date: 2025-06-16
+[2026-03-10 04:04:49] Processing date: 2025-06-17
+[2026-03-10 04:06:01] Processing date: 2025-06-18
+[2026-03-10 04:07:13] Processing date: 2025-06-19
+[2026-03-10 04:07:55] ERROR: Data gathering failed for 2025-06-19
+[2026-03-10 04:07:56] ERROR: Worker agent backtest failed for 2025-06-19
+[2026-03-10 04:07:56] ERROR: Main backtest failed for 2025-06-19
+[2026-03-10 04:07:56] Processing date: 2025-06-20
+[2026-03-10 04:09:44] ERROR: Worker agent backtest failed for 2025-06-20
+[2026-03-10 04:10:29] Skipping weekend: 2025-06-21
+[2026-03-10 04:10:29] Skipping weekend: 2025-06-22
+[2026-03-10 04:10:29] Processing date: 2025-06-23
+[2026-03-10 04:11:43] Processing date: 2025-06-24
+[2026-03-10 04:13:00] Processing date: 2025-06-25
+[2026-03-10 04:14:40] ERROR: Worker agent backtest failed for 2025-06-25
+[2026-03-10 04:15:10] Processing date: 2025-06-26
+[2026-03-10 04:19:00] Processing date: 2025-06-27
+[2026-03-10 04:20:29] Skipping weekend: 2025-06-28
+[2026-03-10 04:20:29] Skipping weekend: 2025-06-29
+[2026-03-10 04:20:29] Processing date: 2025-06-30
+[2026-03-10 04:21:44] Processing date: 2025-07-01
+[2026-03-10 04:23:18] Processing date: 2025-07-02
+[2026-03-10 04:24:23] Processing date: 2025-07-03
+[2026-03-10 04:25:47] ERROR: Worker agent backtest failed for 2025-07-03
+[2026-03-10 04:26:46] Processing date: 2025-07-04
+[2026-03-10 04:27:32] ERROR: Data gathering failed for 2025-07-04
+[2026-03-10 04:27:32] ERROR: Worker agent backtest failed for 2025-07-04
+[2026-03-10 04:27:33] ERROR: Main backtest failed for 2025-07-04
+[2026-03-10 04:27:33] Skipping weekend: 2025-07-05
+[2026-03-10 04:27:33] Skipping weekend: 2025-07-06
+[2026-03-10 04:27:33] Processing date: 2025-07-07
+[2026-03-10 04:29:17] ERROR: Worker agent backtest failed for 2025-07-07
+[2026-03-10 04:30:28] Processing date: 2025-07-08
+[2026-03-10 04:31:45] Processing date: 2025-07-09
+[2026-03-10 04:33:34] ERROR: Worker agent backtest failed for 2025-07-09
+[2026-03-10 04:34:13] Processing date: 2025-07-10
+[2026-03-10 04:35:27] Processing date: 2025-07-11
+[2026-03-10 04:36:39] Skipping weekend: 2025-07-12
+[2026-03-10 04:36:39] Skipping weekend: 2025-07-13
+[2026-03-10 04:36:39] Processing date: 2025-07-14
+[2026-03-10 04:37:55] Processing date: 2025-07-15
+[2026-03-10 04:39:08] Processing date: 2025-07-16
+[2026-03-10 04:41:12] ERROR: Worker agent backtest failed for 2025-07-16
+[2026-03-10 04:43:32] Processing date: 2025-07-17
+[2026-03-10 04:44:47] Processing date: 2025-07-18
+[2026-03-10 04:46:01] Skipping weekend: 2025-07-19
+[2026-03-10 04:46:01] Skipping weekend: 2025-07-20
+[2026-03-10 04:46:01] Processing date: 2025-07-21
+[2026-03-10 04:48:42] Processing date: 2025-07-22
+[2026-03-10 04:49:59] Processing date: 2025-07-23
+[2026-03-10 04:51:27] Processing date: 2025-07-24
+[2026-03-10 04:52:40] Processing date: 2025-07-25
+[2026-03-10 04:54:01] Skipping weekend: 2025-07-26
+[2026-03-10 04:54:01] Skipping weekend: 2025-07-27
+[2026-03-10 04:54:01] Processing date: 2025-07-28
+[2026-03-10 04:55:22] Processing date: 2025-07-29
+[2026-03-10 04:57:19] ERROR: Worker agent backtest failed for 2025-07-29
+[2026-03-10 04:58:38] Processing date: 2025-07-30
+[2026-03-10 04:59:57] Processing date: 2025-07-31
+[2026-03-10 05:02:00] ERROR: Worker agent backtest failed for 2025-07-31
+[2026-03-10 05:03:56] Processing date: 2025-08-01
+[2026-03-10 05:05:09] Skipping weekend: 2025-08-02
+[2026-03-10 05:05:09] Skipping weekend: 2025-08-03
+[2026-03-10 05:05:09] Processing date: 2025-08-04
+[2026-03-10 05:06:55] ERROR: Worker agent backtest failed for 2025-08-04
+[2026-03-10 05:07:44] Processing date: 2025-08-05
+[2026-03-10 05:09:51] ERROR: Worker agent backtest failed for 2025-08-05
+[2026-03-10 05:11:16] Processing date: 2025-08-06
+[2026-03-10 05:13:07] Processing date: 2025-08-07
+[2026-03-10 05:15:04] ERROR: Worker agent backtest failed for 2025-08-07
+[2026-03-10 05:15:46] Processing date: 2025-08-08
+[2026-03-10 05:17:58] ERROR: Worker agent backtest failed for 2025-08-08
+[2026-03-10 05:18:40] Skipping weekend: 2025-08-09
+[2026-03-10 05:18:40] Skipping weekend: 2025-08-10
+[2026-03-10 05:18:40] Processing date: 2025-08-11
+[2026-03-10 05:20:01] Processing date: 2025-08-12
+[2026-03-10 05:21:44] ERROR: Worker agent backtest failed for 2025-08-12
+[2026-03-10 05:22:14] Processing date: 2025-08-13
+[2026-03-10 05:23:50] ERROR: Worker agent backtest failed for 2025-08-13
+[2026-03-10 05:24:18] Processing date: 2025-08-14
+[2026-03-10 05:26:05] ERROR: Worker agent backtest failed for 2025-08-14
+[2026-03-10 05:26:58] Processing date: 2025-08-15
+[2026-03-10 05:28:28] Skipping weekend: 2025-08-16
+[2026-03-10 05:28:28] Skipping weekend: 2025-08-17
+[2026-03-10 05:28:28] Processing date: 2025-08-18
+[2026-03-10 05:29:43] Processing date: 2025-08-19
+[2026-03-10 05:30:55] Processing date: 2025-08-20
+[2026-03-10 05:32:02] Processing date: 2025-08-21
+[2026-03-10 05:33:17] ERROR: Worker agent backtest failed for 2025-08-21
+[2026-03-10 05:33:48] Processing date: 2025-08-22
+[2026-03-10 05:35:05] Skipping weekend: 2025-08-23
+[2026-03-10 05:35:05] Skipping weekend: 2025-08-24
+[2026-03-10 05:35:05] Processing date: 2025-08-25
+[2026-03-10 05:36:40] ERROR: Worker agent backtest failed for 2025-08-25
+[2026-03-10 05:37:11] Processing date: 2025-08-26
+[2026-03-10 05:38:44] ERROR: Worker agent backtest failed for 2025-08-26
+[2026-03-10 05:39:53] Processing date: 2025-08-27
+[2026-03-10 05:42:19] ERROR: Worker agent backtest failed for 2025-08-27
+[2026-03-10 05:43:27] Processing date: 2025-08-28
+[2026-03-10 05:46:05] ERROR: Worker agent backtest failed for 2025-08-28
+[2026-03-10 05:47:06] Processing date: 2025-08-29
+[2026-03-10 05:48:48] ERROR: Worker agent backtest failed for 2025-08-29
+[2026-03-10 05:49:53] Skipping weekend: 2025-08-30
+[2026-03-10 05:49:53] Skipping weekend: 2025-08-31
+[2026-03-10 05:49:53] Processing date: 2025-09-01
+[2026-03-10 05:50:36] ERROR: Data gathering failed for 2025-09-01
+[2026-03-10 05:50:37] ERROR: Worker agent backtest failed for 2025-09-01
+[2026-03-10 05:50:37] ERROR: Main backtest failed for 2025-09-01
+[2026-03-10 05:50:37] Processing date: 2025-09-02
+[2026-03-10 05:52:33] Processing date: 2025-09-03
+[2026-03-10 05:54:10] ERROR: Worker agent backtest failed for 2025-09-03
+[2026-03-10 05:54:56] Processing date: 2025-09-04
+[2026-03-10 05:56:26] ERROR: Worker agent backtest failed for 2025-09-04
+[2026-03-10 05:56:55] Processing date: 2025-09-05
+[2026-03-10 05:58:44] ERROR: Worker agent backtest failed for 2025-09-05
+[2026-03-10 05:59:12] Skipping weekend: 2025-09-06
+[2026-03-10 05:59:12] Skipping weekend: 2025-09-07
+[2026-03-10 05:59:12] Processing date: 2025-09-08
+[2026-03-10 06:01:32] ERROR: Worker agent backtest failed for 2025-09-08
+[2026-03-10 06:04:18] Processing date: 2025-09-09
+[2026-03-10 06:05:42] ERROR: Worker agent backtest failed for 2025-09-09
+[2026-03-10 06:06:36] Processing date: 2025-09-10
+[2026-03-10 06:09:27] ERROR: Worker agent backtest failed for 2025-09-10
+[2026-03-10 06:11:05] Processing date: 2025-09-11
+[2026-03-10 06:12:37] ERROR: Worker agent backtest failed for 2025-09-11
+[2026-03-10 06:13:28] Processing date: 2025-09-12
+[2026-03-10 06:14:49] Skipping weekend: 2025-09-13
+[2026-03-10 06:14:49] Skipping weekend: 2025-09-14
+[2026-03-10 06:14:49] Processing date: 2025-09-15
+[2026-03-10 06:16:19] Processing date: 2025-09-16
+[2026-03-10 06:17:39] Processing date: 2025-09-17
+[2026-03-10 06:19:14] ERROR: Worker agent backtest failed for 2025-09-17
+[2026-03-10 06:20:37] Processing date: 2025-09-18
+[2026-03-10 06:22:12] ERROR: Worker agent backtest failed for 2025-09-18
+[2026-03-10 06:22:42] Processing date: 2025-09-19
+[2026-03-10 06:23:56] Skipping weekend: 2025-09-20
+[2026-03-10 06:23:56] Skipping weekend: 2025-09-21
+[2026-03-10 06:23:56] Processing date: 2025-09-22
+[2026-03-10 06:25:33] Processing date: 2025-09-23
+[2026-03-10 06:27:23] Processing date: 2025-09-24
+[2026-03-10 06:28:42] Processing date: 2025-09-25
+[2026-03-10 06:31:43] Processing date: 2025-09-26
+[2026-03-10 06:36:28] Skipping weekend: 2025-09-27
+[2026-03-10 06:36:28] Skipping weekend: 2025-09-28
+[2026-03-10 06:36:28] Processing date: 2025-09-29
+[2026-03-10 06:40:49] ERROR: Worker agent backtest failed for 2025-09-29
+[2026-03-10 06:42:24] Processing date: 2025-09-30
+[2026-03-10 06:44:01] ERROR: Worker agent backtest failed for 2025-09-30
+[2026-03-10 06:44:46] Processing date: 2025-10-01
+[2026-03-10 06:51:41] ERROR: Worker agent backtest failed for 2025-10-01
+[2026-03-10 06:53:08] Processing date: 2025-10-02
+[2026-03-10 06:59:44] Processing date: 2025-10-03
+[2026-03-10 07:11:59] Skipping weekend: 2025-10-04
+[2026-03-10 07:11:59] Skipping weekend: 2025-10-05
+[2026-03-10 07:11:59] Processing date: 2025-10-06
+[2026-03-10 07:24:29] ERROR: Worker agent backtest failed for 2025-10-06
+[2026-03-10 07:25:19] Processing date: 2025-10-07
+[2026-03-10 07:29:43] Processing date: 2025-10-08
+[2026-03-10 07:33:56] Processing date: 2025-10-09
+[2026-03-10 07:41:19] ERROR: Worker agent backtest failed for 2025-10-09
+[2026-03-10 07:42:24] Processing date: 2025-10-10
+[2026-03-10 07:53:01] Skipping weekend: 2025-10-11
+[2026-03-10 07:53:01] Skipping weekend: 2025-10-12
+[2026-03-10 07:53:02] Processing date: 2025-10-13
+[2026-03-10 07:58:11] ERROR: Data gathering failed for 2025-10-13
+[2026-03-10 22:59:01] Starting backtests from 2025-01-02 to 2025-12-31
+[2026-03-10 22:59:01] Processing date: 2025-01-02
+[2026-03-10 22:59:24] ERROR: Data gathering failed for 2025-01-02
+[2026-03-10 22:59:58] Starting backtests from 2025-03-01 to 2025-03-10
+[2026-03-10 22:59:58] Skipping weekend: 2025-03-01
+[2026-03-10 22:59:58] Skipping weekend: 2025-03-02
+[2026-03-10 22:59:58] Processing date: 2025-03-03
+[2026-03-10 23:01:31] Processing date: 2025-03-04
+[2026-03-10 23:01:52] ERROR: Data gathering failed for 2025-03-04
+[2026-03-10 23:02:42] Starting backtests from 2025-03-01 to 2025-03-10
+[2026-03-10 23:02:42] Skipping weekend: 2025-03-01
+[2026-03-10 23:02:42] Skipping weekend: 2025-03-02
+[2026-03-10 23:02:42] Processing date: 2025-03-03
+[2026-03-10 23:02:44] ERROR: Data gathering failed for 2025-03-03
+[2026-03-10 23:02:54] Starting backtests from 2025-03-04 to 2025-03-10
+[2026-03-10 23:02:54] Processing date: 2025-03-04
+[2026-03-10 23:04:33] ERROR: Worker agent backtest failed for 2025-03-04
+[2026-03-10 23:05:04] Processing date: 2025-03-05
+[2026-03-10 23:05:40] ERROR: Data gathering failed for 2025-03-05
+[2026-03-10 23:13:38] Starting backtests from 2025-03-04 to 2025-03-10
+[2026-03-10 23:13:38] Processing date: 2025-03-04
+[2026-03-10 23:15:11] ERROR: Worker agent backtest failed for 2025-03-04
+[2026-03-10 23:15:20] Processing date: 2025-03-05
+[2026-03-10 23:16:42] Processing date: 2025-03-06
+[2026-03-10 23:17:59] Processing date: 2025-03-07
+[2026-03-10 23:19:12] Skipping weekend: 2025-03-08
+[2026-03-10 23:19:12] Processing date: 2025-03-10
+[2026-03-10 23:20:26] All weekday backtest sequences for 2025 completed.
+[2026-03-10 23:29:04] Starting backtests from 2025-03-04 to 2025-03-04
+[2026-03-10 23:29:04] Processing date: 2025-03-04
+[2026-03-10 23:31:40] All weekday backtest sequences for 2025 completed.
+[2026-03-10 23:45:47] Starting backtests from 2025-03-04 to 2025-03-04
+[2026-03-10 23:45:47] Processing date: 2025-03-04
+[2026-03-10 23:45:52] ERROR: Data gathering failed for 2025-03-04
+[2026-03-10 23:46:13] Starting backtests from 2025-03-04 to 2025-03-04
+[2026-03-10 23:46:13] Processing date: 2025-03-04
+[2026-03-10 23:48:44] All weekday backtest sequences for 2025 completed.
+[2026-03-10 23:58:34] Starting backtests from 2025-03-04 to 2025-03-04
+[2026-03-10 23:58:34] Processing date: 2025-03-04
+[2026-03-11 00:00:28] All weekday backtest sequences for 2025 completed.
+[2026-03-11 00:02:04] Starting backtests from 2025-03-04 to 2025-03-04
+[2026-03-11 00:02:04] Processing date: 2025-03-04
+[2026-03-11 00:04:09] All weekday backtest sequences for 2025 completed.
+[2026-03-11 00:05:35] Starting backtests from 2025-03-04 to 2025-03-04
+[2026-03-11 00:05:35] Processing date: 2025-03-04
+[2026-03-11 00:07:25] All weekday backtest sequences for 2025 completed.
+[2026-03-11 22:57:09] Starting backtests from 2025-03-04 to 2025-03-04
+[2026-03-11 22:57:09] Processing date: 2025-03-04
+[2026-03-11 22:58:21] ERROR: Data gathering failed for 2025-03-04
+[2026-03-11 22:58:55] Starting backtests from 2025-03-04 to 2025-03-04
+[2026-03-11 22:58:55] Processing date: 2025-03-04
+[2026-03-11 23:00:18] ERROR: Worker agent backtest failed for 2025-03-04
+[2026-03-11 23:00:26] ERROR: Main backtest failed for 2025-03-04
+[2026-03-11 23:00:26] All weekday backtest sequences for 2025 completed.
+[2026-03-11 23:05:19] Starting backtests from 2025-03-04 to 2025-03-04
+[2026-03-11 23:05:20] Processing date: 2025-03-04
+[2026-03-11 23:07:12] ERROR: Worker agent backtest failed for 2025-03-04
+[2026-03-11 23:07:14] ERROR: Main backtest failed for 2025-03-04
+[2026-03-11 23:07:14] All weekday backtest sequences for 2025 completed.
+[2026-03-12 00:30:10] Starting backtests from 2025-03-04 to 2025-03-04
+[2026-03-12 00:30:10] Processing date: 2025-03-04
+[2026-03-12 00:32:00] All weekday backtest sequences for 2025 completed.
+[2026-03-12 01:02:43] Starting backtests from 2025-03-04 to 2025-03-04
+[2026-03-12 01:02:43] Processing date: 2025-03-04
+[2026-03-12 01:05:15] All weekday backtest sequences for 2025 completed.
+[2026-03-12 01:07:14] Starting backtests from 2025-01-02 to 2025-12-31
+[2026-03-12 01:07:14] Processing date: 2025-01-02
+[2026-03-12 01:08:21] Processing date: 2025-01-03
+[2026-03-12 01:10:04] Skipping weekend: 2025-01-04
+[2026-03-12 01:10:04] Skipping weekend: 2025-01-05
+[2026-03-12 01:10:04] Processing date: 2025-01-06
+[2026-03-12 01:11:11] Processing date: 2025-01-07
+[2026-03-12 01:12:07] Processing date: 2025-01-08
+[2026-03-12 01:13:00] Processing date: 2025-01-09
+[2026-03-12 01:13:42] ERROR: Data gathering failed for 2025-01-09
+[2026-03-12 01:13:43] ERROR: Worker agent backtest failed for 2025-01-09
+[2026-03-12 01:13:43] ERROR: Main backtest failed for 2025-01-09
+[2026-03-12 01:13:43] Processing date: 2025-01-10
+[2026-03-12 01:14:44] Skipping weekend: 2025-01-11
+[2026-03-12 01:14:44] Skipping weekend: 2025-01-12
+[2026-03-12 01:14:44] Processing date: 2025-01-13
+[2026-03-12 01:15:40] Processing date: 2025-01-14
+[2026-03-12 01:16:41] Processing date: 2025-01-15
+[2026-03-12 01:17:44] Processing date: 2025-01-16
+[2026-03-12 01:18:41] Processing date: 2025-01-17
+[2026-03-12 01:19:38] Skipping weekend: 2025-01-18
+[2026-03-12 01:19:38] Skipping weekend: 2025-01-19
+[2026-03-12 01:19:38] Processing date: 2025-01-20
+[2026-03-12 01:20:21] ERROR: Data gathering failed for 2025-01-20
+[2026-03-12 01:20:21] ERROR: Worker agent backtest failed for 2025-01-20
+[2026-03-12 01:20:22] ERROR: Main backtest failed for 2025-01-20
+[2026-03-12 01:20:22] Processing date: 2025-01-21
+[2026-03-12 01:21:20] Processing date: 2025-01-22
+[2026-03-12 01:22:18] Processing date: 2025-01-23
+[2026-03-12 01:23:13] Processing date: 2025-01-24
+[2026-03-12 01:24:39] Skipping weekend: 2025-01-25
+[2026-03-12 01:24:39] Skipping weekend: 2025-01-26
+[2026-03-12 01:24:39] Processing date: 2025-01-27
+[2026-03-12 01:25:38] Processing date: 2025-01-28
+[2026-03-12 01:26:36] Processing date: 2025-01-29
+[2026-03-12 01:28:11] Processing date: 2025-01-30
+[2026-03-12 01:29:23] Processing date: 2025-01-31
+[2026-03-12 01:31:08] Skipping weekend: 2025-02-01
+[2026-03-12 01:31:08] Skipping weekend: 2025-02-02
+[2026-03-12 01:31:08] Processing date: 2025-02-03
+[2026-03-12 01:32:07] Processing date: 2025-02-04
+[2026-03-12 01:33:02] Processing date: 2025-02-05
+[2026-03-12 01:35:11] Processing date: 2025-02-06
+[2026-03-12 01:37:33] Processing date: 2025-02-07
+[2026-03-12 01:40:05] Skipping weekend: 2025-02-08
+[2026-03-12 01:40:05] Skipping weekend: 2025-02-09
+[2026-03-12 01:40:05] Processing date: 2025-02-10
+[2026-03-12 01:41:33] Processing date: 2025-02-11
+[2026-03-12 01:42:37] Processing date: 2025-02-12
+[2026-03-12 01:44:02] Processing date: 2025-02-13
+[2026-03-12 01:45:35] Processing date: 2025-02-14
+[2026-03-12 01:47:49] Skipping weekend: 2025-02-15
+[2026-03-12 01:47:49] Skipping weekend: 2025-02-16
+[2026-03-12 01:47:49] Processing date: 2025-02-17
+[2026-03-12 01:48:32] ERROR: Data gathering failed for 2025-02-17
+[2026-03-12 01:48:32] ERROR: Worker agent backtest failed for 2025-02-17
+[2026-03-12 01:48:32] ERROR: Main backtest failed for 2025-02-17
+[2026-03-12 01:48:32] Processing date: 2025-02-18
+[2026-03-12 01:49:31] Processing date: 2025-02-19
+[2026-03-12 01:50:30] Processing date: 2025-02-20
+[2026-03-12 01:52:13] Processing date: 2025-02-21
+[2026-03-12 01:53:09] Skipping weekend: 2025-02-22
+[2026-03-12 01:53:09] Skipping weekend: 2025-02-23
+[2026-03-12 01:53:09] Processing date: 2025-02-24
+[2026-03-12 01:54:18] Processing date: 2025-02-25
+[2026-03-12 01:56:10] Processing date: 2025-02-26
+[2026-03-12 01:57:58] Processing date: 2025-02-27
+[2026-03-12 02:01:10] Processing date: 2025-02-28
+[2026-03-12 02:02:07] Skipping weekend: 2025-03-01
+[2026-03-12 02:02:07] Skipping weekend: 2025-03-02
+[2026-03-12 02:02:07] Processing date: 2025-03-03
+[2026-03-12 02:03:10] Processing date: 2025-03-04
+[2026-03-12 02:04:48] Processing date: 2025-03-05
+[2026-03-12 02:05:47] Processing date: 2025-03-06
+[2026-03-12 02:07:07] Processing date: 2025-03-07
+[2026-03-12 02:08:27] Skipping weekend: 2025-03-08
+[2026-03-12 02:08:27] Skipping weekend: 2025-03-09
+[2026-03-12 02:08:27] Processing date: 2025-03-10
+[2026-03-12 02:09:22] Processing date: 2025-03-11
+[2026-03-12 02:10:18] Processing date: 2025-03-12
+[2026-03-12 02:11:44] Processing date: 2025-03-13
+[2026-03-12 02:12:38] Processing date: 2025-03-14
+[2026-03-12 02:14:01] Skipping weekend: 2025-03-15
+[2026-03-12 02:14:01] Skipping weekend: 2025-03-16
+[2026-03-12 02:14:01] Processing date: 2025-03-17
+[2026-03-12 02:15:55] Processing date: 2025-03-18
+[2026-03-12 02:16:48] Processing date: 2025-03-19
+[2026-03-12 02:17:43] Processing date: 2025-03-20
+[2026-03-12 02:18:37] Processing date: 2025-03-21
+[2026-03-12 02:19:27] Skipping weekend: 2025-03-22
+[2026-03-12 02:19:27] Skipping weekend: 2025-03-23
+[2026-03-12 02:19:27] Processing date: 2025-03-24
+[2026-03-12 02:20:23] Processing date: 2025-03-25
+[2026-03-12 02:21:18] Processing date: 2025-03-26
+[2026-03-12 02:22:55] Processing date: 2025-03-27
+[2026-03-12 02:23:48] Processing date: 2025-03-28
+[2026-03-12 02:24:40] Skipping weekend: 2025-03-29
+[2026-03-12 02:24:40] Skipping weekend: 2025-03-30
+[2026-03-12 02:24:40] Processing date: 2025-03-31
+[2026-03-12 02:25:31] Processing date: 2025-04-01
+[2026-03-12 02:26:26] Processing date: 2025-04-02
+[2026-03-12 02:27:20] Processing date: 2025-04-03
+[2026-03-12 02:28:14] Processing date: 2025-04-04
+[2026-03-12 02:29:06] Skipping weekend: 2025-04-05
+[2026-03-12 02:29:06] Skipping weekend: 2025-04-06
+[2026-03-12 02:29:06] Processing date: 2025-04-07
+[2026-03-12 02:30:32] Processing date: 2025-04-08
+[2026-03-12 02:32:27] Processing date: 2025-04-09
+[2026-03-12 02:33:22] Processing date: 2025-04-10
+[2026-03-12 02:34:19] Processing date: 2025-04-11
+[2026-03-12 02:35:17] Skipping weekend: 2025-04-12
+[2026-03-12 02:35:17] Skipping weekend: 2025-04-13
+[2026-03-12 02:35:17] Processing date: 2025-04-14
+[2026-03-12 02:36:25] Processing date: 2025-04-15
+[2026-03-12 02:37:26] Processing date: 2025-04-16
+[2026-03-12 02:38:18] Processing date: 2025-04-17
+[2026-03-12 02:39:13] Processing date: 2025-04-18
+[2026-03-12 02:39:56] ERROR: Data gathering failed for 2025-04-18
+[2026-03-12 02:39:56] ERROR: Worker agent backtest failed for 2025-04-18
+[2026-03-12 02:39:57] ERROR: Main backtest failed for 2025-04-18
+[2026-03-12 02:39:57] Skipping weekend: 2025-04-19
+[2026-03-12 02:39:57] Skipping weekend: 2025-04-20
+[2026-03-12 02:39:57] Processing date: 2025-04-21
+[2026-03-12 02:40:49] Processing date: 2025-04-22
+[2026-03-12 02:41:59] Processing date: 2025-04-23
+[2026-03-12 02:43:16] Processing date: 2025-04-24
+[2026-03-12 02:44:12] Processing date: 2025-04-25
+[2026-03-12 02:45:05] Skipping weekend: 2025-04-26
+[2026-03-12 02:45:05] Skipping weekend: 2025-04-27
+[2026-03-12 02:45:05] Processing date: 2025-04-28
+[2026-03-12 02:46:33] Processing date: 2025-04-29
+[2026-03-12 02:47:59] Processing date: 2025-04-30
+[2026-03-12 02:48:54] Processing date: 2025-05-01
+[2026-03-12 02:49:58] Processing date: 2025-05-02
+[2026-03-12 02:51:38] Skipping weekend: 2025-05-03
+[2026-03-12 02:51:38] Skipping weekend: 2025-05-04
+[2026-03-12 02:51:38] Processing date: 2025-05-05
+[2026-03-12 02:52:45] Processing date: 2025-05-06
+[2026-03-12 02:54:03] Processing date: 2025-05-07
+[2026-03-12 02:56:53] Processing date: 2025-05-08
+[2026-03-12 03:00:13] Processing date: 2025-05-09
+[2026-03-12 03:01:21] Skipping weekend: 2025-05-10
+[2026-03-12 03:01:21] Skipping weekend: 2025-05-11
+[2026-03-12 03:01:21] Processing date: 2025-05-12
+[2026-03-12 03:03:06] Processing date: 2025-05-13
+[2026-03-12 03:04:06] Processing date: 2025-05-14
+[2026-03-12 03:06:21] Processing date: 2025-05-15
+[2026-03-12 03:07:36] Processing date: 2025-05-16
+[2026-03-12 03:09:17] Skipping weekend: 2025-05-17
+[2026-03-12 03:09:17] Skipping weekend: 2025-05-18
+[2026-03-12 03:09:17] Processing date: 2025-05-19
+[2026-03-12 03:10:52] Processing date: 2025-05-20
+[2026-03-12 03:13:01] Processing date: 2025-05-21
+[2026-03-12 03:14:28] Processing date: 2025-05-22
+[2026-03-12 03:16:15] Processing date: 2025-05-23
+[2026-03-12 03:17:46] Skipping weekend: 2025-05-24
+[2026-03-12 03:17:46] Skipping weekend: 2025-05-25
+[2026-03-12 03:17:46] Processing date: 2025-05-26
+[2026-03-12 03:18:29] ERROR: Data gathering failed for 2025-05-26
+[2026-03-12 03:18:29] ERROR: Worker agent backtest failed for 2025-05-26
+[2026-03-12 03:18:30] ERROR: Main backtest failed for 2025-05-26
+[2026-03-12 03:18:30] Processing date: 2025-05-27
+[2026-03-12 03:19:57] Processing date: 2025-05-28
+[2026-03-12 03:22:15] Processing date: 2025-05-29
+[2026-03-12 03:24:52] Processing date: 2025-05-30
+[2026-03-12 03:26:46] Skipping weekend: 2025-05-31
+[2026-03-12 03:26:46] Skipping weekend: 2025-06-01
+[2026-03-12 03:26:46] Processing date: 2025-06-02
+[2026-03-12 03:27:44] Processing date: 2025-06-03
+[2026-03-12 03:29:18] Processing date: 2025-06-04
+[2026-03-12 03:34:59] Processing date: 2025-06-05
+[2026-03-12 03:36:50] Processing date: 2025-06-06
+[2026-03-12 03:37:45] Skipping weekend: 2025-06-07
+[2026-03-12 03:37:45] Skipping weekend: 2025-06-08
+[2026-03-12 03:37:45] Processing date: 2025-06-09
+[2026-03-12 03:38:47] Processing date: 2025-06-10
+[2026-03-12 03:48:29] Processing date: 2025-06-11
+[2026-03-12 03:49:25] Processing date: 2025-06-12
+[2026-03-12 03:50:39] Processing date: 2025-06-13
+[2026-03-12 03:51:32] Skipping weekend: 2025-06-14
+[2026-03-12 03:51:32] Skipping weekend: 2025-06-15
+[2026-03-12 03:51:32] Processing date: 2025-06-16
+[2026-03-12 03:52:31] Processing date: 2025-06-17
+[2026-03-12 03:53:25] Processing date: 2025-06-18
+[2026-03-12 03:54:20] Processing date: 2025-06-19
+[2026-03-12 03:55:03] ERROR: Data gathering failed for 2025-06-19
+[2026-03-12 03:55:03] ERROR: Worker agent backtest failed for 2025-06-19
+[2026-03-12 03:55:03] ERROR: Main backtest failed for 2025-06-19
+[2026-03-12 03:55:03] Processing date: 2025-06-20
+[2026-03-12 03:56:44] Skipping weekend: 2025-06-21
+[2026-03-12 03:56:44] Skipping weekend: 2025-06-22
+[2026-03-12 03:56:44] Processing date: 2025-06-23
+[2026-03-12 03:57:42] Processing date: 2025-06-24
+[2026-03-12 03:58:39] Processing date: 2025-06-25
+[2026-03-12 04:00:39] Processing date: 2025-06-26
+[2026-03-12 04:02:05] Processing date: 2025-06-27
+[2026-03-12 04:02:58] Skipping weekend: 2025-06-28
+[2026-03-12 04:02:58] Skipping weekend: 2025-06-29
+[2026-03-12 04:02:58] Processing date: 2025-06-30
+[2026-03-12 04:03:55] Processing date: 2025-07-01
+[2026-03-12 04:04:49] Processing date: 2025-07-02
+[2026-03-12 04:05:56] Processing date: 2025-07-03
+[2026-03-12 04:08:57] Processing date: 2025-07-04
+[2026-03-12 04:09:40] ERROR: Data gathering failed for 2025-07-04
+[2026-03-12 04:09:40] ERROR: Worker agent backtest failed for 2025-07-04
+[2026-03-12 04:09:40] ERROR: Main backtest failed for 2025-07-04
+[2026-03-12 04:09:40] Skipping weekend: 2025-07-05
+[2026-03-12 04:09:40] Skipping weekend: 2025-07-06
+[2026-03-12 04:09:40] Processing date: 2025-07-07
+[2026-03-12 04:11:08] Processing date: 2025-07-08
+[2026-03-12 04:12:07] Processing date: 2025-07-09
+[2026-03-12 04:25:12] Processing date: 2025-07-10
+[2026-03-12 04:26:09] Processing date: 2025-07-11
+[2026-03-12 04:27:29] Skipping weekend: 2025-07-12
+[2026-03-12 04:27:29] Skipping weekend: 2025-07-13
+[2026-03-12 04:27:29] Processing date: 2025-07-14
+[2026-03-12 04:28:26] Processing date: 2025-07-15
+[2026-03-12 04:29:23] Processing date: 2025-07-16
+[2026-03-12 04:31:53] Processing date: 2025-07-17
+[2026-03-12 04:33:02] Processing date: 2025-07-18
+[2026-03-12 04:34:00] Skipping weekend: 2025-07-19
+[2026-03-12 04:34:00] Skipping weekend: 2025-07-20
+[2026-03-12 04:34:00] Processing date: 2025-07-21
+[2026-03-12 04:35:04] Processing date: 2025-07-22
+[2026-03-12 04:36:01] Processing date: 2025-07-23
+[2026-03-12 04:37:01] Processing date: 2025-07-24
+[2026-03-12 04:38:10] Processing date: 2025-07-25
+[2026-03-12 04:39:05] Skipping weekend: 2025-07-26
+[2026-03-12 04:39:05] Skipping weekend: 2025-07-27
+[2026-03-12 04:39:05] Processing date: 2025-07-28
+[2026-03-12 04:40:04] Processing date: 2025-07-29
+[2026-03-12 04:42:48] Processing date: 2025-07-30
+[2026-03-12 04:44:23] Processing date: 2025-07-31
+[2026-03-12 04:48:17] Processing date: 2025-08-01
+[2026-03-12 04:49:42] Skipping weekend: 2025-08-02
+[2026-03-12 04:49:42] Skipping weekend: 2025-08-03
+[2026-03-12 04:49:42] Processing date: 2025-08-04
+[2026-03-12 04:51:45] Processing date: 2025-08-05
+[2026-03-12 04:55:15] Processing date: 2025-08-06
+[2026-03-12 04:56:15] Processing date: 2025-08-07
+[2026-03-12 04:58:12] Processing date: 2025-08-08
+[2026-03-12 05:15:38] Skipping weekend: 2025-08-09
+[2026-03-12 05:15:39] Skipping weekend: 2025-08-10
+[2026-03-12 05:15:39] Processing date: 2025-08-11
+[2026-03-12 05:16:39] Processing date: 2025-08-12
+[2026-03-12 05:18:47] Processing date: 2025-08-13
+[2026-03-12 05:20:24] Processing date: 2025-08-14
+[2026-03-12 05:22:22] Processing date: 2025-08-15
+[2026-03-12 05:23:19] Skipping weekend: 2025-08-16
+[2026-03-12 05:23:19] Skipping weekend: 2025-08-17
+[2026-03-12 05:23:19] Processing date: 2025-08-18
+[2026-03-12 05:24:15] Processing date: 2025-08-19
+[2026-03-12 05:25:10] Processing date: 2025-08-20
+[2026-03-12 05:26:04] Processing date: 2025-08-21
+[2026-03-12 05:27:36] Processing date: 2025-08-22
+[2026-03-12 05:28:53] Skipping weekend: 2025-08-23
+[2026-03-12 05:28:53] Skipping weekend: 2025-08-24
+[2026-03-12 05:28:53] Processing date: 2025-08-25
+[2026-03-12 05:30:37] Processing date: 2025-08-26
+[2026-03-12 05:32:09] Processing date: 2025-08-27
+[2026-03-12 05:34:30] Processing date: 2025-08-28
+[2026-03-12 05:36:20] Processing date: 2025-08-29
+[2026-03-12 05:37:59] Skipping weekend: 2025-08-30
+[2026-03-12 05:37:59] Skipping weekend: 2025-08-31
+[2026-03-12 05:37:59] Processing date: 2025-09-01
+[2026-03-12 05:38:42] ERROR: Data gathering failed for 2025-09-01
+[2026-03-12 05:38:43] ERROR: Worker agent backtest failed for 2025-09-01
+[2026-03-12 05:38:43] ERROR: Main backtest failed for 2025-09-01
+[2026-03-12 05:38:43] Processing date: 2025-09-02
+[2026-03-12 05:39:36] Processing date: 2025-09-03
+[2026-03-12 05:41:25] Processing date: 2025-09-04
+[2026-03-12 05:43:20] Processing date: 2025-09-05
+[2026-03-12 05:45:44] Skipping weekend: 2025-09-06
+[2026-03-12 05:45:44] Skipping weekend: 2025-09-07
+[2026-03-12 05:45:44] Processing date: 2025-09-08
+[2026-03-12 05:48:02] Processing date: 2025-09-09
+[2026-03-12 05:49:31] Processing date: 2025-09-10
+[2026-03-12 05:52:00] Processing date: 2025-09-11
+[2026-03-12 05:53:30] Processing date: 2025-09-12
+[2026-03-12 05:54:28] Skipping weekend: 2025-09-13
+[2026-03-12 05:54:28] Skipping weekend: 2025-09-14
+[2026-03-12 05:54:28] Processing date: 2025-09-15
+[2026-03-12 05:55:26] Processing date: 2025-09-16
+[2026-03-12 05:56:23] Processing date: 2025-09-17
+[2026-03-12 05:58:14] Processing date: 2025-09-18
+[2026-03-12 05:59:51] Processing date: 2025-09-19
+[2026-03-12 06:01:55] Skipping weekend: 2025-09-20
+[2026-03-12 06:01:55] Skipping weekend: 2025-09-21
+[2026-03-12 06:01:55] Processing date: 2025-09-22
+[2026-03-12 06:02:56] Processing date: 2025-09-23
+[2026-03-12 06:04:10] Processing date: 2025-09-24
+[2026-03-12 06:05:10] Processing date: 2025-09-25
+[2026-03-12 06:06:02] Processing date: 2025-09-26
+[2026-03-12 06:06:58] Skipping weekend: 2025-09-27
+[2026-03-12 06:06:58] Skipping weekend: 2025-09-28
+[2026-03-12 06:06:58] Processing date: 2025-09-29
+[2026-03-12 06:08:34] Processing date: 2025-09-30
+[2026-03-12 06:10:39] Processing date: 2025-10-01
+[2026-03-12 06:12:07] Processing date: 2025-10-02
+[2026-03-12 06:13:07] Processing date: 2025-10-03
+[2026-03-12 06:14:04] Skipping weekend: 2025-10-04
+[2026-03-12 06:14:04] Skipping weekend: 2025-10-05
+[2026-03-12 06:14:04] Processing date: 2025-10-06
+[2026-03-12 06:16:26] Processing date: 2025-10-07
+[2026-03-12 06:17:56] Processing date: 2025-10-08
+[2026-03-12 06:19:03] Processing date: 2025-10-09
+[2026-03-12 06:20:44] Processing date: 2025-10-10
+[2026-03-12 06:22:39] Skipping weekend: 2025-10-11
+[2026-03-12 06:22:39] Skipping weekend: 2025-10-12
+[2026-03-12 06:22:39] Processing date: 2025-10-13
+[2026-03-12 06:23:51] Processing date: 2025-10-14
+[2026-03-12 06:24:50] Processing date: 2025-10-15
+[2026-03-12 06:25:57] Processing date: 2025-10-16
+[2026-03-12 06:28:19] Processing date: 2025-10-17
+[2026-03-12 06:29:12] Skipping weekend: 2025-10-18
+[2026-03-12 06:29:13] Skipping weekend: 2025-10-19
+[2026-03-12 06:29:13] Processing date: 2025-10-20
+[2026-03-12 06:31:02] Processing date: 2025-10-21
+[2026-03-12 06:32:25] Processing date: 2025-10-22
+[2026-03-12 06:33:23] Processing date: 2025-10-23
+[2026-03-12 06:35:54] Processing date: 2025-10-24
+[2026-03-12 06:37:53] Skipping weekend: 2025-10-25
+[2026-03-12 06:37:53] Skipping weekend: 2025-10-26
+[2026-03-12 06:37:53] Processing date: 2025-10-27
+[2026-03-12 06:39:48] Processing date: 2025-10-28
+[2026-03-12 06:42:49] Processing date: 2025-10-29
+[2026-03-12 06:45:55] Processing date: 2025-10-30
+[2026-03-12 06:48:30] Processing date: 2025-10-31
+[2026-03-12 06:50:20] Skipping weekend: 2025-11-01
+[2026-03-12 06:50:20] Skipping weekend: 2025-11-02
+[2026-03-12 06:50:20] Processing date: 2025-11-03
+[2026-03-12 06:51:57] Processing date: 2025-11-04
+[2026-03-12 06:54:51] ERROR: Worker agent backtest failed for 2025-11-04
+[2026-03-12 06:55:10] Processing date: 2025-11-05
+[2026-03-12 06:59:38] Processing date: 2025-11-06
+[2026-03-12 07:02:52] Processing date: 2025-11-07
+[2026-03-12 07:05:50] Skipping weekend: 2025-11-08
+[2026-03-12 07:05:50] Skipping weekend: 2025-11-09
+[2026-03-12 07:05:50] Processing date: 2025-11-10
+[2026-03-12 07:07:04] Processing date: 2025-11-11
+[2026-03-12 07:09:00] Processing date: 2025-11-12
+[2026-03-12 07:09:58] Processing date: 2025-11-13
+[2026-03-12 07:10:57] Processing date: 2025-11-14
+[2026-03-12 07:11:49] Skipping weekend: 2025-11-15
+[2026-03-12 07:11:49] Skipping weekend: 2025-11-16
+[2026-03-12 07:11:49] Processing date: 2025-11-17
+[2026-03-12 07:13:12] Processing date: 2025-11-18
+[2026-03-12 07:14:49] Processing date: 2025-11-19
+[2026-03-12 07:15:44] Processing date: 2025-11-20
+[2026-03-12 07:16:53] Processing date: 2025-11-21
+[2026-03-12 07:17:59] Skipping weekend: 2025-11-22
+[2026-03-12 07:17:59] Skipping weekend: 2025-11-23
+[2026-03-12 07:17:59] Processing date: 2025-11-24
+[2026-03-12 07:19:37] Processing date: 2025-11-25
+[2026-03-12 07:22:36] Processing date: 2025-11-26
+[2026-03-12 07:23:39] Processing date: 2025-11-27
+[2026-03-12 07:24:22] ERROR: Data gathering failed for 2025-11-27
+[2026-03-12 07:24:22] ERROR: Worker agent backtest failed for 2025-11-27
+[2026-03-12 07:24:22] ERROR: Main backtest failed for 2025-11-27
+[2026-03-12 07:24:22] Processing date: 2025-11-28
+[2026-03-12 07:25:51] Skipping weekend: 2025-11-29
+[2026-03-12 07:25:51] Skipping weekend: 2025-11-30
+[2026-03-12 07:25:51] Processing date: 2025-12-01
+[2026-03-12 07:27:10] Processing date: 2025-12-02
+[2026-03-12 07:28:43] Processing date: 2025-12-03
+[2026-03-12 07:29:40] Processing date: 2025-12-04
+[2026-03-12 07:31:41] Processing date: 2025-12-05
+[2026-03-12 07:32:38] Skipping weekend: 2025-12-06
+[2026-03-12 07:32:38] Skipping weekend: 2025-12-07
+[2026-03-12 07:32:38] Processing date: 2025-12-08
+[2026-03-12 07:35:31] Processing date: 2025-12-09
+[2026-03-12 07:37:04] Processing date: 2025-12-10
+[2026-03-12 07:38:58] Processing date: 2025-12-11
+[2026-03-12 07:41:12] Processing date: 2025-12-12
+[2026-03-12 07:42:11] Skipping weekend: 2025-12-13
+[2026-03-12 07:42:11] Skipping weekend: 2025-12-14
+[2026-03-12 07:42:11] Processing date: 2025-12-15
+[2026-03-12 07:43:43] Processing date: 2025-12-16
+[2026-03-12 07:44:37] Processing date: 2025-12-17
+[2026-03-12 07:46:06] Processing date: 2025-12-18
+[2026-03-12 07:48:20] Processing date: 2025-12-19
+[2026-03-12 07:50:06] Skipping weekend: 2025-12-20
+[2026-03-12 07:50:06] Skipping weekend: 2025-12-21
+[2026-03-12 07:50:06] Processing date: 2025-12-22
+[2026-03-12 07:51:05] Processing date: 2025-12-23
+[2026-03-12 07:52:26] Processing date: 2025-12-24
+[2026-03-12 07:53:57] Processing date: 2025-12-25
+[2026-03-12 07:54:40] ERROR: Data gathering failed for 2025-12-25
+[2026-03-12 07:54:41] ERROR: Worker agent backtest failed for 2025-12-25
+[2026-03-12 07:54:41] ERROR: Main backtest failed for 2025-12-25
+[2026-03-12 07:54:41] Processing date: 2025-12-26
+[2026-03-12 07:55:36] Skipping weekend: 2025-12-27
+[2026-03-12 07:55:36] Skipping weekend: 2025-12-28
+[2026-03-12 07:55:36] Processing date: 2025-12-29
+[2026-03-12 07:56:30] Processing date: 2025-12-30
+[2026-03-12 07:57:25] Processing date: 2025-12-31
+[2026-03-12 07:58:20] All weekday backtest sequences for 2025 completed.
+[2026-04-04 11:10:13] Starting backtests from 2025-01-02 to 2025-12-31
+[2026-04-04 11:10:13] Processing date: 2025-01-02
+[2026-04-04 11:27:11] ERROR: Data gathering failed for 2025-01-02
+[2026-04-04 11:27:28] Starting backtests from 2025-01-02 to 2025-12-31
+[2026-04-04 11:27:28] Processing date: 2025-01-02
+[2026-04-04 11:51:50] ERROR: Worker agent backtest failed for 2025-01-02
+[2026-04-04 11:52:06] Processing date: 2025-01-03
+[2026-04-04 12:16:39] ERROR: Worker agent backtest failed for 2025-01-03
+[2026-04-04 12:16:42] ERROR: Main backtest failed for 2025-01-03
+[2026-04-04 12:16:42] Skipping weekend: 2025-01-04
+[2026-04-04 12:16:42] Skipping weekend: 2025-01-05
+[2026-04-04 12:16:42] Processing date: 2025-01-06
+[2026-04-04 12:18:41] Starting backtests from 2025-01-02 to 2025-12-31
+[2026-04-04 12:18:41] Processing date: 2025-01-02
+[2026-04-04 12:43:49] ERROR: Worker agent backtest failed for 2025-01-02
+[2026-04-04 12:44:02] Processing date: 2025-01-03
+[2026-04-04 13:06:43] ERROR: Worker agent backtest failed for 2025-01-03
+[2026-04-04 13:06:56] Skipping weekend: 2025-01-04
+[2026-04-04 13:06:56] Skipping weekend: 2025-01-05
+[2026-04-04 13:06:56] Processing date: 2025-01-06
+[2026-04-04 13:30:07] ERROR: Worker agent backtest failed for 2025-01-06
+[2026-04-04 13:30:22] Processing date: 2025-01-07
+[2026-04-04 13:40:58] ERROR: Data gathering failed for 2025-01-07

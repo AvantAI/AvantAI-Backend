@@ -33,6 +33,18 @@ func NewsAgentReqInfo(stock string) {
 		log.Fatalf("Error reading file: %v\n", err)
 	}
 
+	file, err = os.Open(filepath.Join(dirPath, "pre_gap_news_report.txt"))
+	if err != nil {
+		log.Fatalf("Error opening file: %v\n", err)
+	}
+	defer file.Close()
+
+	// Read the entire file content
+	past_news, err := io.ReadAll(file)
+	if err != nil {
+		log.Fatalf("Error reading file: %v\n", err)
+	}
+
 	err = godotenv.Load()
 	if err != nil {
 		log.Fatal("Error loading .env file")
@@ -48,6 +60,7 @@ func NewsAgentReqInfo(stock string) {
 		AgentName:      EpNewsAgent,
 		Input: []spec.NameValueTypeV3{
 			{Name: "ep_news", Value: string(news)},
+			{Name: "ep_past_news", Value: string(past_news)},
 		},
 	}, jsonResp, logger)
 

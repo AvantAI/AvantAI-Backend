@@ -8,7 +8,7 @@ export LC_ALL=C
 LOG_FILE="./backtest_execution.log"
 
 START_DATE="2025-01-02"
-END_DATE="2025-01-02"
+END_DATE="2025-12-31"
 
 ###############################################################################
 # Logging

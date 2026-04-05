@@ -94,11 +94,11 @@ func main() {
 	}
 
 	// apiKey := os.Getenv("API_KEY")
-	tiingoKey := os.Getenv("TIINGO_KEY")
+	// tiingoKey := os.Getenv("TIINGO_KEY")
 	alpacaKey := os.Getenv("ALPACA_API_KEY")
 	alpacaSecret := os.Getenv("ALPACA_SECRET_KEY")
 	finnhubKey := os.Getenv("FINNHUB_KEY")
-	finnhubSecret := os.Getenv("FINNHUB_SECRET_KEY")
+	// finnhubSecret := os.Getenv("FINNHUB_SECRET_KEY")
 	// marketStackKey := os.Getenv("MARKETSTACK_TOKEN")
 	// Filters out stocks that don't match the given criteria
 	// ep.FilterStocks(apiKey)
@@ -108,22 +108,31 @@ func main() {
 	backtestDate := *backtestDatePtr  // Now dereference after parsing
 
 	// Advanced backtest with custom config
-	config := ep.BacktestConfig{
-		TargetDate:     backtestDate,
-		AlpacaKey:    alpacaKey,
-		AlpacaSecret: alpacaSecret,
-		FinnhubKey:    finnhubKey,
-		FinnhubSecret: finnhubSecret,
-		TiingoKey:      tiingoKey,
-		LookbackDays:   1000,
-	}
+	// config := ep.BacktestConfig{
+	// 	TargetDate:     backtestDate,
+	// 	AlpacaKey:    alpacaKey,
+	// 	AlpacaSecret: alpacaSecret,
+	// 	FinnhubKey:    finnhubKey,
+	// 	FinnhubSecret: finnhubSecret,
+	// 	TiingoKey:      tiingoKey,
+	// 	LookbackDays:   1000,
+	// }
 	start := time.Now()
-	err = ep.FilterStocksEpisodicPivotBacktest(config)
+	// err = ep.FilterStocksEpisodicPivotBacktest(config)
 	// Multiple date backtesting
 	// dates := []string{"2023-01-15", "2023-02-15", "2023-03-15"}
 	// err = ep.RunMultipleDateBacktests(marketStackKey, dates)
 	// url := fmt.Sprintf("https://www.alphavantage.co/query?function=REALTIME_BULK_QUOTES&symbol=%sentitlement=realtime&apikey=%s",
 	// 	"AAPL,NVDA,IBM", apiKey)
+
+	ep.RunPremarketSimulation(ep.SimulationConfig{
+		AlpacaKey:      alpacaKey,
+		AlpacaSecret:   alpacaSecret,
+		FinnhubKey:     finnhubKey,
+		Date:           backtestDate,
+		SimulateAtTime: "09:10",  // must be between 04:00–09:30
+		LookbackDays:   1000,
+	})
 
 	// resp, err := http.Get(url)
 	// if err != nil {

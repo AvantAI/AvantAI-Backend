@@ -8,10 +8,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/PuerkitoBio/goquery"
 )
 
 // BacktestConfig holds the configuration for backtesting
@@ -83,6 +86,10 @@ type StockStats struct {
 	IsTooExtended         bool    `json:"is_too_extended"`
 	IsNearEMA1020         bool    `json:"is_near_ema_10_20"`
 	BreaksResistance      bool    `json:"breaks_resistance"`
+	// FIX: VolumeDriedUp was in main.go's StockStats but missing here — now added and calculated
+	VolumeDriedUp bool `json:"volume_dried_up"`
+	// FIX: PreviousEarningsReaction was never populated — now fetched from Finnhub in Stage 2
+	PreviousEarningsReaction string `json:"previous_earnings_reaction"`
 }
 
 // TechnicalIndicators holds technical analysis indicators
@@ -98,6 +105,8 @@ type TechnicalIndicators struct {
 	IsTooExtended     bool
 	IsNearEMA1020     bool
 	BreaksResistance  bool
+	// FIX: Added VolumeDriedUp to TechnicalIndicators so Stage 3 can pass it through
+	VolumeDriedUp bool
 }
 
 // PremarketAnalysis holds premarket volume analysis
@@ -136,30 +145,80 @@ type FinnhubQuote struct {
 	Timestamp     int64   `json:"t"`
 }
 
+// FinnhubEarnings represents a single quarterly earnings record from Finnhub
+type FinnhubEarnings struct {
+	Actual   *float64 `json:"actual"`
+	Estimate *float64 `json:"estimate"`
+	Period   string   `json:"period"` // e.g. "2023-09-30"
+	Quarter  int      `json:"quarter"`
+	Surprise *float64 `json:"surprise"`
+	// SurprisePct is the percentage beat/miss vs estimate
+	SurprisePct *float64 `json:"surprisePercent"`
+	Symbol      string   `json:"symbol"`
+	Year        int      `json:"year"`
+}
+
+// FinnhubEarningsResponse wraps the Finnhub earnings endpoint array
+type FinnhubEarningsResponse struct {
+	EarningsCalendar []FinnhubEarnings `json:"earningsCalendar"`
+}
+
+// FinnhubNews represents a single news article from Finnhub
+type FinnhubNews struct {
+	Category string `json:"category"`
+	Datetime int64  `json:"datetime"`
+	Headline string `json:"headline"`
+	ID       int64  `json:"id"`
+	Image    string `json:"image"`
+	Related  string `json:"related"`
+	Source   string `json:"source"`
+	Summary  string `json:"summary"`
+	URL      string `json:"url"`
+}
+
+// EarningsReactionSummary holds the derived sentiment across recent quarters
+type EarningsReactionSummary struct {
+	// Quarters holds the last N quarterly results, newest first
+	Quarters []QuarterlyResult `json:"quarters"`
+	// OverallSentiment is "Positive", "Mixed", or "Negative"
+	OverallSentiment string `json:"overall_sentiment"`
+	// PositiveCount is how many of the last quarters had a beat
+	PositiveCount int `json:"positive_count"`
+	// TotalQuarters is how many quarters were evaluated
+	TotalQuarters int `json:"total_quarters"`
+}
+
+// QuarterlyResult summarises one quarter
+type QuarterlyResult struct {
+	Period      string  `json:"period"`
+	Actual      float64 `json:"actual"`
+	Estimate    float64 `json:"estimate"`
+	SurprisePct float64 `json:"surprise_pct"`
+	Beat        bool    `json:"beat"`
+}
+
 // Constants for filtering criteria
 const (
-	MIN_GAP_UP_PERCENT      = 8.0
-	MIN_DOLLAR_VOLUME       = 10000000 // $10M
-	MIN_MARKET_CAP          = 50000000 // $50M
-	MIN_PREMARKET_VOL_RATIO = 2.0
-	MAX_EXTENSION_ADR       = 4.0
-	TOO_EXTENDED_ADR        = 8.0
-	NEAR_EMA_ADR_THRESHOLD  = 1.5
-	MIN_ADR_PERCENT         = 5.0
-	MAX_CONCURRENT          = 200
-	API_CALLS_PER_SECOND    = 200
-)
+	MIN_GAP_UP_PERCENT = 8.0
+	MIN_DOLLAR_VOLUME  = 10000000 // $10M
+	MIN_MARKET_CAP     = 50000000 // $50M
 
-// AlpacaBar represents a single bar from Alpaca API
-// type AlpacaBar struct {
-// 	Timestamp string  `json:"t"`
-// 	Open      float64 `json:"o"`
-// 	High      float64 `json:"h"`
-// 	Low       float64 `json:"l"`
-// 	Close     float64 `json:"c"`
-// 	Volume    float64 `json:"v"`
-// 	VWAP      float64 `json:"vw"`
-// }
+	// FIX: was 2.0 — strategy requires 3–5x average daily premarket volume
+	MIN_PREMARKET_VOL_RATIO = 3.0
+
+	// FIX: Added minimum premarket vol as % of avg daily volume (strategy: 10–20%)
+	MIN_PREMARKET_VOL_PCT_OF_DAILY = 10.0
+
+	MAX_EXTENSION_ADR      = 4.0
+	TOO_EXTENDED_ADR       = 8.0
+	NEAR_EMA_ADR_THRESHOLD = 2.0 // FIX: strategy says "within 2 ADRs" — was 1.5
+	MIN_ADR_PERCENT        = 5.0
+	MAX_CONCURRENT         = 166
+	API_CALLS_PER_SECOND   = 166
+
+	// Number of prior quarters to evaluate for earnings reaction history
+	EARNINGS_LOOKBACK_QUARTERS = 4
+)
 
 // AlpacaBarsResponse represents the response from Alpaca bars endpoint
 type AlpacaBarsResponse struct {
@@ -212,120 +271,112 @@ type AlpacaBarData struct {
 	Volume    float64
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
 // Main backtesting function
-func FilterStocksEpisodicPivotBacktest(config BacktestConfig) error {
-	fmt.Println("================================================================================")
-	fmt.Printf("=== EPISODIC PIVOT BACKTESTING for %s ===\n", config.TargetDate)
-	fmt.Println("================================================================================")
+// ─────────────────────────────────────────────────────────────────────────────
 
-	// Validate target date
-	fmt.Println("\n[INIT] Validating target date...")
+func FilterStocksEpisodicPivotBacktest(config BacktestConfig) error {
+	// ── Initialise logger ──────────────────────────────────────────────────
+	logDir := "data/backtests/logs"
+	logger, err := InitLogger(logDir, fmt.Sprintf("backtest_%s", strings.ReplaceAll(config.TargetDate, "-", "")))
+	if err != nil {
+		fmt.Printf("⚠️  Could not create log file: %v\n", err)
+	} else {
+		defer logger.Close()
+	}
+
+	LogSection(fmt.Sprintf("EPISODIC PIVOT BACKTESTING — %s", config.TargetDate))
+
+	LogInfo("INIT", "Validating target date: %s", config.TargetDate)
 	targetDate, err := time.Parse("2006-01-02", config.TargetDate)
 	if err != nil {
+		LogError("INIT", "", "Invalid target date format: %v", err)
 		return fmt.Errorf("invalid target date format. Use YYYY-MM-DD: %v", err)
 	}
-	fmt.Printf("✅ [INIT] Target date parsed: %s\n", targetDate.Format("2006-01-02"))
+	LogInfo("INIT", "Target date parsed successfully: %s", targetDate.Format("2006-01-02"))
 
-	// Ensure we're not trying to backtest future dates
 	if targetDate.After(time.Now()) {
+		LogError("INIT", "", "Target date %s is in the future", config.TargetDate)
 		return fmt.Errorf("target date %s is in the future", config.TargetDate)
 	}
-	fmt.Printf("✅ [INIT] Target date is in the past (valid for backtesting)\n")
+	LogInfo("INIT", "Target date is in the past — valid for backtesting")
 
-	// Set default lookback if not specified
 	if config.LookbackDays == 0 {
 		config.LookbackDays = 300
-		fmt.Printf("ℹ️  [INIT] Using default lookback period: %d days\n", config.LookbackDays)
+		LogInfo("INIT", "Using default lookback period: %d days", config.LookbackDays)
 	}
 
-	fmt.Printf("\n📋 [CONFIG] Configuration Summary:\n")
-	fmt.Printf("   Target Date: %s\n", config.TargetDate)
-	fmt.Printf("   Lookback Period: %d days\n", config.LookbackDays)
-	fmt.Printf("   Alpaca Key: %s...\n", config.AlpacaKey[:min(10, len(config.AlpacaKey))])
-	fmt.Printf("   Finnhub Key: %s...\n", config.FinnhubKey[:min(10, len(config.FinnhubKey))])
+	LogSubSection("Configuration Summary")
+	LogInfo("INIT", "Target Date    : %s", config.TargetDate)
+	LogInfo("INIT", "Lookback Period: %d days", config.LookbackDays)
+	LogInfo("INIT", "Alpaca Key     : %s...", config.AlpacaKey[:min(10, len(config.AlpacaKey))])
+	LogInfo("INIT", "Finnhub Key    : %s...", config.FinnhubKey[:min(10, len(config.FinnhubKey))])
 
-	// Stage 1: Filter by gap up on target date
-	fmt.Println("\n================================================================================")
-	fmt.Println("🔍 STAGE 1: Gap Up Filter")
-	fmt.Println("================================================================================")
-	startTime := time.Now()
+	// ── Stage 1: Gap Up ────────────────────────────────────────────────────
+	LogSection(fmt.Sprintf("STAGE 1 — Gap Up Filter (min %.0f%%)", MIN_GAP_UP_PERCENT))
+	t0 := time.Now()
 	gapUpStocks, err := backtestStage1GapUp(config)
 	if err != nil {
+		LogError("S1", "", "Stage 1 failed: %v", err)
 		return fmt.Errorf("error in Stage 1 backtest: %v", err)
 	}
-	fmt.Printf("\n⏱️  [STAGE 1] Completed in %v\n", time.Since(startTime))
-	fmt.Printf("✅ [STAGE 1] Found %d stocks with %.0f%% gap up on %s\n",
-		len(gapUpStocks), MIN_GAP_UP_PERCENT, config.TargetDate)
+	LogStageSummary("S1", len(gapUpStocks), len(gapUpStocks), time.Since(t0))
 
 	if len(gapUpStocks) == 0 {
-		fmt.Println("⚠️  [STAGE 1] No stocks found with gap up criteria for target date")
+		LogWarn("S1", "", "No stocks found with gap up criteria for %s", config.TargetDate)
 		return nil
 	}
 
-	// Stage 2: Market cap and liquidity filter (using target date data)
-	fmt.Println("\n================================================================================")
-	fmt.Println("💰 STAGE 2: Liquidity Filter")
-	fmt.Println("================================================================================")
-	startTime = time.Now()
+	// ── Stage 2: Liquidity ─────────────────────────────────────────────────
+	LogSection(fmt.Sprintf("STAGE 2 — Liquidity Filter (min market cap $%dM)", MIN_MARKET_CAP/1_000_000))
+	t0 = time.Now()
 	liquidStocks, err := backtestStage2Liquidity(config, gapUpStocks)
 	if err != nil {
+		LogError("S2", "", "Stage 2 failed: %v", err)
 		return fmt.Errorf("error in Stage 2 backtest: %v", err)
 	}
-	fmt.Printf("\n⏱️  [STAGE 2] Completed in %v\n", time.Since(startTime))
-	fmt.Printf("✅ [STAGE 2] Found %d stocks meeting liquidity requirements\n", len(liquidStocks))
+	LogStageSummary("S2", len(liquidStocks), len(gapUpStocks), time.Since(t0))
 
-	// Stage 3: Technical analysis using historical data up to target date
-	fmt.Println("\n================================================================================")
-	fmt.Println("📊 STAGE 3: Technical Analysis")
-	fmt.Println("================================================================================")
-	startTime = time.Now()
+	// ── Stage 3: Technical ─────────────────────────────────────────────────
+	LogSection("STAGE 3 — Technical Analysis")
+	t0 = time.Now()
 	technicalStocks, err := backtestStage3Technical(config, liquidStocks)
 	if err != nil {
+		LogError("S3", "", "Stage 3 failed: %v", err)
 		return fmt.Errorf("error in Stage 3 backtest: %v", err)
 	}
-	fmt.Printf("\n⏱️  [STAGE 3] Completed in %v\n", time.Since(startTime))
-	fmt.Printf("✅ [STAGE 3] Found %d stocks meeting technical criteria\n", len(technicalStocks))
+	LogStageSummary("S3", len(technicalStocks), len(liquidStocks), time.Since(t0))
 
-	// Stage 4: Final episodic pivot filter
-	fmt.Println("\n================================================================================")
-	fmt.Println("🎯 STAGE 4: Final Episodic Pivot Criteria")
-	fmt.Println("================================================================================")
-	startTime = time.Now()
+	// ── Stage 4: Final Filter ──────────────────────────────────────────────
+	LogSection("STAGE 4 — Final Episodic Pivot Criteria")
+	t0 = time.Now()
 	finalStocks := backtestStage4Final(technicalStocks)
-	fmt.Printf("\n⏱️  [STAGE 4] Completed in %v\n", time.Since(startTime))
+	LogStageSummary("S4", len(finalStocks), len(technicalStocks), time.Since(t0))
 
-	// Output results
-	fmt.Println("\n================================================================================")
-	fmt.Println("💾 Saving Results")
-	fmt.Println("================================================================================")
-	err = outputBacktestResults(config, finalStocks)
-	if err != nil {
+	// ── Output ─────────────────────────────────────────────────────────────
+	LogSection("Saving Results")
+	if err := outputBacktestResults(config, finalStocks); err != nil {
+		LogError("OUT", "", "Failed to write results: %v", err)
 		return fmt.Errorf("error writing backtest results: %v", err)
 	}
 
-	fmt.Println("\n================================================================================")
-	fmt.Printf("🎉 BACKTEST COMPLETE!\n")
-	fmt.Printf("📊 Found %d qualifying stocks for %s\n", len(finalStocks), config.TargetDate)
-	fmt.Printf("📁 Results written to backtest_%s_results.json\n",
-		strings.ReplaceAll(config.TargetDate, "-", ""))
-	fmt.Println("================================================================================")
-
+	LogSection(fmt.Sprintf("BACKTEST COMPLETE — %d qualifying stocks for %s", len(finalStocks), config.TargetDate))
 	return nil
 }
 
-// Stage 1: Backtest gap up filter
+// ─────────────────────────────────────────────────────────────────────────────
+// Stage 1: Gap Up Filter
+// ─────────────────────────────────────────────────────────────────────────────
+
 func backtestStage1GapUp(config BacktestConfig) ([]StockData, error) {
-	fmt.Printf("\n[STAGE 1] Fetching tradable symbols from Alpaca...\n")
+	LogInfo("S1", "Fetching tradable symbols from Alpaca...")
 	symbols, err := getAlpacaTradableSymbols(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get stock symbols: %v", err)
 	}
-	fmt.Printf("✅ [STAGE 1] Retrieved %d tradable symbols\n", len(symbols))
-
-	fmt.Printf("\n[STAGE 1] Starting gap up analysis for %d symbols...\n", len(symbols))
-	fmt.Printf("[STAGE 1] Criteria: Gap Up >= %.0f%%\n", MIN_GAP_UP_PERCENT)
-	fmt.Printf("[STAGE 1] Concurrency: %d workers\n", MAX_CONCURRENT)
-	fmt.Printf("[STAGE 1] Rate limit: %d calls/second\n", API_CALLS_PER_SECOND)
+	LogInfo("S1", "Retrieved %d tradable symbols", len(symbols))
+	LogInfo("S1", "Criteria: Gap Up >= %.0f%%  |  Concurrency: %d  |  Rate: %d/s",
+		MIN_GAP_UP_PERCENT, MAX_CONCURRENT, API_CALLS_PER_SECOND)
 
 	var gapUpStocks []StockData
 	var mu sync.Mutex
@@ -352,40 +403,35 @@ func backtestStage1GapUp(config BacktestConfig) ([]StockData, error) {
 			mu.Unlock()
 
 			if currentCount%25 == 0 {
-				fmt.Printf("   [STAGE 1] Progress: %d/%d symbols processed (%d qualified so far)...\n",
-					currentCount, len(symbols), currentQualified)
+				LogProgress("S1", currentCount, len(symbols),
+					fmt.Sprintf("%d qualified so far", currentQualified))
 			}
 
-			// Get historical data around target date using Alpaca
-			fmt.Printf("      [DEBUG] Fetching historical data for %s...\n", sym)
+			LogDebug("S1", sym, "Fetching historical data around %s", config.TargetDate)
 			currentData, previousData, err := getHistoricalDataForDateAlpaca(
 				config.AlpacaKey, config.AlpacaSecret, sym, config.TargetDate)
 			if err != nil {
-				fmt.Printf("      ⚠️  [DEBUG] %s: Failed to get historical data: %v\n", sym, err)
+				LogWarn("S1", sym, "Failed to get historical data: %v", err)
 				return
 			}
 
 			if currentData == nil || previousData == nil {
-				fmt.Printf("      ⚠️  [DEBUG] %s: Missing data (current=%v, previous=%v)\n",
-					sym, currentData != nil, previousData != nil)
+				LogWarn("S1", sym, "Missing data (current=%v previous=%v)",
+					currentData != nil, previousData != nil)
 				return
 			}
 
 			if previousData.Close <= 0 {
-				fmt.Printf("      ⚠️  [DEBUG] %s: Invalid previous close: %.2f\n", sym, previousData.Close)
+				LogWarn("S1", sym, "Invalid previous close: %.2f", previousData.Close)
 				return
 			}
 
 			gapUp := ((currentData.Open - previousData.Close) / previousData.Close) * 100
 
-			fmt.Printf("      [DEBUG] %s Analysis:\n", sym)
-			fmt.Printf("         Current Date: %s\n", currentData.Timestamp[:10])
-			fmt.Printf("         Previous Date: %s\n", previousData.Timestamp[:10])
-			fmt.Printf("         Current Open: $%.2f\n", currentData.Open)
-			fmt.Printf("         Previous Close: $%.2f\n", previousData.Close)
-			fmt.Printf("         Gap Up: %.2f%%\n", gapUp)
+			LogDebug("S1", sym, "CurrentDate=%s PrevDate=%s Open=%.2f PrevClose=%.2f GapUp=%.2f%%",
+				currentData.Timestamp[:10], previousData.Timestamp[:10],
+				currentData.Open, previousData.Close, gapUp)
 
-			// Filter for 8%+ gap up on target date
 			if gapUp >= MIN_GAP_UP_PERCENT {
 				stockData := StockData{
 					Symbol:                     sym,
@@ -407,83 +453,76 @@ func backtestStage1GapUp(config BacktestConfig) ([]StockData, error) {
 
 				mu.Lock()
 				qualifiedCount++
-				fmt.Printf("      ✅ [QUALIFIED] %s - Gap: %.2f%% (Total qualified: %d)\n",
-					sym, gapUp, qualifiedCount)
+				LogQualify("S1", sym, fmt.Sprintf("Gap=%.2f%%  Open=$%.2f  PrevClose=$%.2f",
+					gapUp, currentData.Open, previousData.Close))
 				gapUpStocks = append(gapUpStocks, stockData)
 				mu.Unlock()
 			} else {
-				fmt.Printf("      ❌ [REJECTED] %s - Gap: %.2f%% < %.0f%%\n",
-					sym, gapUp, MIN_GAP_UP_PERCENT)
+				LogReject("S1", sym, fmt.Sprintf("Gap=%.2f%% < %.0f%% minimum", gapUp, MIN_GAP_UP_PERCENT))
 			}
 		}(symbol)
 	}
 
 	wg.Wait()
-	fmt.Printf("\n[STAGE 1] Processing complete: %d/%d symbols qualified\n",
-		len(gapUpStocks), len(symbols))
+	LogInfo("S1", "Processing complete: %d / %d symbols qualified", len(gapUpStocks), len(symbols))
 	return gapUpStocks, nil
 }
 
-// Stage 2: Backtest liquidity filter
+// ─────────────────────────────────────────────────────────────────────────────
+// Stage 2: Liquidity Filter
+// ─────────────────────────────────────────────────────────────────────────────
+
 func backtestStage2Liquidity(config BacktestConfig, stocks []StockData) ([]BacktestResult, error) {
 	var liquidStocks []BacktestResult
-	rateLimiter := time.Tick(time.Second / API_CALLS_PER_SECOND)
+	rateLimiter := time.Tick(time.Second / 30) // Slower rate for Finnhub company profile calls
 
-	fmt.Printf("\n[STAGE 2] Analyzing liquidity for %d stocks...\n", len(stocks))
-	fmt.Printf("[STAGE 2] Criteria: Market Cap >= $%.0f\n", float64(MIN_MARKET_CAP))
+	LogInfo("S2", "Analyzing liquidity for %d stocks", len(stocks))
 
 	for i, stock := range stocks {
-		fmt.Printf("\n🏢 [STAGE 2] [%d/%d] Processing %s...\n", i+1, len(stocks), stock.Symbol)
+		LogDebug("S2", stock.Symbol, "[%d/%d] Fetching Finnhub company profile", i+1, len(stocks))
 		<-rateLimiter
 
-		// Get company info and market cap from Finnhub
-		fmt.Printf("   [DEBUG] Fetching Finnhub profile for %s...\n", stock.Symbol)
 		companyProfile, err := getCompanyProfileFinnhub(config.FinnhubKey, stock.Symbol)
 		if err != nil {
-			fmt.Printf("   ⚠️  [DEBUG] Finnhub profile error for %s: %v\n", stock.Symbol, err)
-		} else {
-			fmt.Printf("   ✅ [DEBUG] Finnhub profile retrieved for %s\n", stock.Symbol)
+			LogWarn("S2", stock.Symbol, "Finnhub profile error: %v", err)
 		}
 
-		// Get real-time market cap from Finnhub
 		var marketCap float64
 		var name, sector, industry string = stock.Name, "Unknown", "Unknown"
 
 		if companyProfile != nil {
-			// Finnhub returns market cap in millions, so multiply by 1 million
-			marketCap = companyProfile.MarketCap * 1000000
-			fmt.Printf("   [DEBUG] %s Market Cap from Finnhub: $%.0f M (raw: %.2f)\n",
-				stock.Symbol, marketCap/1000000, companyProfile.MarketCap)
-
+			marketCap = companyProfile.MarketCap * 1_000_000
 			if companyProfile.Name != "" {
 				name = companyProfile.Name
-				fmt.Printf("   [DEBUG] %s Company Name: %s\n", stock.Symbol, name)
 			}
 			if companyProfile.FinnhubIndustry != "" {
 				industry = companyProfile.FinnhubIndustry
 				sector = parseSectorFromIndustry(companyProfile.FinnhubIndustry)
-				fmt.Printf("   [DEBUG] %s Industry: %s, Sector: %s\n", stock.Symbol, industry, sector)
 			}
+			LogDebug("S2", stock.Symbol, "Finnhub: Name=%s  MarketCap=$%.0fM  Sector=%s  Industry=%s",
+				name, marketCap/1_000_000, sector, industry)
 		}
 
-		// Fallback: estimate market cap if Finnhub doesn't have it
 		if marketCap == 0 {
-			fmt.Printf("   ⚠️  [DEBUG] No market cap from Finnhub for %s, estimating...\n", stock.Symbol)
-			companyInfo := &CompanyInfo{
-				Name:     name,
-				Sector:   sector,
-				Industry: industry,
-			}
+			LogWarn("S2", stock.Symbol, "No market cap from Finnhub — estimating from volume/price")
+			companyInfo := &CompanyInfo{Name: name, Sector: sector, Industry: industry}
 			marketCap = estimateMarketCapImproved(stock, companyInfo)
-			fmt.Printf("   [DEBUG] %s Estimated Market Cap: $%.0f\n", stock.Symbol, marketCap)
+			LogDebug("S2", stock.Symbol, "Estimated market cap: $%.0fM", marketCap/1_000_000)
 		}
 
-		// Apply minimum liquidity criteria
-		marketCapM := marketCap / 1000000
-		minCapM := float64(MIN_MARKET_CAP) / 1000000
-		passed := marketCap >= MIN_MARKET_CAP
+		marketCapM := marketCap / 1_000_000
+		minCapM := float64(MIN_MARKET_CAP) / 1_000_000
 
-		if passed {
+		LogMetrics("S2", stock.Symbol, map[string]interface{}{
+			"market_cap_m":   fmt.Sprintf("$%.2fM", marketCapM),
+			"min_required_m": fmt.Sprintf("$%.2fM", minCapM),
+			"name":           name,
+			"sector":         sector,
+			"industry":       industry,
+			"gap_up_pct":     fmt.Sprintf("%.2f%%", stock.ExtendedHoursChangePercent),
+		})
+
+		if marketCap >= MIN_MARKET_CAP {
 			backtestResult := BacktestResult{
 				FilteredStock: FilteredStock{
 					Symbol: stock.Symbol,
@@ -501,50 +540,46 @@ func backtestStage2Liquidity(config BacktestConfig, stocks []StockData) ([]Backt
 				DataQuality:     "Good",
 				ValidationNotes: []string{},
 			}
-
 			liquidStocks = append(liquidStocks, backtestResult)
-			fmt.Printf("   ✅ [QUALIFIED] %s - Market Cap: $%.0fM >= $%.0fM\n",
-				stock.Symbol, marketCapM, minCapM)
+			LogQualify("S2", stock.Symbol, fmt.Sprintf("MarketCap=$%.0fM >= $%.0fM", marketCapM, minCapM))
 		} else {
-			fmt.Printf("   ❌ [REJECTED] %s - Market Cap: $%.0fM < $%.0fM\n",
-				stock.Symbol, marketCapM, minCapM)
+			LogReject("S2", stock.Symbol, fmt.Sprintf("MarketCap=$%.0fM < $%.0fM", marketCapM, minCapM))
 		}
 	}
 
-	fmt.Printf("\n[STAGE 2] Liquidity filter complete: %d/%d stocks qualified\n",
-		len(liquidStocks), len(stocks))
+	LogInfo("S2", "Liquidity filter complete: %d / %d stocks qualified", len(liquidStocks), len(stocks))
 	return liquidStocks, nil
 }
 
-// Stage 3: Backtest technical analysis
+// ─────────────────────────────────────────────────────────────────────────────
+// Stage 3: Technical Analysis
+// ─────────────────────────────────────────────────────────────────────────────
+
 func backtestStage3Technical(config BacktestConfig, stocks []BacktestResult) ([]BacktestResult, error) {
 	var technicalStocks []BacktestResult
 	rateLimiter := time.Tick(time.Second / API_CALLS_PER_SECOND)
 
-	fmt.Printf("\n[STAGE 3] Analyzing technical indicators for %d stocks...\n", len(stocks))
+	LogInfo("S3", "Analyzing technical indicators for %d stocks", len(stocks))
 
 	for i, stock := range stocks {
-		fmt.Printf("\n📈 [STAGE 3] [%d/%d] Analyzing %s...\n", i+1, len(stocks), stock.Symbol)
+		LogDebug("S3", stock.Symbol, "[%d/%d] Fetching %d days of historical data",
+			i+1, len(stocks), config.LookbackDays)
 		<-rateLimiter
 
-		// Get historical data up to target date using Alpaca
-		fmt.Printf("   [DEBUG] Fetching %d days of historical data for %s...\n",
-			config.LookbackDays, stock.Symbol)
 		historicalData, err := getHistoricalDataUpToDateAlpaca(
 			config.AlpacaKey, config.AlpacaSecret, stock.Symbol, config.TargetDate, config.LookbackDays)
 		if err != nil {
-			fmt.Printf("   ⚠️  [DEBUG] Historical data error for %s: %v\n", stock.Symbol, err)
+			LogWarn("S3", stock.Symbol, "Historical data error: %v", err)
 			stock.ValidationNotes = append(stock.ValidationNotes,
 				fmt.Sprintf("Historical data error: %v", err))
 			continue
 		}
 
-		fmt.Printf("   [DEBUG] %s: Retrieved %d days of historical data\n",
-			stock.Symbol, len(historicalData))
+		LogDebug("S3", stock.Symbol, "Retrieved %d days of historical data", len(historicalData))
 
 		if len(historicalData) < 200 {
-			fmt.Printf("   ⚠️  [REJECTED] %s: Insufficient data - only %d days (need 200+)\n",
-				stock.Symbol, len(historicalData))
+			LogReject("S3", stock.Symbol,
+				fmt.Sprintf("Insufficient data — only %d days (need 200+)", len(historicalData)))
 			stock.ValidationNotes = append(stock.ValidationNotes,
 				fmt.Sprintf("Insufficient data: %d days", len(historicalData)))
 			stock.DataQuality = "Poor"
@@ -553,35 +588,27 @@ func backtestStage3Technical(config BacktestConfig, stocks []BacktestResult) ([]
 
 		stock.HistoricalDays = len(historicalData)
 
-		// Calculate technical indicators using data up to target date
-		fmt.Printf("   [DEBUG] Calculating technical indicators for %s...\n", stock.Symbol)
 		technicalIndicators, err := calculateTechnicalIndicatorsBacktest(
 			historicalData, stock.Symbol, config.TargetDate)
 		if err != nil {
-			fmt.Printf("   ⚠️  [DEBUG] Technical indicators error for %s: %v\n",
-				stock.Symbol, err)
+			LogWarn("S3", stock.Symbol, "Technical indicators error: %v", err)
 			stock.ValidationNotes = append(stock.ValidationNotes,
 				fmt.Sprintf("Technical analysis error: %v", err))
 			continue
 		}
 
-		// Calculate dollar volume and ADR using 21 days before target date
-		fmt.Printf("   [DEBUG] Calculating dollar volume and ADR for %s...\n", stock.Symbol)
 		dolVol, adr, err := calculateHistoricalMetricsBacktest(
 			historicalData, stock.Symbol, config.TargetDate)
 		if err != nil {
-			fmt.Printf("   ⚠️  [DEBUG] Metrics calculation error for %s: %v\n",
-				stock.Symbol, err)
+			LogWarn("S3", stock.Symbol, "Metrics calculation error: %v", err)
 			stock.ValidationNotes = append(stock.ValidationNotes,
 				fmt.Sprintf("Metrics calculation error: %v", err))
 			continue
 		}
 
-		// Simulate premarket analysis for backtest
-		fmt.Printf("   [DEBUG] Simulating premarket analysis for %s...\n", stock.Symbol)
-		premarketAnalysis := simulatePremarketAnalysisBacktest(historicalData, dolVol)
+		premarketAnalysis := simulatePremarketAnalysisBacktest(historicalData, config.TargetDate)
 
-		// Update stock with all metrics
+		// Store all metrics
 		stock.StockInfo.DolVol = dolVol
 		stock.StockInfo.ADR = adr
 		stock.StockInfo.PremarketVolume = premarketAnalysis.CurrentPremarketVol
@@ -599,117 +626,159 @@ func backtestStage3Technical(config BacktestConfig, stocks []BacktestResult) ([]
 		stock.StockInfo.IsTooExtended = technicalIndicators.IsTooExtended
 		stock.StockInfo.IsNearEMA1020 = technicalIndicators.IsNearEMA1020
 		stock.StockInfo.BreaksResistance = technicalIndicators.BreaksResistance
+		// FIX: Now populated from technical indicators
+		stock.StockInfo.VolumeDriedUp = technicalIndicators.VolumeDriedUp
 
-		// Enhanced logging
 		currentPrice := getCurrentPriceBacktest(historicalData)
-		fmt.Printf("   📊 [METRICS] %s Analysis for %s:\n", stock.Symbol, config.TargetDate)
-		fmt.Printf("      💰 Dollar Volume: $%.0f (Min: $%.0f) %s\n",
-			dolVol, float64(MIN_DOLLAR_VOLUME), checkmark(dolVol >= MIN_DOLLAR_VOLUME))
-		fmt.Printf("      📏 ADR: %.2f%% (Min: %.2f%%) %s\n",
-			adr, MIN_ADR_PERCENT, checkmark(adr >= MIN_ADR_PERCENT))
-		fmt.Printf("      📈 Current Price: $%.2f\n", currentPrice)
-		fmt.Printf("      📊 SMA 200: $%.2f\n", technicalIndicators.SMA200)
-		fmt.Printf("      📊 EMA 200: $%.2f\n", technicalIndicators.EMA200)
-		fmt.Printf("      📊 EMA 50: $%.2f\n", technicalIndicators.EMA50)
-		fmt.Printf("      📊 EMA 20: $%.2f\n", technicalIndicators.EMA20)
-		fmt.Printf("      📊 EMA 10: $%.2f\n", technicalIndicators.EMA10)
-		fmt.Printf("      ✓  Above 200 EMA: %s\n", checkmark(technicalIndicators.IsAbove200EMA))
-		fmt.Printf("      📏 Distance from 50 EMA: %.2f ADRs\n", technicalIndicators.DistanceFrom50EMA)
-		fmt.Printf("      ⚠️  Extended: %s\n", checkmark(technicalIndicators.IsExtended))
-		fmt.Printf("      ⚠️  Too Extended: %s\n", checkmark(technicalIndicators.IsTooExtended))
-		fmt.Printf("      📊 Historical Days: %d\n", len(historicalData))
+
+		LogMetrics("S3", stock.Symbol, map[string]interface{}{
+			"above_200_ema":        technicalIndicators.IsAbove200EMA,
+			"adr_pct":              fmt.Sprintf("%.2f%%", adr),
+			"breaks_resistance":    technicalIndicators.BreaksResistance,
+			"current_price":        fmt.Sprintf("$%.2f", currentPrice),
+			"dist_from_50_ema_adr": fmt.Sprintf("%.2f", technicalIndicators.DistanceFrom50EMA),
+			"dol_vol_m":            fmt.Sprintf("$%.2fM", dolVol/1000000.0),
+			"ema_10":               fmt.Sprintf("$%.2f", technicalIndicators.EMA10),
+			"ema_20":               fmt.Sprintf("$%.2f", technicalIndicators.EMA20),
+			"ema_200":              fmt.Sprintf("$%.2f", technicalIndicators.EMA200),
+			"ema_50":               fmt.Sprintf("$%.2f", technicalIndicators.EMA50),
+			"historical_days":      len(historicalData),
+			"is_extended":          technicalIndicators.IsExtended,
+			"is_near_ema_10_20":    technicalIndicators.IsNearEMA1020,
+			"is_too_extended":      technicalIndicators.IsTooExtended,
+			"pm_vol_ratio":         fmt.Sprintf("%.2fx", premarketAnalysis.VolumeRatio),
+			"sma_200":              fmt.Sprintf("$%.2f", technicalIndicators.SMA200),
+			"volume_dried_up":      technicalIndicators.VolumeDriedUp,
+		})
 
 		technicalStocks = append(technicalStocks, stock)
-		fmt.Printf("   ✅ [STAGE 3] %s passed technical analysis\n", stock.Symbol)
+		LogQualify("S3", stock.Symbol, "Passed technical analysis")
 	}
 
-	fmt.Printf("\n[STAGE 3] Technical analysis complete: %d stocks qualified\n",
-		len(technicalStocks))
+	LogInfo("S3", "Technical analysis complete: %d stocks qualified", len(technicalStocks))
 	return technicalStocks, nil
 }
 
-// Stage 4: Final backtest filter
+// ─────────────────────────────────────────────────────────────────────────────
+// Stage 4: Final Filter
+// FIX: Now enforces IsNearEMA1020, PremarketVolAsPercent, and VolumeDriedUp
+//      which were previously calculated but never used as filters.
+// ─────────────────────────────────────────────────────────────────────────────
+
 func backtestStage4Final(stocks []BacktestResult) []BacktestResult {
 	var finalStocks []BacktestResult
 
-	fmt.Printf("\n[STAGE 4] Applying final episodic pivot criteria to %d stocks...\n", len(stocks))
+	LogInfo("S4", "Applying final episodic pivot criteria to %d stocks", len(stocks))
 
 	for i, stock := range stocks {
-		fmt.Printf("\n🔍 [STAGE 4] [%d/%d] Final analysis for %s:\n", i+1, len(stocks), stock.Symbol)
+		LogDebug("S4", stock.Symbol, "[%d/%d] Final analysis", i+1, len(stocks))
 
-		criteria := []struct {
-			name    string
-			passed  bool
-			details string
-		}{
-			{"Dollar Volume", stock.StockInfo.DolVol >= MIN_DOLLAR_VOLUME,
-				fmt.Sprintf("$%.0f >= $%v", stock.StockInfo.DolVol, MIN_DOLLAR_VOLUME)},
-			{"Premarket Volume Ratio", stock.StockInfo.PremarketVolumeRatio >= MIN_PREMARKET_VOL_RATIO,
-				fmt.Sprintf("%.1fx >= %.1fx (simulated)", stock.StockInfo.PremarketVolumeRatio, MIN_PREMARKET_VOL_RATIO)},
-			{"Above 200 EMA", stock.StockInfo.IsAbove200EMA,
-				fmt.Sprintf("Price above 200 EMA")},
-			{"Not Extended", !stock.StockInfo.IsExtended,
-				fmt.Sprintf("Distance from 50 EMA: %.2f ADRs (Max: %.1f)",
-					stock.StockInfo.DistanceFrom50EMA, MAX_EXTENSION_ADR)},
+		type criterion struct {
+			name   string
+			passed bool
+			detail string
+		}
+
+		criteria := []criterion{
+			{
+				"Dollar Volume",
+				stock.StockInfo.DolVol >= MIN_DOLLAR_VOLUME,
+				fmt.Sprintf("$%.0fM >= $%.0fM", stock.StockInfo.DolVol/1000000.0, MIN_DOLLAR_VOLUME/1000000.0),
+			},
+			{
+				// FIX: threshold raised from 2.0x to MIN_PREMARKET_VOL_RATIO (5.0x)
+				"Premarket Vol Ratio",
+				stock.StockInfo.PremarketVolumeRatio >= MIN_PREMARKET_VOL_RATIO,
+				fmt.Sprintf("%.2fx >= %.1fx (gap-day vs avg daily volume proxy)", stock.StockInfo.PremarketVolumeRatio, MIN_PREMARKET_VOL_RATIO),
+			},
+			{
+				// FIX: was never enforced — strategy requires 20–50% of avg daily vol
+				"Premarket Vol % of Daily",
+				stock.StockInfo.PremarketVolAsPercent >= MIN_PREMARKET_VOL_PCT_OF_DAILY,
+				fmt.Sprintf("%.2f%% >= %.0f%% of avg daily volume", stock.StockInfo.PremarketVolAsPercent, MIN_PREMARKET_VOL_PCT_OF_DAILY),
+			},
+			{
+				"Above 200 EMA",
+				stock.StockInfo.IsAbove200EMA,
+				fmt.Sprintf("price above EMA200=$%.2f", stock.StockInfo.EMA200),
+			},
+			{
+				"Not Extended",
+				!stock.StockInfo.IsExtended,
+				fmt.Sprintf("dist=%.2f ADRs (max %.1f)", stock.StockInfo.DistanceFrom50EMA, MAX_EXTENSION_ADR),
+			},
+			{
+				// FIX: was calculated but never filtered on — strategy: price near 10/20 EMA within 2 ADRs
+				"Near 10/20 EMA",
+				stock.StockInfo.IsNearEMA1020,
+				fmt.Sprintf("within %.1f ADRs of EMA10 or EMA20", NEAR_EMA_ADR_THRESHOLD),
+			},
+			{
+				// FIX: VolumeDriedUp was in the struct but never evaluated
+				// Strategy: 20-day avg vol < 60-day avg vol before gap day
+				"Volume Dried Up",
+				stock.StockInfo.VolumeDriedUp,
+				"20-day avg vol < 60-day avg vol (consolidation signal)",
+			},
 		}
 
 		allPassed := true
-		for _, criterion := range criteria {
-			status := "❌"
-			if criterion.passed {
-				status = "✅"
+		for _, c := range criteria {
+			if c.passed {
+				LogDebug("S4", stock.Symbol, "✅ PASS  %s — %s", c.name, c.detail)
 			} else {
+				LogDebug("S4", stock.Symbol, "❌ FAIL  %s — %s", c.name, c.detail)
 				allPassed = false
 			}
-			fmt.Printf("   %s %s: %s\n", status, criterion.name, criterion.details)
 		}
 
-		// Check too extended
 		if stock.StockInfo.IsTooExtended {
-			fmt.Printf("   ❌ Too Extended: Distance from 50 EMA: %.2f ADRs > %.1f\n",
+			LogDebug("S4", stock.Symbol, "❌ FAIL  Too Extended — %.2f ADRs > %.1f",
 				stock.StockInfo.DistanceFrom50EMA, TOO_EXTENDED_ADR)
 			allPassed = false
 		}
 
 		if allPassed && !stock.StockInfo.IsTooExtended {
 			finalStocks = append(finalStocks, stock)
-			fmt.Printf("   🎉 [QUALIFIED] %s PASSED all criteria!\n", stock.Symbol)
+			LogQualify("S4", stock.Symbol, fmt.Sprintf(
+				"Gap=%.2f%%  DolVol=$%.0fM  ADR=%.2f%%  Dist50EMA=%.2f  VolDriedUp=%v  EarningsRxn=%s",
+				stock.StockInfo.GapUp, stock.StockInfo.DolVol/1_000_000,
+				stock.StockInfo.ADR, stock.StockInfo.DistanceFrom50EMA,
+				stock.StockInfo.VolumeDriedUp, stock.StockInfo.PreviousEarningsReaction))
 		} else {
-			reason := "Failed criteria"
+			reason := "Failed one or more criteria"
 			if stock.StockInfo.IsTooExtended {
-				reason = fmt.Sprintf("Too extended (%.2f > %.1f ADRs from 50 EMA)",
-					stock.StockInfo.DistanceFrom50EMA, TOO_EXTENDED_ADR)
+				reason = fmt.Sprintf("Too extended (%.2f ADRs > %.1f max)", stock.StockInfo.DistanceFrom50EMA, TOO_EXTENDED_ADR)
 			}
-			fmt.Printf("   ❌ [REJECTED] %s: %s\n", stock.Symbol, reason)
+			LogReject("S4", stock.Symbol, reason)
 		}
 	}
 
-	fmt.Printf("\n[STAGE 4] Final filter complete: %d/%d stocks qualified\n",
-		len(finalStocks), len(stocks))
+	LogInfo("S4", "Final filter complete: %d / %d stocks qualified", len(finalStocks), len(stocks))
 	return finalStocks
 }
 
-// Get historical data for specific date and previous trading day using Alpaca
-func getHistoricalDataForDateAlpaca(apiKey, apiSecret, symbol, targetDate string) (*AlpacaBarData, *AlpacaBarData, error) {
-	fmt.Printf("         [API] Fetching bars for %s around %s...\n", symbol, targetDate)
+// ─────────────────────────────────────────────────────────────────────────────
+// Alpaca API helpers
+// ─────────────────────────────────────────────────────────────────────────────
 
+func getHistoricalDataForDateAlpaca(apiKey, apiSecret, symbol, targetDate string) (*AlpacaBarData, *AlpacaBarData, error) {
 	target, err := time.Parse("2006-01-02", targetDate)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Get a range of days to ensure we capture the target date and previous trading day
 	startDate := target.AddDate(0, 0, -7).Format("2006-01-02")
 	endDate := target.AddDate(0, 0, 1).Format("2006-01-02")
 
-	url := fmt.Sprintf("https://data.alpaca.markets/v2/stocks/%s/bars?start=%s&end=%s&timeframe=1Day&adjustment=split&feed=sip&limit=10000",
+	url := fmt.Sprintf(
+		"https://data.alpaca.markets/v2/stocks/%s/bars?start=%s&end=%s&timeframe=1Day&adjustment=split&feed=sip&limit=10000",
 		symbol, startDate, endDate)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, nil, err
 	}
-
 	req.Header.Add("APCA-API-KEY-ID", apiKey)
 	req.Header.Add("APCA-API-SECRET-KEY", apiSecret)
 
@@ -720,14 +789,13 @@ func getHistoricalDataForDateAlpaca(apiKey, apiSecret, symbol, targetDate string
 	}
 	defer resp.Body.Close()
 
-	fmt.Printf("         [API] Response status: %d\n", resp.StatusCode)
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to read response: %v", err)
 	}
 
-	fmt.Printf("         [API] Response body preview: %s\n", string(body[:min(200, len(body))]))
+	LogDebug("API", symbol, "getHistoricalDataForDate status=%d body_preview=%s",
+		resp.StatusCode, string(body[:min(120, len(body))]))
 
 	var barsResponse AlpacaBarsResponse
 	if err := json.Unmarshal(body, &barsResponse); err != nil {
@@ -739,42 +807,21 @@ func getHistoricalDataForDateAlpaca(apiKey, apiSecret, symbol, targetDate string
 		return nil, nil, fmt.Errorf("insufficient data: only %d bars", len(bars))
 	}
 
-	fmt.Printf("         [API] Retrieved %d bars for %s\n", len(bars), symbol)
+	sort.Slice(bars, func(i, j int) bool { return bars[i].Timestamp > bars[j].Timestamp })
 
-	// Sort bars by timestamp (most recent first)
-	sort.Slice(bars, func(i, j int) bool {
-		return bars[i].Timestamp > bars[j].Timestamp
-	})
-
-	// Find the target date and previous trading day
 	var currentData, previousData *AlpacaBarData
-
 	for i, bar := range bars {
-		barDate := bar.Timestamp[:10] // Extract YYYY-MM-DD
-		if barDate == targetDate {
+		if bar.Timestamp[:10] == targetDate {
 			currentData = &AlpacaBarData{
-				Symbol:    symbol,
-				Timestamp: bar.Timestamp,
-				Open:      bar.Open,
-				High:      bar.High,
-				Low:       bar.Low,
-				Close:     bar.Close,
-				Volume:    bar.Volume,
+				Symbol: symbol, Timestamp: bar.Timestamp,
+				Open: bar.Open, High: bar.High, Low: bar.Low, Close: bar.Close, Volume: bar.Volume,
 			}
-			fmt.Printf("         [API] Found target date bar: %s\n", barDate)
-			// Previous trading day is next in sorted array
 			if i+1 < len(bars) {
-				prevBar := bars[i+1]
+				prev := bars[i+1]
 				previousData = &AlpacaBarData{
-					Symbol:    symbol,
-					Timestamp: prevBar.Timestamp,
-					Open:      prevBar.Open,
-					High:      prevBar.High,
-					Low:       prevBar.Low,
-					Close:     prevBar.Close,
-					Volume:    prevBar.Volume,
+					Symbol: symbol, Timestamp: prev.Timestamp,
+					Open: prev.Open, High: prev.High, Low: prev.Low, Close: prev.Close, Volume: prev.Volume,
 				}
-				fmt.Printf("         [API] Found previous trading day bar: %s\n", prevBar.Timestamp[:10])
 			}
 			break
 		}
@@ -783,7 +830,6 @@ func getHistoricalDataForDateAlpaca(apiKey, apiSecret, symbol, targetDate string
 	if currentData == nil {
 		return nil, nil, fmt.Errorf("no data found for target date %s", targetDate)
 	}
-
 	if previousData == nil {
 		return nil, nil, fmt.Errorf("no previous trading day data found for %s", targetDate)
 	}
@@ -791,26 +837,22 @@ func getHistoricalDataForDateAlpaca(apiKey, apiSecret, symbol, targetDate string
 	return currentData, previousData, nil
 }
 
-// Get historical data up to a specific date using Alpaca
 func getHistoricalDataUpToDateAlpaca(apiKey, apiSecret, symbol, targetDate string, lookbackDays int) ([]AlpacaBarData, error) {
-	fmt.Printf("      [API] Fetching historical data for %s (lookback: %d days)...\n", symbol, lookbackDays)
-
 	target, err := time.Parse("2006-01-02", targetDate)
 	if err != nil {
 		return nil, err
 	}
 
-	// Calculate start date with buffer for weekends/holidays
 	startDate := target.AddDate(0, 0, -(lookbackDays + 100)).Format("2006-01-02")
 
-	url := fmt.Sprintf("https://data.alpaca.markets/v2/stocks/%s/bars?start=%s&end=%s&timeframe=1Day&adjustment=split&feed=sip&limit=10000",
+	url := fmt.Sprintf(
+		"https://data.alpaca.markets/v2/stocks/%s/bars?start=%s&end=%s&timeframe=1Day&adjustment=split&feed=sip&limit=10000",
 		symbol, startDate, targetDate)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-
 	req.Header.Add("APCA-API-KEY-ID", apiKey)
 	req.Header.Add("APCA-API-SECRET-KEY", apiSecret)
 
@@ -821,65 +863,49 @@ func getHistoricalDataUpToDateAlpaca(apiKey, apiSecret, symbol, targetDate strin
 	}
 	defer resp.Body.Close()
 
-	fmt.Printf("      [API] Response status: %d\n", resp.StatusCode)
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
 
-	fmt.Printf("      [API] Response body preview: %s\n", string(body[:min(200, len(body))]))
+	LogDebug("API", symbol, "getHistoricalDataUpToDate status=%d bars_preview=%s",
+		resp.StatusCode, string(body[:min(120, len(body))]))
 
 	var barsResponse AlpacaBarsResponse
 	if err := json.Unmarshal(body, &barsResponse); err != nil {
 		return nil, fmt.Errorf("failed to parse JSON: %v", err)
 	}
 
-	bars := barsResponse.Bars
-	if len(bars) == 0 {
+	if len(barsResponse.Bars) == 0 {
 		return nil, fmt.Errorf("no bars data for symbol %s", symbol)
 	}
 
-	fmt.Printf("      [API] Retrieved %d bars\n", len(bars))
-
-	// Convert to consistent format and filter by target date
 	var filteredData []AlpacaBarData
-	for _, bar := range bars {
+	for _, bar := range barsResponse.Bars {
 		barTime, err := time.Parse(time.RFC3339, bar.Timestamp)
 		if err != nil {
 			continue
 		}
-
-		if barTime.Before(target.AddDate(0, 0, 1)) { // Include target date
+		if barTime.Before(target.AddDate(0, 0, 1)) {
 			filteredData = append(filteredData, AlpacaBarData{
-				Symbol:    symbol,
-				Timestamp: bar.Timestamp,
-				Open:      bar.Open,
-				High:      bar.High,
-				Low:       bar.Low,
-				Close:     bar.Close,
-				Volume:    bar.Volume,
+				Symbol: symbol, Timestamp: bar.Timestamp,
+				Open: bar.Open, High: bar.High, Low: bar.Low, Close: bar.Close, Volume: bar.Volume,
 			})
 		}
 	}
 
-	fmt.Printf("      [API] Filtered to %d bars up to %s\n", len(filteredData), targetDate)
-
+	LogDebug("API", symbol, "Filtered to %d bars up to %s", len(filteredData), targetDate)
 	return filteredData, nil
 }
 
-// Get company profile from Finnhub
 func getCompanyProfileFinnhub(apiKey, symbol string) (*FinnhubCompanyProfile, error) {
 	url := fmt.Sprintf("https://finnhub.io/api/v1/stock/profile2?symbol=%s&token=%s", symbol, apiKey)
 
-	fmt.Printf("      [API] Calling Finnhub for %s...\n", symbol)
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %v", err)
 	}
 	defer resp.Body.Close()
-
-	fmt.Printf("      [API] Finnhub response status: %d\n", resp.StatusCode)
 
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("API returned status %d", resp.StatusCode)
@@ -895,7 +921,6 @@ func getCompanyProfileFinnhub(apiKey, symbol string) (*FinnhubCompanyProfile, er
 		return nil, fmt.Errorf("failed to parse JSON: %v", err)
 	}
 
-	// Check if we got valid data
 	if profile.Ticker == "" {
 		return nil, fmt.Errorf("no profile data found for symbol")
 	}
@@ -903,78 +928,932 @@ func getCompanyProfileFinnhub(apiKey, symbol string) (*FinnhubCompanyProfile, er
 	return &profile, nil
 }
 
-// Parse sector from Finnhub industry string
-func parseSectorFromIndustry(industry string) string {
-	industryLower := strings.ToLower(industry)
-
-	sectorMap := map[string]string{
-		"technology":        "Technology",
-		"software":          "Technology",
-		"hardware":          "Technology",
-		"semiconductor":     "Technology",
-		"internet":          "Technology",
-		"computer":          "Technology",
-		"electronic":        "Technology",
-		"health":            "Healthcare",
-		"healthcare":        "Healthcare",
-		"pharmaceutical":    "Healthcare",
-		"biotech":           "Healthcare",
-		"medical":           "Healthcare",
-		"finance":           "Financial Services",
-		"financial":         "Financial Services",
-		"bank":              "Financial Services",
-		"insurance":         "Financial Services",
-		"investment":        "Financial Services",
-		"energy":            "Energy",
-		"oil":               "Energy",
-		"gas":               "Energy",
-		"utilities":         "Utilities",
-		"real estate":       "Real Estate",
-		"consumer":          "Consumer Cyclical",
-		"retail":            "Consumer Cyclical",
-		"automotive":        "Consumer Cyclical",
-		"industrial":        "Industrials",
-		"manufacturing":     "Industrials",
-		"aerospace":         "Industrials",
-		"defense":           "Industrials",
-		"materials":         "Basic Materials",
-		"chemical":          "Basic Materials",
-		"mining":            "Basic Materials",
-		"telecommunication": "Communication Services",
-		"media":             "Communication Services",
+// getEarningsReactionFinnhub fetches the last EARNINGS_LOOKBACK_QUARTERS quarters
+// of EPS actuals vs estimates for a symbol, restricted to reports that were
+// published strictly before targetDate (no lookahead).
+//
+// Finnhub endpoint: GET /stock/earnings?symbol=AAPL&limit=4
+func getEarningsReactionFinnhub(apiKey, symbol, targetDate string) (*EarningsReactionSummary, error) {
+	target, err := time.Parse("2006-01-02", targetDate)
+	if err != nil {
+		return nil, fmt.Errorf("invalid target date: %v", err)
 	}
 
+	url := fmt.Sprintf(
+		"https://finnhub.io/api/v1/stock/earnings?symbol=%s&limit=%d&token=%s",
+		symbol, EARNINGS_LOOKBACK_QUARTERS+2, apiKey) // fetch extra to filter by date
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("HTTP request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body[:min(200, len(body))]))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %v", err)
+	}
+
+	// Finnhub returns a bare JSON array for this endpoint
+	var earnings []FinnhubEarnings
+	if err := json.Unmarshal(body, &earnings); err != nil {
+		return nil, fmt.Errorf("failed to parse earnings JSON: %v", err)
+	}
+
+	// Filter to only quarters whose period end date is strictly before targetDate,
+	// and only keep up to EARNINGS_LOOKBACK_QUARTERS results.
+	var quarters []QuarterlyResult
+	for _, e := range earnings {
+		if e.Period == "" {
+			continue
+		}
+		periodDate, err := time.Parse("2006-01-02", e.Period)
+		if err != nil {
+			continue
+		}
+		// Ensure we are not including the current-quarter earnings that
+		// may have triggered this very gap-up event.
+		if !periodDate.Before(target) {
+			continue
+		}
+		if e.Actual == nil || e.Estimate == nil {
+			continue
+		}
+		surprisePct := 0.0
+		if e.SurprisePct != nil {
+			surprisePct = *e.SurprisePct
+		}
+		quarters = append(quarters, QuarterlyResult{
+			Period:      e.Period,
+			Actual:      *e.Actual,
+			Estimate:    *e.Estimate,
+			SurprisePct: surprisePct,
+			Beat:        *e.Actual >= *e.Estimate,
+		})
+		if len(quarters) >= EARNINGS_LOOKBACK_QUARTERS {
+			break
+		}
+	}
+
+	positiveCount := 0
+	for _, q := range quarters {
+		if q.Beat {
+			positiveCount++
+		}
+	}
+
+	sentiment := "Unknown"
+	if len(quarters) > 0 {
+		ratio := float64(positiveCount) / float64(len(quarters))
+		switch {
+		case ratio >= 0.75:
+			sentiment = "Positive"
+		case ratio >= 0.50:
+			sentiment = "Mixed"
+		default:
+			sentiment = "Negative"
+		}
+	}
+
+	return &EarningsReactionSummary{
+		Quarters:         quarters,
+		OverallSentiment: sentiment,
+		PositiveCount:    positiveCount,
+		TotalQuarters:    len(quarters),
+	}, nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pre-gap news: multi-source scraper (past 7 days before targetDate)
+// Sources: Finnhub API, Yahoo Finance, Finviz, MarketWatch
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ScrapedNewsArticle holds a normalised article from any source.
+type ScrapedNewsArticle struct {
+	Title       string
+	Source      string
+	URL         string
+	PublishedAt time.Time
+	Summary     string
+	FullContent string
+}
+
+// getPreGapNews fetches the past 7 days of news from multiple sources,
+// de-duplicates by title, and enriches the top 20 with full body text.
+func getPreGapNews(finnhubKey, symbol, targetDate string) ([]ScrapedNewsArticle, error) {
+	target, err := time.Parse("2006-01-02", targetDate)
+	if err != nil {
+		return nil, fmt.Errorf("invalid target date: %v", err)
+	}
+	from := target.AddDate(0, 0, -7)
+	to := target.AddDate(0, 0, -1) // never include the gap day itself
+
+	client := &http.Client{Timeout: 20 * time.Second}
+
+	type result struct {
+		articles []ScrapedNewsArticle
+		name     string
+	}
+	ch := make(chan result, 4)
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ch <- result{fetchNewsFromFinnhub(finnhubKey, symbol, from, to), "Finnhub"}
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ch <- result{scrapeYahooFinanceNews(client, symbol, from, to), "Yahoo Finance"}
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ch <- result{scrapeFinvizNews(client, symbol, from, to), "Finviz"}
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ch <- result{scrapeMarketWatchNews(client, symbol, from, to), "MarketWatch"}
+	}()
+	go func() { wg.Wait(); close(ch) }()
+
+	seen := make(map[string]bool)
+	var all []ScrapedNewsArticle
+	for r := range ch {
+		fmt.Printf("[NEWS] %s: %d articles for %s\n", r.name, len(r.articles), symbol)
+		for _, a := range r.articles {
+			key := strings.ToLower(strings.TrimSpace(a.Title))
+			if key == "" || seen[key] {
+				continue
+			}
+			seen[key] = true
+			all = append(all, a)
+		}
+	}
+
+	// Date-filter: must fall in [from, to]
+	var filtered []ScrapedNewsArticle
+	for _, a := range all {
+		if !a.PublishedAt.Before(from) && !a.PublishedAt.After(to.Add(24*time.Hour)) {
+			filtered = append(filtered, a)
+		}
+	}
+
+	// Newest-first
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].PublishedAt.After(filtered[j].PublishedAt)
+	})
+	if len(filtered) > 20 {
+		filtered = filtered[:20]
+	}
+
+	// Enrich with full body text
+	filtered = enrichArticlesWithFullContent(client, filtered)
+
+	fmt.Printf("[NEWS] %s: %d unique articles after dedup+filter\n", symbol, len(filtered))
+	return filtered, nil
+}
+
+// fetchNewsFromFinnhub pulls from the Finnhub company-news endpoint.
+func fetchNewsFromFinnhub(apiKey, symbol string, from, to time.Time) []ScrapedNewsArticle {
+	url := fmt.Sprintf(
+		"https://finnhub.io/api/v1/company-news?symbol=%s&from=%s&to=%s&token=%s",
+		symbol, from.Format("2006-01-02"), to.Format("2006-01-02"), apiKey)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	var raw []FinnhubNews
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil
+	}
+	var out []ScrapedNewsArticle
+	for _, n := range raw {
+		out = append(out, ScrapedNewsArticle{
+			Title:       n.Headline,
+			Source:      n.Source,
+			URL:         n.URL,
+			PublishedAt: time.Unix(n.Datetime, 0).UTC(),
+			Summary:     n.Summary,
+		})
+	}
+	return out
+}
+
+// scrapeYahooFinanceNews scrapes the Yahoo Finance quote news tab.
+func scrapeYahooFinanceNews(client *http.Client, symbol string, from, to time.Time) []ScrapedNewsArticle {
+	url := fmt.Sprintf("https://finance.yahoo.com/quote/%s/news", symbol)
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	if err != nil {
+		return nil
+	}
+	var articles []ScrapedNewsArticle
+	doc.Find("div[data-test-locator='StreamItem'], li.stream-item").Each(func(_ int, s *goquery.Selection) {
+		title := strings.TrimSpace(s.Find("h3, h2").First().Text())
+		if title == "" {
+			title = strings.TrimSpace(s.Find("a").First().Text())
+		}
+		href, _ := s.Find("a").First().Attr("href")
+		if strings.HasPrefix(href, "/") {
+			href = "https://finance.yahoo.com" + href
+		}
+		summary := strings.TrimSpace(s.Find("p").First().Text())
+		source := strings.TrimSpace(s.Find("div span, span.provider-name").Last().Text())
+		timeText := strings.TrimSpace(s.Find("time, span[data-testid='item-pubtime']").Text())
+		if title == "" || href == "" {
+			return
+		}
+		articles = append(articles, ScrapedNewsArticle{
+			Title:       title,
+			Source:      "Yahoo Finance / " + source,
+			URL:         href,
+			PublishedAt: parseRelativeOrAbsoluteTime(timeText, to),
+			Summary:     summary,
+		})
+	})
+	return articles
+}
+
+// scrapeFinvizNews scrapes the Finviz quote-page news table.
+func scrapeFinvizNews(client *http.Client, symbol string, from, to time.Time) []ScrapedNewsArticle {
+	url := fmt.Sprintf("https://finviz.com/quote.ashx?t=%s", symbol)
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	if err != nil {
+		return nil
+	}
+	var articles []ScrapedNewsArticle
+	var lastDate string
+	doc.Find("table.fullview-news-outer tr").Each(func(i int, s *goquery.Selection) {
+		if i == 0 {
+			return
+		}
+		timeCell := strings.TrimSpace(s.Find("td").First().Text())
+		newsCell := s.Find("td").Last()
+		title := strings.TrimSpace(newsCell.Find("a").Text())
+		href, _ := newsCell.Find("a").Attr("href")
+		source := strings.TrimSpace(newsCell.Find("span").Text())
+		if title == "" || href == "" {
+			return
+		}
+		// Finviz shows a new date string only on the first row of each day
+		if strings.Contains(timeCell, "-") {
+			lastDate = timeCell
+		}
+		articles = append(articles, ScrapedNewsArticle{
+			Title:       title,
+			Source:      "Finviz / " + source,
+			URL:         href,
+			PublishedAt: parseFinvizDateStr(lastDate+" "+timeCell, to),
+		})
+	})
+	return articles
+}
+
+// scrapeMarketWatchNews scrapes the MarketWatch ticker news page.
+func scrapeMarketWatchNews(client *http.Client, symbol string, from, to time.Time) []ScrapedNewsArticle {
+	url := fmt.Sprintf("https://www.marketwatch.com/investing/stock/%s/news", strings.ToLower(symbol))
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	if err != nil {
+		return nil
+	}
+	var articles []ScrapedNewsArticle
+	doc.Find("div.article__content, div.element--article").Each(func(_ int, s *goquery.Selection) {
+		title := strings.TrimSpace(s.Find("h3.article__headline a, h2.article__headline a").Text())
+		href, _ := s.Find("h3.article__headline a, h2.article__headline a").Attr("href")
+		if strings.HasPrefix(href, "/") {
+			href = "https://www.marketwatch.com" + href
+		}
+		summary := strings.TrimSpace(s.Find("p.article__summary").Text())
+		author := strings.TrimSpace(s.Find("span.article__author").Text())
+		timeText := strings.TrimSpace(s.Find("span.article__timestamp, time").Text())
+		if title == "" || href == "" {
+			return
+		}
+		src := "MarketWatch"
+		if author != "" {
+			src += " / " + author
+		}
+		articles = append(articles, ScrapedNewsArticle{
+			Title:       title,
+			Source:      src,
+			URL:         href,
+			PublishedAt: parseMarketWatchDateStr(timeText, to),
+			Summary:     summary,
+		})
+	})
+	return articles
+}
+
+// enrichArticlesWithFullContent fetches body text for each article (max 3 concurrent).
+func enrichArticlesWithFullContent(client *http.Client, articles []ScrapedNewsArticle) []ScrapedNewsArticle {
+	sem := make(chan struct{}, 3)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	enriched := make([]ScrapedNewsArticle, len(articles))
+	copy(enriched, articles)
+	for i := range enriched {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			time.Sleep(300 * time.Millisecond)
+			content := fetchArticleBodyText(client, enriched[idx].URL)
+			mu.Lock()
+			enriched[idx].FullContent = content
+			mu.Unlock()
+		}(i)
+	}
+	wg.Wait()
+	return enriched
+}
+
+// fetchArticleBodyText GETs a URL and extracts readable paragraph text.
+func fetchArticleBodyText(client *http.Client, articleURL string) string {
+	if !strings.HasPrefix(articleURL, "http") {
+		return ""
+	}
+	req, _ := http.NewRequest("GET", articleURL, nil)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		return ""
+	}
+	defer resp.Body.Close()
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	if err != nil {
+		return ""
+	}
+	doc.Find("script, style, nav, header, footer, aside, .ad, .advertisement").Remove()
+	var paragraphs []string
+	for _, sel := range []string{"article p", "div.article-body p", "div.caas-body p", "div.body__content p", "main p", "p"} {
+		doc.Find(sel).Each(func(_ int, s *goquery.Selection) {
+			t := strings.TrimSpace(s.Text())
+			if len(t) > 60 {
+				paragraphs = append(paragraphs, t)
+			}
+		})
+		if len(paragraphs) >= 3 {
+			break
+		}
+	}
+	result := strings.Join(paragraphs, "\n\n")
+	result = regexp.MustCompile(`[ \t]+`).ReplaceAllString(result, " ")
+	result = regexp.MustCompile(`\n{3,}`).ReplaceAllString(result, "\n\n")
+	return strings.TrimSpace(result)
+}
+
+// ── Date-parsing helpers ──────────────────────────────────────────────────────
+
+func parseRelativeOrAbsoluteTime(s string, fallback time.Time) time.Time {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return fallback
+	}
+	if strings.Contains(s, "ago") {
+		m := regexp.MustCompile(`(\d+)\s*([hHdDmM])`).FindStringSubmatch(s)
+		if len(m) == 3 {
+			var n int
+			fmt.Sscanf(m[1], "%d", &n)
+			switch strings.ToLower(m[2]) {
+			case "h":
+				return time.Now().Add(-time.Duration(n) * time.Hour)
+			case "d":
+				return time.Now().AddDate(0, 0, -n)
+			case "m":
+				return time.Now().Add(-time.Duration(n) * time.Minute)
+			}
+		}
+	}
+	for _, f := range []string{"January 2, 2006", "Jan 2, 2006", "2006-01-02", "Jan 2, 2006, 3:04 PM"} {
+		if t, err := time.Parse(f, s); err == nil {
+			return t
+		}
+	}
+	return fallback
+}
+
+func parseFinvizDateStr(s string, fallback time.Time) time.Time {
+	s = strings.TrimSpace(s)
+	for _, f := range []string{"Jan-02-06 03:04PM", "Jan-02-06 3:04PM", "Jan-02-06"} {
+		if t, err := time.Parse(f, s); err == nil {
+			return t
+		}
+	}
+	return fallback
+}
+
+func parseMarketWatchDateStr(s string, fallback time.Time) time.Time {
+	s = strings.TrimSpace(s)
+	for _, f := range []string{"January 2, 2006 at 3:04 p.m. ET", "Jan. 2, 2006", "Jan 2, 2006", "2006-01-02"} {
+		if t, err := time.Parse(f, s); err == nil {
+			return t
+		}
+	}
+	return fallback
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Historical earnings: Finnhub numbers + SEC EDGAR press-release content
+// for the 3 quarters before targetDate
+// ─────────────────────────────────────────────────────────────────────────────
+
+// DeepQuarterlyResult extends QuarterlyResult with full press-release content.
+type DeepQuarterlyResult struct {
+	QuarterlyResult
+	PressReleaseContent string `json:"press_release_content,omitempty"`
+	SECFilingURL        string `json:"sec_filing_url,omitempty"`
+	RevenueActual       string `json:"revenue_actual,omitempty"`
+	RevenueEstimate     string `json:"revenue_estimate,omitempty"`
+}
+
+// DeepEarningsSummary is like EarningsReactionSummary but with full content.
+type DeepEarningsSummary struct {
+	Symbol           string                `json:"symbol"`
+	OverallSentiment string                `json:"overall_sentiment"`
+	PositiveCount    int                   `json:"positive_count"`
+	TotalQuarters    int                   `json:"total_quarters"`
+	Quarters         []DeepQuarterlyResult `json:"quarters"`
+}
+
+const DEEP_EARNINGS_QUARTERS = 3
+
+// getDeepEarningsHistory fetches the last 3 quarters' EPS data from Finnhub,
+// then enriches each quarter with the actual SEC EDGAR 8-K press release.
+func getDeepEarningsHistory(finnhubKey, symbol, targetDate string) (*DeepEarningsSummary, error) {
+	target, err := time.Parse("2006-01-02", targetDate)
+	if err != nil {
+		return nil, fmt.Errorf("invalid target date: %v", err)
+	}
+
+	// ── Step 1: Finnhub EPS numbers ───────────────────────────────────────
+	url := fmt.Sprintf(
+		"https://finnhub.io/api/v1/stock/earnings?symbol=%s&limit=%d&token=%s",
+		symbol, DEEP_EARNINGS_QUARTERS+2, finnhubKey)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("Finnhub request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	var raw []FinnhubEarnings
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, fmt.Errorf("Finnhub parse error: %v", err)
+	}
+
+	var quarters []DeepQuarterlyResult
+	for _, e := range raw {
+		if e.Period == "" {
+			continue
+		}
+		pd, err := time.Parse("2006-01-02", e.Period)
+		if err != nil || !pd.Before(target) {
+			continue
+		}
+		if e.Actual == nil || e.Estimate == nil {
+			continue
+		}
+		surprisePct := 0.0
+		if e.SurprisePct != nil {
+			surprisePct = *e.SurprisePct
+		}
+		quarters = append(quarters, DeepQuarterlyResult{
+			QuarterlyResult: QuarterlyResult{
+				Period:      e.Period,
+				Actual:      *e.Actual,
+				Estimate:    *e.Estimate,
+				SurprisePct: surprisePct,
+				Beat:        *e.Actual >= *e.Estimate,
+			},
+		})
+		if len(quarters) >= DEEP_EARNINGS_QUARTERS {
+			break
+		}
+	}
+
+	// ── Step 2: SEC EDGAR press-release content for each quarter ──────────
+	client := &http.Client{Timeout: 30 * time.Second}
+	secUA := "EpisodicPivotResearch research@example.com"
+	cik := getCIKForSymbol(client, symbol, secUA)
+
+	if cik != "" {
+		for i := range quarters {
+			qDate, err := time.Parse("2006-01-02", quarters[i].Period)
+			if err != nil {
+				continue
+			}
+			// Earnings are typically filed within 45 days after period end
+			searchFrom := qDate
+			searchTo := qDate.AddDate(0, 0, 60)
+
+			content, filingURL := fetchSECEarningsPressRelease(client, cik, searchFrom, searchTo, secUA)
+			if content != "" {
+				quarters[i].PressReleaseContent = content
+				quarters[i].SECFilingURL = filingURL
+				fmt.Printf("[EARNINGS] %s Q%s: fetched SEC press release (%d chars)\n",
+					symbol, quarters[i].Period, len(content))
+			} else {
+				fmt.Printf("[EARNINGS] %s Q%s: no SEC press release found\n", symbol, quarters[i].Period)
+			}
+			// Be polite to SEC servers
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
+
+	// ── Step 3: Sentiment rollup ──────────────────────────────────────────
+	positiveCount := 0
+	for _, q := range quarters {
+		if q.Beat {
+			positiveCount++
+		}
+	}
+	sentiment := "Unknown"
+	if len(quarters) > 0 {
+		ratio := float64(positiveCount) / float64(len(quarters))
+		switch {
+		case ratio >= 0.75:
+			sentiment = "Positive"
+		case ratio >= 0.50:
+			sentiment = "Mixed"
+		default:
+			sentiment = "Negative"
+		}
+	}
+
+	return &DeepEarningsSummary{
+		Symbol:           symbol,
+		OverallSentiment: sentiment,
+		PositiveCount:    positiveCount,
+		TotalQuarters:    len(quarters),
+		Quarters:         quarters,
+	}, nil
+}
+
+// getCIKForSymbol looks up a ticker's CIK from SEC's company_tickers.json.
+func getCIKForSymbol(client *http.Client, ticker, userAgent string) string {
+	req, _ := http.NewRequest("GET", "https://www.sec.gov/files/company_tickers.json", nil)
+	req.Header.Set("User-Agent", userAgent)
+	resp, err := client.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	var tickers map[string]struct {
+		CIK    int    `json:"cik_str"`
+		Ticker string `json:"ticker"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tickers); err != nil {
+		return ""
+	}
+	upper := strings.ToUpper(ticker)
+	for _, v := range tickers {
+		if strings.ToUpper(v.Ticker) == upper {
+			return fmt.Sprintf("%d", v.CIK)
+		}
+	}
+	return ""
+}
+
+// fetchSECEarningsPressRelease finds the 8-K filed in [from, to] with
+// item 2.02 (Results of Operations) and returns its exhibit 99.1 text.
+func fetchSECEarningsPressRelease(client *http.Client, cik string, from, to time.Time, userAgent string) (string, string) {
+	paddedCIK := fmt.Sprintf("%010s", cik)
+	filingURL := fmt.Sprintf("https://data.sec.gov/submissions/CIK%s.json", paddedCIK)
+
+	req, _ := http.NewRequest("GET", filingURL, nil)
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Accept", "application/json")
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		return "", ""
+	}
+	defer resp.Body.Close()
+
+	var filings struct {
+		Filings struct {
+			Recent struct {
+				AccessionNumber []string `json:"accessionNumber"`
+				FilingDate      []string `json:"filingDate"`
+				FormType        []string `json:"form"`
+				PrimaryDocument []string `json:"primaryDocument"`
+				Items           []string `json:"items"`
+			} `json:"recent"`
+		} `json:"filings"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&filings); err != nil {
+		return "", ""
+	}
+
+	// Find the 8-K with item 2.02 closest to [from, to]
+	bestAccession, bestPrimaryDoc := "", ""
+	for i, formType := range filings.Filings.Recent.FormType {
+		if formType != "8-K" {
+			continue
+		}
+		items := filings.Filings.Recent.Items[i]
+		if !strings.Contains(items, "2.02") {
+			continue
+		}
+		fd, err := time.Parse("2006-01-02", filings.Filings.Recent.FilingDate[i])
+		if err != nil {
+			continue
+		}
+		if fd.Before(from) || fd.After(to) {
+			continue
+		}
+		bestAccession = filings.Filings.Recent.AccessionNumber[i]
+		bestPrimaryDoc = filings.Filings.Recent.PrimaryDocument[i]
+		break
+	}
+
+	if bestAccession == "" {
+		return "", ""
+	}
+
+	accNoSlash := strings.ReplaceAll(bestAccession, "-", "")
+	trimCIK := strings.TrimLeft(cik, "0")
+	baseURL := fmt.Sprintf("https://www.sec.gov/Archives/edgar/data/%s/%s/", trimCIK, accNoSlash)
+	indexURL := fmt.Sprintf("%s%s-index.htm", baseURL, accNoSlash)
+
+	// Try to find exhibit 99.1 via the filing index page
+	content := fetchExhibit99FromIndex(client, indexURL, baseURL, trimCIK, accNoSlash, userAgent)
+	if content == "" {
+		// Fallback: try the primary document itself
+		docURL := baseURL + bestPrimaryDoc
+		content = fetchSECHTMLDocument(client, docURL, userAgent)
+	}
+
+	filingPageURL := fmt.Sprintf("https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=%s&type=8-K&dateb=&owner=include&count=10", trimCIK)
+	return content, filingPageURL
+}
+
+// fetchExhibit99FromIndex parses the filing index page and fetches exhibit 99.1.
+func fetchExhibit99FromIndex(client *http.Client, indexURL, baseURL, cik, accNoSlash, userAgent string) string {
+	req, _ := http.NewRequest("GET", indexURL, nil)
+	req.Header.Set("User-Agent", userAgent)
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		return ""
+	}
+	defer resp.Body.Close()
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	if err != nil {
+		return ""
+	}
+
+	var exhibitURL string
+	doc.Find("table tr").EachWithBreak(func(_ int, row *goquery.Selection) bool {
+		cells := row.Find("td")
+		if cells.Length() < 3 {
+			return true
+		}
+		combined := strings.ToLower(cells.Text())
+		if strings.Contains(combined, "99.1") || strings.Contains(combined, "ex-99.1") ||
+			strings.Contains(combined, "press release") {
+			href, exists := cells.Find("a").First().Attr("href")
+			if exists {
+				if strings.HasPrefix(href, "/") {
+					exhibitURL = "https://www.sec.gov" + href
+				} else if !strings.HasPrefix(href, "http") {
+					exhibitURL = baseURL + href
+				} else {
+					exhibitURL = href
+				}
+				return false // stop iteration
+			}
+		}
+		return true
+	})
+
+	if exhibitURL == "" {
+		// Try common filename patterns
+		for _, name := range []string{"ex991.htm", "ex99-1.htm", "ex99_1.htm", "ex-99_1.htm"} {
+			url := baseURL + name
+			if content := fetchSECHTMLDocument(client, url, userAgent); content != "" {
+				return content
+			}
+		}
+		return ""
+	}
+	return fetchSECHTMLDocument(client, exhibitURL, userAgent)
+}
+
+// fetchSECHTMLDocument fetches an SEC HTML/text document and returns clean text.
+func fetchSECHTMLDocument(client *http.Client, docURL, userAgent string) string {
+	req, _ := http.NewRequest("GET", docURL, nil)
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,*/*")
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		return ""
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ""
+	}
+
+	// Skip binary content
+	ct := resp.Header.Get("Content-Type")
+	if strings.Contains(ct, "image") || strings.Contains(ct, "pdf") {
+		return ""
+	}
+	body := string(bodyBytes)
+
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(body))
+	if err != nil {
+		// Plain text fallback
+		re := regexp.MustCompile(`\s+`)
+		return strings.TrimSpace(re.ReplaceAllString(body, " "))
+	}
+	doc.Find("script, style, meta, link").Remove()
+
+	var parts []string
+	seen := make(map[string]bool)
+	doc.Find("p, td, li, h1, h2, h3, h4").Each(func(_ int, s *goquery.Selection) {
+		t := strings.TrimSpace(s.Text())
+		if len(t) > 20 && !seen[t] {
+			seen[t] = true
+			parts = append(parts, t)
+		}
+	})
+	result := strings.Join(parts, "\n")
+	result = regexp.MustCompile(`[ \t]+`).ReplaceAllString(result, " ")
+	result = regexp.MustCompile(`\n{3,}`).ReplaceAllString(result, "\n\n")
+	return strings.TrimSpace(result)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// File writers
+// ─────────────────────────────────────────────────────────────────────────────
+
+// writeEarningsReport writes data/<SYMBOL>/historical_earnings_report.txt.
+// It now uses DeepEarningsSummary so each quarter can include press-release text.
+func writeEarningsReport(symbol string, summary *DeepEarningsSummary) error {
+	dir := filepath.Join("data", symbol)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create report dir: %v", err)
+	}
+	f, err := os.Create(filepath.Join(dir, "historical_earnings_report.txt"))
+	if err != nil {
+		return fmt.Errorf("failed to create earnings report: %v", err)
+	}
+	defer f.Close()
+
+	if summary == nil || summary.TotalQuarters == 0 {
+		fmt.Fprintf(f, "No earnings history available.\n")
+		return nil
+	}
+
+	sep := strings.Repeat("=", 80)
+	fmt.Fprintf(f, "%s\n", sep)
+	fmt.Fprintf(f, "HISTORICAL EARNINGS REPORT  —  %s\n", symbol)
+	fmt.Fprintf(f, "Generated  : %s\n", time.Now().Format("2006-01-02 15:04:05"))
+	fmt.Fprintf(f, "%s\n\n", sep)
+
+	fmt.Fprintf(f, "OVERALL SENTIMENT : %s\n", summary.OverallSentiment)
+	fmt.Fprintf(f, "QUARTERS POSITIVE : %d / %d\n\n", summary.PositiveCount, summary.TotalQuarters)
+
+	fmt.Fprintf(f, "%-12s  %-10s  %-10s  %-10s  %-5s\n",
+		"Period", "Actual", "Estimate", "Surprise%", "Beat")
+	fmt.Fprintf(f, "%s\n", strings.Repeat("-", 54))
+	for _, q := range summary.Quarters {
+		beat := "No"
+		if q.Beat {
+			beat = "Yes"
+		}
+		fmt.Fprintf(f, "%-12s  %-10.4f  %-10.4f  %-10.2f  %-5s\n",
+			q.Period, q.Actual, q.Estimate, q.SurprisePct, beat)
+	}
+
+	// Full press-release content per quarter
+	for _, q := range summary.Quarters {
+		if q.PressReleaseContent == "" {
+			continue
+		}
+		fmt.Fprintf(f, "\n%s\n", strings.Repeat("-", 80))
+		fmt.Fprintf(f, "EARNINGS PRESS RELEASE  —  Period ending %s\n", q.Period)
+		if q.SECFilingURL != "" {
+			fmt.Fprintf(f, "SEC Filing  : %s\n", q.SECFilingURL)
+		}
+		fmt.Fprintf(f, "%s\n\n", strings.Repeat("-", 80))
+		fmt.Fprintf(f, "%s\n", q.PressReleaseContent)
+	}
+	return nil
+}
+
+// writeNewsReport writes data/<SYMBOL>/pre_gap_news_report.txt.
+// It now uses ScrapedNewsArticle which includes full body content.
+func writeNewsReport(symbol string, articles []ScrapedNewsArticle) error {
+	dir := filepath.Join("data", symbol)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create report dir: %v", err)
+	}
+	f, err := os.Create(filepath.Join(dir, "pre_gap_news_report.txt"))
+	if err != nil {
+		return fmt.Errorf("failed to create news report: %v", err)
+	}
+	defer f.Close()
+
+	sep := strings.Repeat("=", 80)
+	fmt.Fprintf(f, "%s\n", sep)
+	fmt.Fprintf(f, "PRE-GAP NEWS REPORT  —  %s\n", symbol)
+	fmt.Fprintf(f, "Generated : %s\n", time.Now().Format("2006-01-02 15:04:05"))
+	fmt.Fprintf(f, "Articles  : %d (past 7 trading days, multi-source)\n", len(articles))
+	fmt.Fprintf(f, "%s\n\n", sep)
+
+	if len(articles) == 0 {
+		fmt.Fprintf(f, "No recent news articles found.\n")
+		return nil
+	}
+
+	for i, a := range articles {
+		fmt.Fprintf(f, "ARTICLE %d of %d\n", i+1, len(articles))
+		fmt.Fprintf(f, "Title     : %s\n", a.Title)
+		fmt.Fprintf(f, "Source    : %s\n", a.Source)
+		fmt.Fprintf(f, "Published : %s\n", a.PublishedAt.Format("2006-01-02 15:04 MST"))
+		fmt.Fprintf(f, "URL       : %s\n", a.URL)
+		if a.Summary != "" {
+			fmt.Fprintf(f, "\nSummary:\n%s\n", a.Summary)
+		}
+		if a.FullContent != "" {
+			fmt.Fprintf(f, "\n--- FULL ARTICLE CONTENT ---\n%s\n", a.FullContent)
+		}
+		fmt.Fprintf(f, "\n%s\n\n", strings.Repeat("-", 80))
+	}
+	return nil
+}
+
+func parseSectorFromIndustry(industry string) string {
+	industryLower := strings.ToLower(industry)
+	sectorMap := map[string]string{
+		"technology": "Technology", "software": "Technology", "hardware": "Technology",
+		"semiconductor": "Technology", "internet": "Technology", "computer": "Technology",
+		"electronic": "Technology", "health": "Healthcare", "healthcare": "Healthcare",
+		"pharmaceutical": "Healthcare", "biotech": "Healthcare", "medical": "Healthcare",
+		"finance": "Financial Services", "financial": "Financial Services", "bank": "Financial Services",
+		"insurance": "Financial Services", "investment": "Financial Services",
+		"energy": "Energy", "oil": "Energy", "gas": "Energy",
+		"utilities": "Utilities", "real estate": "Real Estate",
+		"consumer": "Consumer Cyclical", "retail": "Consumer Cyclical", "automotive": "Consumer Cyclical",
+		"industrial": "Industrials", "manufacturing": "Industrials",
+		"aerospace": "Industrials", "defense": "Industrials",
+		"materials": "Basic Materials", "chemical": "Basic Materials", "mining": "Basic Materials",
+		"telecommunication": "Communication Services", "media": "Communication Services",
+	}
 	for key, sector := range sectorMap {
 		if strings.Contains(industryLower, key) {
 			return sector
 		}
 	}
-
 	return "Unknown"
 }
 
-// Get tradable symbols from Alpaca
 func getAlpacaTradableSymbols(config BacktestConfig) ([]string, error) {
-	fmt.Printf("[API] Calling Alpaca assets endpoint...\n")
 	url := "https://paper-api.alpaca.markets/v2/assets?status=active&asset_class=us_equity"
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %v", err)
 	}
-
 	req.Header.Set("APCA-API-KEY-ID", config.AlpacaKey)
 	req.Header.Set("APCA-API-SECRET-KEY", config.AlpacaSecret)
 
 	client := &http.Client{Timeout: 30 * time.Second}
-	fmt.Printf("[API] Sending request to Alpaca...\n")
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %v", err)
 	}
 	defer resp.Body.Close()
-
-	fmt.Printf("[API] Response status: %d\n", resp.StatusCode)
 
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
@@ -986,52 +1865,43 @@ func getAlpacaTradableSymbols(config BacktestConfig) ([]string, error) {
 		return nil, fmt.Errorf("failed to read response: %v", err)
 	}
 
-	fmt.Printf("[API] Response body size: %d bytes\n", len(body))
-
 	var assets []struct {
-		ID       string `json:"id"`
 		Symbol   string `json:"symbol"`
 		Exchange string `json:"exchange"`
 		Tradable bool   `json:"tradable"`
 		Status   string `json:"status"`
-		Class    string `json:"class"`
 	}
-
 	if err := json.Unmarshal(body, &assets); err != nil {
 		return nil, fmt.Errorf("failed to parse assets: %v", err)
 	}
 
-	fmt.Printf("[API] Parsed %d total assets\n", len(assets))
-
 	var symbols []string
 	for _, asset := range assets {
-		if asset.Tradable && asset.Status == "active" {
+		if asset.Tradable && asset.Status == "active" &&
+			(asset.Exchange == "NASDAQ" || asset.Exchange == "NYSE") {
 			symbols = append(symbols, asset.Symbol)
 		}
 	}
-
 	if len(symbols) == 0 {
 		return nil, fmt.Errorf("no tradable symbols found")
 	}
 
-	fmt.Printf("[API] ✅ Found %d tradable symbols\n", len(symbols))
+	LogInfo("API", "Found %d tradable NYSE/NASDAQ symbols", len(symbols))
 	return symbols, nil
 }
 
-// Helper function to estimate market cap
+// ─────────────────────────────────────────────────────────────────────────────
+// Calculation helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
 func estimateMarketCapImproved(stock StockData, _ *CompanyInfo) float64 {
 	if stock.Close <= 0 || stock.Volume <= 0 {
 		return 0
 	}
-
 	estimatedShares := float64(stock.Volume) * 100
-	estimated := stock.Close * estimatedShares
-	fmt.Printf("      [DEBUG] Estimated market cap: $%.0f (shares: %.0f x price: $%.2f)\n",
-		estimated, estimatedShares, stock.Close)
-	return estimated
+	return stock.Close * estimatedShares
 }
 
-// Helper function to check if value meets criteria
 func checkmark(condition bool) string {
 	if condition {
 		return "✅"
@@ -1039,7 +1909,6 @@ func checkmark(condition bool) string {
 	return "❌"
 }
 
-// Helper function for absolute value
 func abs(x float64) float64 {
 	if x < 0 {
 		return -x
@@ -1047,71 +1916,70 @@ func abs(x float64) float64 {
 	return x
 }
 
-// Calculate technical indicators for backtesting
+// calculateTechnicalIndicatorsBacktest computes all EMAs/SMAs and derived flags.
+//
+// FIX (lookahead bias): EMAs and SMAs are now calculated on dataUpToTarget which
+// excludes the target date's own bar — the target bar's open is what we are
+// deciding to trade on, so it must not contaminate the indicator values.
+//
+// FIX (VolumeDriedUp): 20-day avg volume vs 60-day avg volume comparison is now
+// calculated here and returned in TechnicalIndicators.
 func calculateTechnicalIndicatorsBacktest(historicalData []AlpacaBarData, symbol, targetDate string) (*TechnicalIndicators, error) {
-	fmt.Printf("      [DEBUG] Calculating technical indicators for %s...\n", symbol)
-
 	if len(historicalData) < 200 {
 		return nil, fmt.Errorf("insufficient data for technical indicators")
 	}
 
-	// Sort data by date (oldest first)
 	sort.Slice(historicalData, func(i, j int) bool {
 		return historicalData[i].Timestamp < historicalData[j].Timestamp
 	})
 
-	// Find target date index
+	// FIX: find the bar BEFORE the target date — do not include the target
+	// date's own bar in any indicator calculation (was off-by-one before).
 	targetIndex := len(historicalData) - 1
 	for i, data := range historicalData {
 		if strings.HasPrefix(data.Timestamp, targetDate) {
-			targetIndex = i
-			fmt.Printf("      [DEBUG] Found target date at index %d/%d\n", i, len(historicalData))
+			// i is the target date bar; use i-1 as the last indicator bar
+			targetIndex = i - 1
 			break
 		}
 	}
 
-	dataUpToTarget := historicalData[:targetIndex+1]
-	if len(dataUpToTarget) < 200 {
-		return nil, fmt.Errorf("insufficient data up to target date")
+	if targetIndex < 0 {
+		return nil, fmt.Errorf("target date is the first bar — no prior data for indicators")
 	}
 
-	fmt.Printf("      [DEBUG] Using %d days of data up to %s\n", len(dataUpToTarget), targetDate)
+	// All indicator math is done on data strictly before the target date
+	dataUpToTarget := historicalData[:targetIndex+1]
+	if len(dataUpToTarget) < 200 {
+		return nil, fmt.Errorf("insufficient pre-target data: %d bars (need 200)", len(dataUpToTarget))
+	}
 
+	// The "current price" for all distance calculations is the previous close
+	// (i.e. the close of the day before the gap day) — this is what was visible
+	// in premarket when the gap-up was discovered.
 	currentPrice := dataUpToTarget[len(dataUpToTarget)-1].Close
 	currentADR := calculateADRForPeriodAlpaca(dataUpToTarget[max(0, len(dataUpToTarget)-21):])
 
-	fmt.Printf("      [DEBUG] Current price: $%.2f, ADR: %.2f%%\n", currentPrice, currentADR)
-
-	// Calculate moving averages
 	sma200 := calculateSMAAlpaca(dataUpToTarget, 200)
 	ema200 := calculateEMAAlpaca(dataUpToTarget, 200)
 	ema50 := calculateEMAAlpaca(dataUpToTarget, 50)
 	ema20 := calculateEMAAlpaca(dataUpToTarget, 20)
 	ema10 := calculateEMAAlpaca(dataUpToTarget, 10)
 
-	fmt.Printf("      [DEBUG] SMA200: $%.2f, EMA200: $%.2f\n", sma200, ema200)
-	fmt.Printf("      [DEBUG] EMA50: $%.2f, EMA20: $%.2f, EMA10: $%.2f\n", ema50, ema20, ema10)
-
-	// Calculate distance from 50 EMA in ADRs
 	distanceFrom50EMA := 0.0
 	if currentADR > 0 {
 		distanceFrom50EMA = (currentPrice - ema50) / (currentADR * currentPrice / 100)
-		fmt.Printf("      [DEBUG] Distance from 50 EMA: %.2f ADRs\n", distanceFrom50EMA)
 	}
 
-	// Check if near 10/20 EMA
-	distanceFrom10EMA := 0.0
-	distanceFrom20EMA := 0.0
+	distanceFrom10EMA, distanceFrom20EMA := 0.0, 0.0
 	if currentADR > 0 {
 		adrValue := currentADR * currentPrice / 100
 		distanceFrom10EMA = abs(currentPrice-ema10) / adrValue
 		distanceFrom20EMA = abs(currentPrice-ema20) / adrValue
-		fmt.Printf("      [DEBUG] Distance from 10 EMA: %.2f ADRs, from 20 EMA: %.2f ADRs\n",
-			distanceFrom10EMA, distanceFrom20EMA)
 	}
+	// FIX: threshold updated to 2.0 ADRs to match strategy document ("within 2 ADRs")
 	isNearEMA1020 := (distanceFrom10EMA <= NEAR_EMA_ADR_THRESHOLD) || (distanceFrom20EMA <= NEAR_EMA_ADR_THRESHOLD)
 
-	// Check if breaks resistance
 	breaksResistance := false
 	if len(dataUpToTarget) >= 20 {
 		recent20Days := dataUpToTarget[len(dataUpToTarget)-20:]
@@ -1121,13 +1989,28 @@ func calculateTechnicalIndicatorsBacktest(historicalData []AlpacaBarData, symbol
 				recentHigh = day.High
 			}
 		}
-		currentOpen := dataUpToTarget[len(dataUpToTarget)-1].Open
-		breaksResistance = currentOpen > recentHigh
-		fmt.Printf("      [DEBUG] Recent 20-day high: $%.2f, current open: $%.2f, breaks resistance: %v\n",
-			recentHigh, currentOpen, breaksResistance)
+		// Use the gap-day open (first bar of target date) for the resistance check
+		// The target date bar IS in historicalData at targetIndex+1; we fetch it
+		// directly rather than from dataUpToTarget so there's no indicator contamination.
+		gapDayOpen := historicalData[targetIndex+1].Open
+		breaksResistance = gapDayOpen > recentHigh
 	}
 
-	indicators := &TechnicalIndicators{
+	// FIX: Volume Dried Up — compare 20-day avg vol to 60-day avg vol.
+	// Both windows are calculated on pre-target data only.
+	volumeDriedUp := false
+	if len(dataUpToTarget) >= 60 {
+		last20 := dataUpToTarget[len(dataUpToTarget)-20:]
+		last60 := dataUpToTarget[len(dataUpToTarget)-60:]
+		avg20vol := calculateAvgVolumeAlpaca(last20)
+		avg60vol := calculateAvgVolumeAlpaca(last60)
+		// Dried up = recent 20-day average is lower than the 60-day baseline
+		volumeDriedUp = avg20vol < avg60vol
+		LogDebug("S3", symbol, "VolumeDriedUp: avg20=%.0f  avg60=%.0f  dried=%v",
+			avg20vol, avg60vol, volumeDriedUp)
+	}
+
+	return &TechnicalIndicators{
 		SMA200:            sma200,
 		EMA200:            ema200,
 		EMA50:             ema50,
@@ -1139,13 +2022,10 @@ func calculateTechnicalIndicatorsBacktest(historicalData []AlpacaBarData, symbol
 		IsTooExtended:     distanceFrom50EMA > TOO_EXTENDED_ADR,
 		IsNearEMA1020:     isNearEMA1020,
 		BreaksResistance:  breaksResistance,
-	}
-
-	fmt.Printf("      [DEBUG] ✅ Technical indicators calculated successfully\n")
-	return indicators, nil
+		VolumeDriedUp:     volumeDriedUp,
+	}, nil
 }
 
-// Helper calculation functions for Alpaca data
 func calculateSMAAlpaca(data []AlpacaBarData, period int) float64 {
 	if len(data) < period {
 		return 0
@@ -1193,54 +2073,44 @@ func calculateAvgVolumeAlpaca(data []AlpacaBarData) float64 {
 	return sum / float64(len(data))
 }
 
-// Calculate historical metrics for backtesting
 func calculateHistoricalMetricsBacktest(historicalData []AlpacaBarData, _, targetDate string) (float64, float64, error) {
-	fmt.Printf("      [DEBUG] Calculating historical metrics...\n")
-
 	sort.Slice(historicalData, func(i, j int) bool {
-		return historicalData[i].Timestamp > historicalData[j].Timestamp
+		return historicalData[i].Timestamp < historicalData[j].Timestamp
 	})
 
 	targetIndex := -1
 	for i, data := range historicalData {
 		if strings.HasPrefix(data.Timestamp, targetDate) {
-			targetIndex = i
-			fmt.Printf("      [DEBUG] Target date index: %d\n", i)
+			targetIndex = i - 1
 			break
 		}
 	}
 
-	if targetIndex == -1 {
-		return 0, 0, fmt.Errorf("target date not found in historical data")
+	if targetIndex < 0 {
+		return 0, 0, fmt.Errorf("target date not found in historical data or no prior bars available")
 	}
 
-	endIndex := targetIndex + 21
-	if endIndex > len(historicalData) {
-		endIndex = len(historicalData)
+	startIndex := targetIndex - 20
+	if startIndex < 0 {
+		startIndex = 0
 	}
 
-	metricsData := historicalData[targetIndex:endIndex]
-	fmt.Printf("      [DEBUG] Using %d days for metrics calculation\n", len(metricsData))
+	metricsData := historicalData[startIndex : targetIndex+1]
+	LogDebug("S3", "", "ADR/DolVol window: %s → %s (%d days)",
+		metricsData[0].Timestamp[:10], metricsData[len(metricsData)-1].Timestamp[:10], len(metricsData))
 
 	if len(metricsData) < 10 {
-		return 0, 0, fmt.Errorf("insufficient data for metrics: only %d days available", len(metricsData))
+		return 0, 0, fmt.Errorf("insufficient pre-target data for metrics: only %d days", len(metricsData))
 	}
 
-	var dolVolSum float64 = 0
-	var adrSum float64 = 0
+	var dolVolSum, adrSum float64
 	validDays := 0
-
-	for _, dataItem := range metricsData {
-		if dataItem.Close <= 0 || dataItem.Volume <= 0 || dataItem.High <= 0 || dataItem.Low <= 0 {
+	for _, d := range metricsData {
+		if d.Close <= 0 || d.Volume <= 0 || d.High <= 0 || d.Low <= 0 {
 			continue
 		}
-
-		dolVol := dataItem.Volume * dataItem.Close
-		dolVolSum += dolVol
-
-		dailyRange := ((dataItem.High - dataItem.Low) / dataItem.Low) * 100
-		adrSum += dailyRange
-
+		dolVolSum += d.Volume * d.Close
+		adrSum += ((d.High - d.Low) / d.Low) * 100
 		validDays++
 	}
 
@@ -1248,50 +2118,106 @@ func calculateHistoricalMetricsBacktest(historicalData []AlpacaBarData, _, targe
 		return 0, 0, fmt.Errorf("no valid historical data found")
 	}
 
-	avgDolVol := dolVolSum / float64(validDays)
-	avgADR := adrSum / float64(validDays)
-
-	fmt.Printf("      [DEBUG] Calculated from %d valid days: DolVol=$%.0f, ADR=%.2f%%\n",
-		validDays, avgDolVol, avgADR)
-
-	return avgDolVol, avgADR, nil
+	return dolVolSum / float64(validDays), adrSum / float64(validDays), nil
 }
 
-// Simulate premarket analysis for backtesting
-func simulatePremarketAnalysisBacktest(historicalData []AlpacaBarData, _ float64) *PremarketAnalysis {
-	fmt.Printf("      [DEBUG] Simulating premarket analysis...\n")
-
+// simulatePremarketAnalysisBacktest estimates premarket activity on the target
+// date using only data available before the open.
+func simulatePremarketAnalysisBacktest(historicalData []AlpacaBarData, targetDate string) *PremarketAnalysis {
 	if len(historicalData) == 0 {
 		return &PremarketAnalysis{}
 	}
 
-	avgDailyVol := calculateAvgVolumeAlpaca(historicalData[:min(20, len(historicalData))])
+	sort.Slice(historicalData, func(i, j int) bool {
+		return historicalData[i].Timestamp < historicalData[j].Timestamp
+	})
 
-	estimatedPremarketVol := avgDailyVol * 0.12
-	estimatedCurrentPremarket := estimatedPremarketVol * 6.5
+	targetIndex := -1
+	for i, d := range historicalData {
+		if strings.HasPrefix(d.Timestamp, targetDate) {
+			targetIndex = i
+			break
+		}
+	}
+	if targetIndex < 0 {
+		return &PremarketAnalysis{}
+	}
 
-	fmt.Printf("      [DEBUG] Avg daily volume: %.0f, simulated premarket: %.0f (ratio: 6.5x)\n",
-		avgDailyVol, estimatedCurrentPremarket)
+	startIndex := targetIndex - 21
+	if startIndex < 0 {
+		startIndex = 0
+	}
+	priorBars := historicalData[startIndex:targetIndex]
+	if len(priorBars) == 0 {
+		return &PremarketAnalysis{}
+	}
+	avgDailyVol := calculateAvgVolumeAlpaca(priorBars)
+	avgPremarketVol := avgDailyVol * 0.12
+
+	gapDayVolume := historicalData[targetIndex].Volume
+	currentPremarketVol := gapDayVolume * 0.12
+
+	volumeRatio := 0.0
+	if avgPremarketVol > 0 {
+		volumeRatio = currentPremarketVol / avgPremarketVol
+	}
+
+	volAsPercentOfDaily := 0.0
+	if avgDailyVol > 0 {
+		volAsPercentOfDaily = (currentPremarketVol / avgDailyVol) * 100
+	}
+
+	LogDebug("S3", "", "PM simulation: avgDailyVol=%.0f  gapDayVol=%.0f  estPMVol=%.0f  ratio=%.2fx  pctOfDaily=%.1f%%",
+		avgDailyVol, gapDayVolume, currentPremarketVol, volumeRatio, volAsPercentOfDaily)
 
 	return &PremarketAnalysis{
-		CurrentPremarketVol: estimatedCurrentPremarket,
-		AvgPremarketVol:     estimatedPremarketVol,
-		VolumeRatio:         6.5,
-		VolAsPercentOfDaily: 25.0,
+		CurrentPremarketVol: currentPremarketVol,
+		AvgPremarketVol:     avgPremarketVol,
+		VolumeRatio:         volumeRatio,
+		VolAsPercentOfDaily: volAsPercentOfDaily,
 	}
 }
 
+// getCurrentPriceBacktest returns the close of the most recent bar.
 func getCurrentPriceBacktest(historicalData []AlpacaBarData) float64 {
 	if len(historicalData) == 0 {
 		return 0
 	}
-	return historicalData[0].Close
+	return historicalData[len(historicalData)-1].Close
 }
 
-// Output backtest results
-func outputBacktestResults(config BacktestConfig, stocks []BacktestResult) error {
-	fmt.Printf("[OUTPUT] Generating results JSON...\n")
+// ─────────────────────────────────────────────────────────────────────────────
+// Output
+// ─────────────────────────────────────────────────────────────────────────────
 
+func outputBacktestResults(config BacktestConfig, stocks []BacktestResult) error {
+	// ── Fetch and write per-ticker reports for qualifying stocks only ──────
+	for i, stock := range stocks {
+		fmt.Printf("[OUTPUT] [%d/%d] Fetching deep reports for %s...\n", i+1, len(stocks), stock.Symbol)
+
+		// Deep earnings: Finnhub EPS numbers + SEC EDGAR press-release text
+		deepEarnings, earningsErr := getDeepEarningsHistory(config.FinnhubKey, stock.Symbol, config.TargetDate)
+		if earningsErr != nil {
+			fmt.Printf("⚠️  [OUTPUT] Could not fetch earnings for %s: %v\n", stock.Symbol, earningsErr)
+		} else {
+			stocks[i].StockInfo.PreviousEarningsReaction = deepEarnings.OverallSentiment
+		}
+
+		// Multi-source news: Finnhub + Yahoo Finance + Finviz + MarketWatch, past 7 days
+		newsArticles, newsErr := getPreGapNews(config.FinnhubKey, stock.Symbol, config.TargetDate)
+		if newsErr != nil {
+			fmt.Printf("⚠️  [OUTPUT] Could not fetch news for %s: %v\n", stock.Symbol, newsErr)
+		}
+
+		if err := writeEarningsReport(stock.Symbol, deepEarnings); err != nil {
+			fmt.Printf("⚠️  [OUTPUT] Could not write earnings report for %s: %v\n", stock.Symbol, err)
+		}
+		if err := writeNewsReport(stock.Symbol, newsArticles); err != nil {
+			fmt.Printf("⚠️  [OUTPUT] Could not write news report for %s: %v\n", stock.Symbol, err)
+		}
+	}
+
+	fmt.Printf("[OUTPUT] Generating results JSON...\n")
 	output := map[string]interface{}{
 		"backtest_date": config.TargetDate,
 		"generated_at":  time.Now().Format(time.RFC3339),
@@ -1314,27 +2240,22 @@ func outputBacktestResults(config BacktestConfig, stocks []BacktestResult) error
 			"data_quality_distribution": calculateDataQualityDistribution(stocks),
 		},
 	}
-
 	jsonData, err := json.MarshalIndent(output, "", "  ")
 	if err != nil {
 		return err
 	}
-
 	stockDir := "data/backtests"
 	if err := os.MkdirAll(stockDir, 0755); err != nil {
 		return fmt.Errorf("error creating directories: %v", err)
 	}
-
 	dateStr := strings.ReplaceAll(config.TargetDate, "-", "")
 	filename := filepath.Join(stockDir, fmt.Sprintf("backtest_%s_results.json", dateStr))
-
 	fmt.Printf("[OUTPUT] Writing to %s...\n", filename)
 	err = os.WriteFile(filename, jsonData, 0644)
 	if err != nil {
 		return err
 	}
 	fmt.Printf("✅ [OUTPUT] JSON file written successfully\n")
-
 	fmt.Printf("[OUTPUT] Generating CSV summary...\n")
 	err = outputBacktestCSVSummary(stocks, stockDir, dateStr)
 	if err != nil {
@@ -1342,11 +2263,9 @@ func outputBacktestResults(config BacktestConfig, stocks []BacktestResult) error
 	} else {
 		fmt.Printf("✅ [OUTPUT] CSV file written successfully\n")
 	}
-
 	return nil
 }
 
-// Output CSV summary for backtest
 func outputBacktestCSVSummary(stocks []BacktestResult, dir, dateStr string) error {
 	filename := filepath.Join(dir, fmt.Sprintf("backtest_%s_summary.csv", dateStr))
 	file, err := os.Create(filename)
@@ -1354,23 +2273,19 @@ func outputBacktestCSVSummary(stocks []BacktestResult, dir, dateStr string) erro
 		return err
 	}
 	defer file.Close()
-
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
-
 	headers := []string{
 		"Symbol", "Name", "Sector", "Industry", "Gap Up %", "Market Cap",
 		"Dollar Volume", "ADR %", "Above 200 EMA", "Extended",
 		"Historical Days", "Data Quality", "Validation Notes",
 	}
 	writer.Write(headers)
-
 	for _, stock := range stocks {
 		validationNotes := strings.Join(stock.ValidationNotes, "; ")
 		if validationNotes == "" {
 			validationNotes = "None"
 		}
-
 		row := []string{
 			stock.Symbol,
 			stock.StockInfo.Name,
@@ -1388,10 +2303,13 @@ func outputBacktestCSVSummary(stocks []BacktestResult, dir, dateStr string) erro
 		}
 		writer.Write(row)
 	}
-
 	fmt.Printf("[OUTPUT] CSV backtest summary written to %s\n", filename)
 	return nil
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Small helpers
+// ─────────────────────────────────────────────────────────────────────────────
 
 func boolToString(b bool) string {
 	if b {
@@ -1400,13 +2318,20 @@ func boolToString(b bool) string {
 	return "No"
 }
 
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n-3] + "..."
+}
+
 func calculateAvgGapUpBacktest(stocks []BacktestResult) float64 {
 	if len(stocks) == 0 {
 		return 0
 	}
 	sum := 0.0
-	for _, stock := range stocks {
-		sum += stock.StockInfo.GapUp
+	for _, s := range stocks {
+		sum += s.StockInfo.GapUp
 	}
 	return sum / float64(len(stocks))
 }
@@ -1416,18 +2341,18 @@ func calculateAvgMarketCapBacktest(stocks []BacktestResult) float64 {
 		return 0
 	}
 	sum := 0.0
-	for _, stock := range stocks {
-		sum += stock.StockInfo.MarketCap
+	for _, s := range stocks {
+		sum += s.StockInfo.MarketCap
 	}
 	return sum / float64(len(stocks))
 }
 
 func calculateDataQualityDistribution(stocks []BacktestResult) map[string]int {
-	distribution := make(map[string]int)
-	for _, stock := range stocks {
-		distribution[stock.DataQuality]++
+	dist := make(map[string]int)
+	for _, s := range stocks {
+		dist[s.DataQuality]++
 	}
-	return distribution
+	return dist
 }
 
 func min(a, b int) int {
@@ -1444,76 +2369,58 @@ func max(a, b int) int {
 	return b
 }
 
-// Convenience function to run a backtest with default settings
-func RunEpisodicPivotBacktest(alpacaKey, alpacaSecret, finnhubKey, targetDate string) error {
-	fmt.Printf("\n[MAIN] Running episodic pivot backtest for %s...\n", targetDate)
+// ─────────────────────────────────────────────────────────────────────────────
+// Public convenience functions
+// ─────────────────────────────────────────────────────────────────────────────
 
+func RunEpisodicPivotBacktest(alpacaKey, alpacaSecret, finnhubKey, targetDate string) error {
 	config := BacktestConfig{
 		TargetDate:   targetDate,
 		AlpacaKey:    alpacaKey,
 		AlpacaSecret: alpacaSecret,
 		FinnhubKey:   finnhubKey,
-		TiingoKey:    "",
 		LookbackDays: 300,
 	}
-
 	return FilterStocksEpisodicPivotBacktest(config)
 }
 
-// Run multiple backtests for different dates
 func RunMultipleDateBacktests(alpacaKey, alpacaSecret, finnhubKey string, dates []string) error {
-	fmt.Printf("\n================================================================================\n")
-	fmt.Printf("=== RUNNING MULTIPLE DATE BACKTESTS ===\n")
-	fmt.Printf("================================================================================\n")
-	fmt.Printf("Running backtests for %d dates...\n", len(dates))
+	LogSection(fmt.Sprintf("RUNNING MULTIPLE DATE BACKTESTS — %d dates", len(dates)))
 
 	results := make(map[string]int)
-
 	for i, date := range dates {
-		fmt.Printf("\n********************************************************************************\n")
-		fmt.Printf("*** [%d/%d] BACKTESTING DATE: %s ***\n", i+1, len(dates), date)
-		fmt.Printf("********************************************************************************\n")
+		LogInfo("MULTI", "[%d/%d] Backtesting %s", i+1, len(dates), date)
 
 		config := BacktestConfig{
 			TargetDate:   date,
 			AlpacaKey:    alpacaKey,
 			AlpacaSecret: alpacaSecret,
 			FinnhubKey:   finnhubKey,
-			TiingoKey:    "",
 			LookbackDays: 300,
 		}
 
 		gapUpStocks, err := backtestStage1GapUp(config)
 		if err != nil {
-			fmt.Printf("❌ Error backtesting %s: %v\n", date, err)
+			LogError("MULTI", "", "Error backtesting %s: %v", date, err)
 			results[date] = 0
 			continue
 		}
-
 		results[date] = len(gapUpStocks)
 
-		err = FilterStocksEpisodicPivotBacktest(config)
-		if err != nil {
-			fmt.Printf("❌ Error in full backtest for %s: %v\n", date, err)
+		if err := FilterStocksEpisodicPivotBacktest(config); err != nil {
+			LogError("MULTI", "", "Full backtest error for %s: %v", date, err)
 		}
 	}
 
-	fmt.Printf("\n================================================================================\n")
-	fmt.Printf("=== BACKTEST SUMMARY ACROSS ALL DATES ===\n")
-	fmt.Printf("================================================================================\n")
+	LogSection("MULTI-DATE BACKTEST SUMMARY")
 	for date, count := range results {
-		fmt.Printf("%s: %d qualifying stocks\n", date, count)
+		LogInfo("MULTI", "%s  ->  %d qualifying stocks", date, count)
 	}
-
 	return nil
 }
 
-// Analyze backtest performance
 func AnalyzeBacktestPerformance(backtestDir string) error {
-	fmt.Printf("\n================================================================================\n")
-	fmt.Printf("=== ANALYZING BACKTEST PERFORMANCE ===\n")
-	fmt.Printf("================================================================================\n")
-	fmt.Println("Analyzing backtest performance across dates...")
+	LogSection("ANALYZING BACKTEST PERFORMANCE")
 
 	files, err := os.ReadDir(backtestDir)
 	if err != nil {
@@ -1522,27 +2429,21 @@ func AnalyzeBacktestPerformance(backtestDir string) error {
 
 	var allResults []map[string]interface{}
 
-	fmt.Printf("\n[ANALYSIS] Scanning directory: %s\n", backtestDir)
-
 	for _, file := range files {
 		if strings.HasPrefix(file.Name(), "backtest_") && strings.HasSuffix(file.Name(), "_results.json") {
 			filePath := filepath.Join(backtestDir, file.Name())
-			fmt.Printf("[ANALYSIS] Reading %s...\n", file.Name())
-
 			data, err := os.ReadFile(filePath)
 			if err != nil {
-				fmt.Printf("⚠️  [ANALYSIS] Error reading %s: %v\n", file.Name(), err)
+				LogWarn("ANALYSIS", "", "Error reading %s: %v", file.Name(), err)
 				continue
 			}
-
 			var result map[string]interface{}
 			if err := json.Unmarshal(data, &result); err != nil {
-				fmt.Printf("⚠️  [ANALYSIS] Error parsing %s: %v\n", file.Name(), err)
+				LogWarn("ANALYSIS", "", "Error parsing %s: %v", file.Name(), err)
 				continue
 			}
-
 			allResults = append(allResults, result)
-			fmt.Printf("✅ [ANALYSIS] Successfully loaded %s\n", file.Name())
+			LogInfo("ANALYSIS", "Loaded %s", file.Name())
 		}
 	}
 
@@ -1550,27 +2451,22 @@ func AnalyzeBacktestPerformance(backtestDir string) error {
 		return fmt.Errorf("no backtest results found in %s", backtestDir)
 	}
 
-	fmt.Printf("\n[ANALYSIS] Analyzed %d backtest results\n", len(allResults))
-
 	totalStocks := 0
 	dates := make([]string, 0)
-
 	for _, result := range allResults {
 		if summary, ok := result["backtest_summary"].(map[string]interface{}); ok {
 			if candidates, ok := summary["total_candidates"].(float64); ok {
 				totalStocks += int(candidates)
 			}
 		}
-
 		if date, ok := result["backtest_date"].(string); ok {
 			dates = append(dates, date)
 		}
 	}
 
-	fmt.Printf("\n[ANALYSIS] Summary Statistics:\n")
-	fmt.Printf("   Total qualifying stocks across all dates: %d\n", totalStocks)
-	fmt.Printf("   Average per date: %.2f\n", float64(totalStocks)/float64(len(allResults)))
-	fmt.Printf("   Dates analyzed: %v\n", dates)
+	LogInfo("ANALYSIS", "Total qualifying stocks across all dates: %d", totalStocks)
+	LogInfo("ANALYSIS", "Average per date: %.2f", float64(totalStocks)/float64(len(allResults)))
+	LogInfo("ANALYSIS", "Dates analyzed: %v", dates)
 
 	analysisFile := filepath.Join(backtestDir, "backtest_analysis.json")
 	analysis := map[string]interface{}{
@@ -1586,11 +2482,10 @@ func AnalyzeBacktestPerformance(backtestDir string) error {
 		return err
 	}
 
-	err = os.WriteFile(analysisFile, analysisData, 0644)
-	if err != nil {
+	if err := os.WriteFile(analysisFile, analysisData, 0644); err != nil {
 		return err
 	}
 
-	fmt.Printf("\n✅ [ANALYSIS] Backtest analysis written to %s\n", analysisFile)
+	LogInfo("ANALYSIS", "Analysis written to %s", analysisFile)
 	return nil
 }

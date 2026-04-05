@@ -57,6 +57,11 @@ package main
 // 	// Runs once at startup, then every POSITION_SYNC_INTERVAL while the market
 // 	// is open (catches new fills without any manual watchlist editing).
 // 	POSITION_SYNC_INTERVAL = 5 * time.Minute
+
+// 	// For the first EARLY_OPEN_DURATION after market open, sync every
+// 	// EARLY_OPEN_SYNC_INTERVAL to catch opening-bell fills quickly.
+// 	EARLY_OPEN_DURATION      = 20 * time.Minute
+// 	EARLY_OPEN_SYNC_INTERVAL = 1 * time.Minute
 // )
 
 // // ─────────────────────────────────────────────────────────────────────────────
@@ -121,6 +126,7 @@ package main
 // 	easternLoc   *time.Location
 
 // 	lastPositionSync time.Time // tracks when we last called syncPositionsFromAlpaca
+// 	marketOpenTime   time.Time // set each time the market transitions to open
 // )
 
 // // ─────────────────────────────────────────────────────────────────────────────
@@ -243,17 +249,50 @@ package main
 // 	// ── Immediately sync positions from Alpaca so we start monitoring right away
 // 	syncPositionsFromAlpaca()
 
+// 	// If we're starting up while the market is already open, record that open
+// 	// time so the early-open fast-sync window is calculated correctly.
+// 	if isMarketOpen() {
+// 		now := time.Now().In(easternLoc)
+// 		marketOpenTime = time.Date(now.Year(), now.Month(), now.Day(),
+// 			MARKET_OPEN_HOUR, MARKET_OPEN_MIN, 0, 0, easternLoc)
+// 	}
+
 // 	log.Println("🚀 Real-time EP monitor started (Alpaca-sync mode).")
 // 	log.Println("   Positions are fetched directly from your Alpaca account every 5 minutes.")
+// 	log.Println("   For the first 20 min after open, positions are synced every 1 minute.")
 // 	log.Println("   No watchlist.csv required.")
 // 	log.Println("   Press Ctrl+C to stop.")
 
+// 	wasOpen := isMarketOpen()
+
 // 	for {
-// 		if isMarketOpen() {
-// 			// Re-sync the full position list from Alpaca on the configured interval.
-// 			if time.Since(lastPositionSync) >= POSITION_SYNC_INTERVAL {
+// 		open := isMarketOpen()
+
+// 		if open {
+// 			// Detect the market just transitioning from closed → open.
+// 			if !wasOpen {
+// 				now := time.Now().In(easternLoc)
+// 				marketOpenTime = time.Date(now.Year(), now.Month(), now.Day(),
+// 					MARKET_OPEN_HOUR, MARKET_OPEN_MIN, 0, 0, easternLoc)
+// 				log.Printf("🔔 Market just opened — fast-sync active for %s",
+// 					EARLY_OPEN_DURATION)
 // 				syncPositionsFromAlpaca()
+// 			} else {
+// 				// Choose sync interval based on how long the market has been open.
+// 				sinceOpen := time.Since(marketOpenTime)
+// 				syncInterval := POSITION_SYNC_INTERVAL
+// 				if sinceOpen < EARLY_OPEN_DURATION {
+// 					syncInterval = EARLY_OPEN_SYNC_INTERVAL
+// 					remaining := EARLY_OPEN_DURATION - sinceOpen
+// 					log.Printf("⏱️  Early-open window: fast-sync every %s (%s remaining)",
+// 						EARLY_OPEN_SYNC_INTERVAL, remaining.Round(time.Second))
+// 				}
+
+// 				if time.Since(lastPositionSync) >= syncInterval {
+// 					syncPositionsFromAlpaca()
+// 				}
 // 			}
+
 // 			evaluatePositions()
 // 			time.Sleep(POLL_INTERVAL)
 // 		} else {
@@ -272,6 +311,8 @@ package main
 // 				syncPositionsFromAlpaca()
 // 			}
 // 		}
+
+// 		wasOpen = open
 // 	}
 // }
 
@@ -336,27 +377,12 @@ package main
 
 // 		// ── New position: build a RealtimePosition from the Alpaca data ───────
 // 		//
-// 		// Stop loss: we derive a conservative default (5% below avg entry) because
-// 		// Alpaca does not expose the stop leg of a bracket order via GetPositions.
-// 		// If you want a tighter/wider default, adjust DEFAULT_STOP_PCT below.
-// 		//
-// 		// You can also add a stop_overrides.csv (symbol,stop_price) file in the
-// 		// working directory to provide exact stops for specific tickers; see
-// 		// loadStopOverrides() below.
+// 		// Stop loss: derived as DEFAULT_STOP_PCT below avg entry because Alpaca
+// 		// does not expose the stop leg of a bracket order via GetPositions.
+// 		// Adjust DEFAULT_STOP_PCT to tighten or widen the default.
 // 		const DEFAULT_STOP_PCT = 0.05
-// 		stopOverrides := loadStopOverrides()
-
-// 		stopPrice, hasOverride := stopOverrides[ap.Symbol]
-// 		if !hasOverride {
-// 			stopPrice = avgEntry * (1.0 - DEFAULT_STOP_PCT)
-// 		}
-
+// 		stopPrice := avgEntry * (1.0 - DEFAULT_STOP_PCT)
 // 		initialRisk := avgEntry - stopPrice
-// 		if initialRisk <= 0 {
-// 			log.Printf("[%s] ⚠️  Derived stop $%.2f >= entry $%.2f — skipping",
-// 				ap.Symbol, stopPrice, avgEntry)
-// 			continue
-// 		}
 
 // 		// Use today as the purchase date if we can't determine it otherwise.
 // 		// For a more accurate date you could cross-reference order history, but
@@ -384,14 +410,8 @@ package main
 // 		activePositions[ap.Symbol] = pos
 // 		positionsMu.Unlock()
 
-// 		log.Printf("[%s] 🟢 NEW POSITION DETECTED | Entry: $%.2f | Stop: $%.2f | Risk/share: $%.2f | Shares: %.0f%s",
-// 			ap.Symbol, avgEntry, stopPrice, initialRisk, qty,
-// 			func() string {
-// 				if hasOverride {
-// 					return " (stop from overrides file)"
-// 				}
-// 				return fmt.Sprintf(" (default stop %.0f%% below entry)", DEFAULT_STOP_PCT*100)
-// 			}())
+// 		log.Printf("[%s] 🟢 NEW POSITION DETECTED | Entry: $%.2f | Stop: $%.2f | Risk/share: $%.2f | Shares: %.0f (default stop %.0f%% below entry)",
+// 			ap.Symbol, avgEntry, stopPrice, initialRisk, qty, DEFAULT_STOP_PCT*100)
 // 	}
 
 // 	// ── 2. Remove positions no longer open in Alpaca ──────────────────────────
@@ -409,47 +429,6 @@ package main
 // 		defer positionsMu.RUnlock()
 // 		return len(activePositions)
 // 	}())
-// }
-
-// // loadStopOverrides reads an optional stop_overrides.csv in the working directory.
-// // Format: two columns, no header required — Symbol,StopPrice
-// // e.g.
-// //
-// //	AAPL,174.50
-// //	NVDA,820.00
-// //
-// // If the file does not exist the function returns an empty map silently.
-// func loadStopOverrides() map[string]float64 {
-// 	out := make(map[string]float64)
-
-// 	f, err := os.Open("stop_overrides.csv")
-// 	if err != nil {
-// 		return out // file is optional
-// 	}
-// 	defer f.Close()
-
-// 	records, err := csv.NewReader(f).ReadAll()
-// 	if err != nil {
-// 		log.Printf("⚠️  stop_overrides.csv parse error: %v", err)
-// 		return out
-// 	}
-
-// 	for _, row := range records {
-// 		if len(row) < 2 {
-// 			continue
-// 		}
-// 		sym := strings.TrimSpace(row[0])
-// 		price, err := strconv.ParseFloat(strings.TrimSpace(row[1]), 64)
-// 		if err != nil || price <= 0 {
-// 			continue
-// 		}
-// 		out[sym] = price
-// 	}
-
-// 	if len(out) > 0 {
-// 		log.Printf("📌 Loaded %d stop override(s) from stop_overrides.csv", len(out))
-// 	}
-// 	return out
 // }
 
 // // ─────────────────────────────────────────────────────────────────────────────

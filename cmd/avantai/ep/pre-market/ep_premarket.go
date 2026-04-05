@@ -44,6 +44,7 @@ func main() {
 
 	alpacaKey := os.Getenv("ALPACA_API_KEY")
 	alpacaSecret := os.Getenv("ALPACA_SECRET_KEY")
+	finnhubKey := os.Getenv("FINNHUB_KEY")
 
 	// Run the real-time scanner
 	config := ep.AlpacaConfig{
@@ -52,15 +53,33 @@ func main() {
 		BaseURL:   "https://paper-api.alpaca.markets",
 		DataURL:   "https://data.alpaca.markets",
 		IsPaper:   true,
+		FinnhubKey: finnhubKey,
 	}
+
 
 	err = ep.FilterStocksEpisodicPivotRealtime(config)
 	if err != nil {
 		log.Fatalf("Error running real-time scanner: %v\n", err)
 	}
 
+	// Simulate today at 7:30am
+	// RunTodaySimulation(alpacaKey, alpacaSecret, finnhubKey, "07:30")
+
+	// Simulate a past date at 8:00am
+	// RunHistoricalSimulation(alpacaKey, alpacaSecret, finnhubKey, "2026-03-20", "08:00")
+
+	// Full control
+	// ep.RunPremarketSimulation(ep.SimulationConfig{
+	// 	AlpacaKey:      alpacaKey,
+	// 	AlpacaSecret:   alpacaSecret,
+	// 	FinnhubKey:     finnhubKey,
+	// 	Date:           "2025-03-12",
+	// 	SimulateAtTime: "09:10",  // must be between 04:00–09:30
+	// 	LookbackDays:   1000,
+	// })
+
 	// Read the real-time scan results (now always at the same location)
-	filePath := "data/stockdata/filtered_stocks_marketstack.json"
+	filePath := "data/stockdata/filtered_stocks_latest.json"
 	file, err := os.Open(filePath)
 	if err != nil {
 		log.Fatalf("Error opening file: %v\n", err)

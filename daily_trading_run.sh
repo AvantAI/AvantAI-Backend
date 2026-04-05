@@ -57,9 +57,9 @@ sleep_until() {
 while true; do
 
     # ---------------------------------------------
-    # 5:30 AM — PREMARKET
+    # 6:00 AM — PREMARKET
     # ---------------------------------------------
-    sleep_until "05:30"
+    sleep_until "06:00"
 
     log "Running PREMARKET..."
     if $CMD_PREMARKET; then

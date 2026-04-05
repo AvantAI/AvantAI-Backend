@@ -115,7 +115,7 @@ func Generate(agentName string, serverReq *ServeRequestSpecV3, jsonResp bool, lo
 
 	sapienConfig := &SapienConfig{
 		ApiKey:    os.Getenv("SAPIEN_TOKEN"),
-		ApiUrl:    "http://localhost:4081",
+		ApiUrl:    "http://192.168.68.108:8080",
 		Namespace: "avant",
 	}
 	//fmt.Println("Generate=", sapienConfig.ApiUrl, sapienConfig.Namespace, sapienConfig.ApiKey)
