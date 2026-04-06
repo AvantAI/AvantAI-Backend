@@ -344,13 +344,13 @@ func realtimeStage2Liquidity(config AlpacaConfig, stocks []RealtimeStockData) ([
 				FilteredStock: FilteredStock{
 					Symbol: stock.Symbol,
 					StockInfo: StockStats{
-						Timestamp: time.Now().Format(time.RFC3339),
-						MarketCap: marketCap,
-						GapUp:     stock.GapUpPercent,
-						Name:      name,
-						Exchange:  exchange,
-						Sector:    sector,
-						Industry:  industry,
+						Timestamp:       time.Now().Format(time.RFC3339),
+						MarketCap:       marketCap,
+						GapUp:           stock.GapUpPercent,
+						Name:            name,
+						Exchange:        exchange,
+						Sector:          sector,
+						Industry:        industry,
 						PremarketVolume: stock.PremarketVolume,
 					},
 				},
@@ -487,8 +487,8 @@ func realtimeStage3Technical(config AlpacaConfig, stocks []RealtimeResult) ([]Re
 // ─────────────────────────────────────────────────────────────────────────────
 // Stage 4: Final Filter
 // Stocks passing all 7 criteria are marked "confident".
-// Stocks passing exactly 6 of 7 criteria are marked "questionable".
-// Stocks passing fewer than 6 are rejected entirely.
+// Stocks passing exactly 5 of 7 criteria are marked "questionable".
+// Stocks passing fewer than 5 are rejected entirely.
 // IsTooExtended is treated as an automatic hard disqualifier regardless of
 // the 6/7 threshold — a stock that is too extended is always rejected.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -575,7 +575,7 @@ func realtimeStage4Final(stocks []RealtimeResult) []RealtimeResult {
 				stock.StockInfo.ADR, stock.StockInfo.PremarketVolumeRatio,
 				stock.StockInfo.DistanceFrom50EMA, stock.StockInfo.VolumeDriedUp))
 
-		case passedCount == totalCriteria-2:
+		case passedCount >= totalCriteria-2:
 			stock.Status = "questionable"
 			// Record which criterion was missed for transparency
 			for _, c := range criteria {
@@ -1233,10 +1233,10 @@ func outputRealtimeResults(config AlpacaConfig, stocks []RealtimeResult, scanTim
 		},
 		"qualifying_stocks": stocks,
 		"summary": map[string]interface{}{
-			"total_candidates":    len(stocks),
-			"confident_count":     confidentCount,
-			"questionable_count":  questionableCount,
-			"avg_gap_up":          calculateAvgGapUpRealtime(stocks),
+			"total_candidates":   len(stocks),
+			"confident_count":    confidentCount,
+			"questionable_count": questionableCount,
+			"avg_gap_up":         calculateAvgGapUpRealtime(stocks),
 		},
 	}
 
