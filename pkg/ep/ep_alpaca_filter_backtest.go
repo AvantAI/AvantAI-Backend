@@ -200,7 +200,7 @@ type QuarterlyResult struct {
 // Constants for filtering criteria
 const (
 	MIN_GAP_UP_PERCENT = 10.0
-	MIN_STOCK_PRICE    = 5.00
+	MIN_STOCK_PRICE    = 3.00
 	MIN_DOLLAR_VOLUME  = 10000000 // $10M
 	MIN_MARKET_CAP     = 50000000 // $50M
 

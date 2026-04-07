@@ -228,7 +228,7 @@ func main() {
 	if alpacaKey == "" || alpacaSecret == "" {
 		log.Fatal("ALPACA_API_KEY or ALPACA_SECRET_KEY not found in .env")
 	}
-	filePath := "data/stockdata/filtered_stocks_marketstack.json"
+	filePath := "data/stockdata/filtered_stocks_latest.json"
 	raw, err := os.ReadFile(filePath)
 	if err != nil {
 		log.Fatalf("open %s: %v", filePath, err)
@@ -251,8 +251,8 @@ func main() {
 		symbols = append(symbols, s.Symbol)
 		dates = append(dates, s.StockInfo.Timestamp[0:10])
 		sentimentData := map[string]interface{}{
-			"Stock_name": s.Symbol,
-			"Stock_info": s.StockInfo,
+			"Stock_name":   s.Symbol,
+			"Stock_info":   s.StockInfo,
 			"Stock_status": s.Status,
 		}
 		sentimentJSON, err := json.Marshal(sentimentData)
