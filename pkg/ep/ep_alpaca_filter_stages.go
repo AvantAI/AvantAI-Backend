@@ -242,7 +242,7 @@ func realtimeStage1GapUp(config AlpacaConfig) ([]RealtimeStockData, error) {
 			LogDebug("S1", sym, "PrevClose=$%.2f  %s  PMVol=%.0f  GapUp=%.2f%%",
 				previousClose, gapPriceLabel, premarketData.PremarketVolume, gapUp)
 
-			if gapUp >= MIN_GAP_UP_PERCENT {
+			if gapUp >= MIN_GAP_UP_PERCENT && gapPrice >= MIN_STOCK_PRICE {
 				stockData := RealtimeStockData{
 					Symbol:          sym,
 					CurrentPrice:    premarketData.PremarketClose,
@@ -263,6 +263,7 @@ func realtimeStage1GapUp(config AlpacaConfig) ([]RealtimeStockData, error) {
 				mu.Unlock()
 			} else {
 				LogReject("S1", sym, fmt.Sprintf("Gap=%.2f%% < %.0f%% minimum", gapUp, MIN_GAP_UP_PERCENT))
+				LogReject("S1", sym, fmt.Sprintf("Stock price=$%.2f < $%.2f minimum", gapPrice, MIN_STOCK_PRICE))
 			}
 		}(symbol)
 	}
