@@ -576,7 +576,7 @@ func realtimeStage4Final(stocks []RealtimeResult) []RealtimeResult {
 				stock.StockInfo.ADR, stock.StockInfo.PremarketVolumeRatio,
 				stock.StockInfo.DistanceFrom50EMA, stock.StockInfo.VolumeDriedUp))
 
-		case passedCount >= totalCriteria-2:
+		case passedCount >= totalCriteria-2 && stock.StockInfo.PremarketVolumeRatio >= 1.5:
 			stock.Status = "questionable"
 			// Record which criterion was missed for transparency
 			for _, c := range criteria {
