@@ -16,6 +16,7 @@ import (
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 	"github.com/alpacahq/alpaca-trade-api-go/v3/marketdata"
 	"github.com/joho/godotenv"
+	"github.com/shopspring/decimal"
 
 	ep "avantai/pkg/ep" // ← update to match your go.mod module path
 )
@@ -99,6 +100,8 @@ type RealtimePosition struct {
 
 	// Set true on EP day if a weak close was detected
 	WeakCloseDetected bool
+
+	StopOrderID string // tracks the current GTC stop order in Alpaca
 
 	mu sync.Mutex
 }
@@ -491,6 +494,11 @@ func tryOpenPosition(pos *RealtimePosition) {
 	activePositions[pos.Symbol] = pos
 	positionsMu.Unlock()
 
+	// Place initial stop order in Alpaca
+	if err := replaceStopOrder(pos); err != nil {
+		log.Printf("[%s] ❌ Failed to place initial stop: %v", pos.Symbol, err)
+	}
+
 	log.Printf("[%s] 🟢 MONITORING STARTED | Entry: $%.2f | Stop: $%.2f | Risk/share: $%.2f | Shares: %.0f | Since: %s",
 		pos.Symbol, pos.EntryPrice, pos.StopLoss, pos.InitialRisk,
 		pos.Shares, pos.PurchaseDate.Format("2006-01-02"))
@@ -657,8 +665,10 @@ func evaluatePosition(pos *RealtimePosition) bool {
 		pctGain := (sessionHigh - pos.EntryPrice) / pos.EntryPrice
 		if pctGain >= BREAKEVEN_TRIGGER_PERCENT && pos.StopLoss < pos.EntryPrice {
 			pos.StopLoss = pos.EntryPrice
-			log.Printf("[%s] 🔒 BREAKEVEN STOP SET — session touched +%.1f%% on day %d",
-				pos.Symbol, pctGain*100, pos.DaysHeld)
+			log.Printf("[%s] 🔒 BREAKEVEN STOP SET", pos.Symbol)
+			if err := replaceStopOrder(pos); err != nil {
+				log.Printf("[%s] ❌ Failed to update stop in Alpaca: %v", pos.Symbol, err)
+			}
 		}
 	}
 
@@ -667,8 +677,10 @@ func evaluatePosition(pos *RealtimePosition) bool {
 		tighter := math.Max(pos.EntryPrice-(pos.InitialRisk*0.3), pos.EntryPrice)
 		if tighter > pos.StopLoss {
 			pos.StopLoss = tighter
-			log.Printf("[%s] ⚠️  No follow-through after %d days — stop tightened to $%.2f",
-				pos.Symbol, MAX_DAYS_NO_FOLLOWTHROUGH, pos.StopLoss)
+			log.Printf("[%s] ⚠️  No follow-through — stop tightened to $%.2f", pos.Symbol, pos.StopLoss)
+			if err := replaceStopOrder(pos); err != nil {
+				log.Printf("[%s] ❌ Failed to update stop in Alpaca: %v", pos.Symbol, err)
+			}
 		}
 	}
 
@@ -690,6 +702,9 @@ func evaluatePosition(pos *RealtimePosition) bool {
 		if pos.DaysHeld >= BREAKEVEN_TRIGGER_DAYS {
 			pos.StopLoss = math.Max(pos.StopLoss, pos.EntryPrice)
 			log.Printf("[%s] 🔒 Stop locked at breakeven after Level 1 profit", pos.Symbol)
+			if err := replaceStopOrder(pos); err != nil {
+				log.Printf("[%s] ❌ Failed to update stop in Alpaca: %v", pos.Symbol, err)
+			}
 		}
 		return pos.Shares <= 0
 	}
@@ -698,6 +713,9 @@ func evaluatePosition(pos *RealtimePosition) bool {
 		executeProfitPartial(pos, currentPrice, now, PROFIT_TAKE_2_PERCENT, 2)
 		newStop := pos.EntryPrice + (pos.InitialRisk * 1.0)
 		pos.StopLoss = math.Max(pos.StopLoss, newStop)
+		if err := replaceStopOrder(pos); err != nil {
+			log.Printf("[%s] ❌ Failed to update stop in Alpaca: %v", pos.Symbol, err)
+		}
 		pos.ProfitTaken2 = true
 		log.Printf("[%s] 🔒 Stop locked at +1R ($%.2f) after Level 2 profit", pos.Symbol, pos.StopLoss)
 		return pos.Shares <= 0
@@ -707,6 +725,9 @@ func evaluatePosition(pos *RealtimePosition) bool {
 		executeProfitPartial(pos, currentPrice, now, PROFIT_TAKE_3_PERCENT, 3)
 		newStop := pos.EntryPrice + (pos.InitialRisk * 2.0)
 		pos.StopLoss = math.Max(pos.StopLoss, newStop)
+		if err := replaceStopOrder(pos); err != nil {
+			log.Printf("[%s] ❌ Failed to update stop in Alpaca: %v", pos.Symbol, err)
+		}
 		pos.ProfitTaken3 = true
 		log.Printf("[%s] 🔒 Stop locked at +2R ($%.2f) after Level 3 profit", pos.Symbol, pos.StopLoss)
 		return pos.Shares <= 0
@@ -731,8 +752,10 @@ func evaluatePosition(pos *RealtimePosition) bool {
 
 		if newStop > pos.StopLoss {
 			pos.StopLoss = newStop
-			log.Printf("[%s] 📈 Trailing stop → $%.2f (%.1f%% from entry)",
-				pos.Symbol, pos.StopLoss, pctFromEntry*100)
+			log.Printf("[%s] 📈 Trailing stop → $%.2f", pos.Symbol, pos.StopLoss)
+			if err := replaceStopOrder(pos); err != nil {
+				log.Printf("[%s] ❌ Failed to update stop in Alpaca: %v", pos.Symbol, err)
+			}
 		}
 
 		// If price slips back below the session's 20-MA proxy (entry + 10% band),
@@ -744,6 +767,43 @@ func evaluatePosition(pos *RealtimePosition) bool {
 	}
 
 	return false
+}
+
+func replaceStopOrder(pos *RealtimePosition) error {
+	// Cancel existing stop order if we have one
+	if pos.StopOrderID != "" {
+		if err := alpacaClient.CancelOrder(pos.StopOrderID); err != nil {
+			log.Printf("[%s] ⚠️  Could not cancel stop order %s: %v", pos.Symbol, pos.StopOrderID, err)
+			// Don't return — still try to place the new one
+		} else {
+			log.Printf("[%s] 🗑️  Cancelled stop order %s", pos.Symbol, pos.StopOrderID)
+		}
+		pos.StopOrderID = ""
+	}
+
+	qty := int64(math.Round(pos.Shares))
+	if qty < 1 {
+		return nil
+	}
+
+	stopDec := decimal.NewFromFloat(pos.StopLoss)
+	qtyDec := decimal.NewFromInt(qty)
+
+	order, err := alpacaClient.PlaceOrder(alpaca.PlaceOrderRequest{
+		Symbol:      pos.Symbol,
+		Qty:         &qtyDec,
+		Side:        alpaca.Sell,
+		Type:        alpaca.Stop,
+		TimeInForce: alpaca.GTC,
+		StopPrice:   &stopDec,
+	})
+	if err != nil {
+		return fmt.Errorf("PlaceOrder (stop): %w", err)
+	}
+
+	pos.StopOrderID = order.ID
+	log.Printf("[%s] ✅ Stop order placed @ $%.2f (ID: %s)", pos.Symbol, pos.StopLoss, order.ID)
+	return nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
