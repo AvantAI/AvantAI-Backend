@@ -613,6 +613,12 @@ func runManagerAgent(stockdata []ep.StockData, symbol string, sentiment string, 
 		fmt.Printf("[Goroutine %d] ✓ JSON response saved for minute %d\n", goroutineId, currentMinute)
 	}
 
+	if strings.ToLower(strings.TrimSpace(managerResp.Recommendation)) != "buy" {
+		fmt.Printf("[Goroutine %d] 📊 Recommendation for %s at minute %d: %s\n",
+			goroutineId, symbol, currentMinute, managerResp.Recommendation)
+		return false
+	}
+
 	// Check if recommendation is "Buy" and add to watchlist
 
 	if strings.ToLower(strings.TrimSpace(managerResp.Recommendation)) != "buy" {
