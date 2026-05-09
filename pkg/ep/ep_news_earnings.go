@@ -154,11 +154,16 @@ func GetNewsAndEarnings(wg *sync.WaitGroup, ticker string, dateStr string) {
 	// If no earnings reports found from news scraping, try SEC EDGAR directly
 	if len(scrapedData.EarningsReports) == 0 {
 		fmt.Printf("No earnings reports found from news sources, fetching directly from SEC EDGAR...\n")
-		if content := fetchFromSECEdgar(client, ticker, targetDate); content != "" {
+		if content, filingDate := fetchFromSECEdgar(client, ticker, targetDate); content != "" {
+			// Use the actual SEC filing date if we got one, otherwise fall back to targetDate
+			reportDate := targetDate
+			if !filingDate.IsZero() {
+				reportDate = filingDate
+			}
 			earningsReport := EarningsReport{
 				Ticker:      ticker,
 				CompanyName: ticker,
-				ReportDate:  targetDate.Format("2006-01-02"),
+				ReportDate:  reportDate.Format("2006-01-02"),
 				Summary:     "SEC EDGAR Filing",
 				Source:      "SEC EDGAR",
 				URL:         "https://www.sec.gov",
@@ -166,7 +171,7 @@ func GetNewsAndEarnings(wg *sync.WaitGroup, ticker string, dateStr string) {
 				Content:     content,
 			}
 			scrapedData.EarningsReports = append(scrapedData.EarningsReports, earningsReport)
-			fmt.Printf("Added SEC EDGAR earnings report\n")
+			fmt.Printf("Added SEC EDGAR earnings report (filing date: %s)\n", reportDate.Format("2006-01-02"))
 		} else {
 			// If SEC EDGAR also fails, try FinancialModelingPrep API
 			fmt.Printf("SEC EDGAR returned no results, trying FinancialModelingPrep API...\n")
@@ -293,7 +298,7 @@ func fetchEarningsReportContent(client *http.Client, ticker string, reportDate t
 	fmt.Printf("Fetching earnings content for %s on %s\n", ticker, reportDate.Format("2006-01-02"))
 
 	// Method 1: Try SEC EDGAR first (most reliable and FREE)
-	if content := fetchFromSECEdgar(client, ticker, reportDate); content != "" {
+	if content, _ := fetchFromSECEdgar(client, ticker, reportDate); content != "" {
 		fmt.Printf("✓ Successfully fetched earnings from SEC EDGAR\n")
 		return content
 	}
@@ -382,11 +387,11 @@ func fetchFromFMP(client *http.Client, ticker string, targetDate time.Time) *Ear
 		return nil
 	}
 
-	// Build the earnings report
+	// Build the earnings report using the actual date from the FMP response
 	report := &EarningsReport{
 		Ticker:        ticker,
 		CompanyName:   ticker,
-		ReportDate:    earnings.Date,
+		ReportDate:    earnings.Date, // Use the actual earnings date from FMP, not targetDate
 		Period:        earnings.FiscalDateEnding,
 		Summary:       fmt.Sprintf("Earnings data for %s - %s", ticker, earnings.Date),
 		Source:        "FinancialModelingPrep API",
@@ -518,8 +523,9 @@ func fetchFMPEarnings(client *http.Client, ticker string, targetDate time.Time, 
 // SEC EDGAR FUNCTIONS
 // ============================================================================
 
-// Fetch from SEC EDGAR
-func fetchFromSECEdgar(client *http.Client, ticker string, targetDate time.Time) string {
+// fetchFromSECEdgar returns the filing content and the actual filing date.
+// The second return value is zero if no filing was found or the date could not be parsed.
+func fetchFromSECEdgar(client *http.Client, ticker string, targetDate time.Time) (string, time.Time) {
 	// SEC requires a User-Agent with company name and email
 	// IMPORTANT: Replace this with your actual contact info
 	userAgent := "PersonalProject yourname@youremail.com"
@@ -528,7 +534,7 @@ func fetchFromSECEdgar(client *http.Client, ticker string, targetDate time.Time)
 	cik := getCIKFromTicker(client, ticker, userAgent)
 	if cik == "" {
 		fmt.Printf("Could not find CIK for ticker %s\n", ticker)
-		return ""
+		return "", time.Time{}
 	}
 
 	// Format CIK with leading zeros (10 digits)
@@ -539,7 +545,7 @@ func fetchFromSECEdgar(client *http.Client, ticker string, targetDate time.Time)
 
 	req, err := http.NewRequest("GET", filingURL, nil)
 	if err != nil {
-		return ""
+		return "", time.Time{}
 	}
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "application/json")
@@ -547,19 +553,19 @@ func fetchFromSECEdgar(client *http.Client, ticker string, targetDate time.Time)
 	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Printf("Error fetching SEC filings: %v\n", err)
-		return ""
+		return "", time.Time{}
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
 		fmt.Printf("SEC API returned status %d\n", resp.StatusCode)
-		return ""
+		return "", time.Time{}
 	}
 
 	var filings SECFilingsResponse
 	if err := json.NewDecoder(resp.Body).Decode(&filings); err != nil {
 		fmt.Printf("Error decoding SEC response: %v\n", err)
-		return ""
+		return "", time.Time{}
 	}
 
 	// Find relevant earnings filing (8-K or 10-Q) closest to target date
@@ -568,6 +574,7 @@ func fetchFromSECEdgar(client *http.Client, ticker string, targetDate time.Time)
 		primaryDoc      string
 		formType        string
 		filingDate      string
+		parsedDate      time.Time
 	}
 
 	minDiff := 90 * 24 * time.Hour // Max 90 days difference
@@ -605,12 +612,13 @@ func fetchFromSECEdgar(client *http.Client, ticker string, targetDate time.Time)
 			bestFiling.primaryDoc = filings.Filings.Recent.PrimaryDocument[i]
 			bestFiling.formType = formType
 			bestFiling.filingDate = filings.Filings.Recent.FilingDate[i]
+			bestFiling.parsedDate = filingDate
 		}
 	}
 
 	if bestFiling.accessionNumber == "" {
 		fmt.Printf("No relevant SEC filings found near %s\n", targetDate.Format("2006-01-02"))
-		return ""
+		return "", time.Time{}
 	}
 
 	fmt.Printf("Found SEC filing: %s filed on %s\n", bestFiling.formType, bestFiling.filingDate)
@@ -655,7 +663,7 @@ func fetchFromSECEdgar(client *http.Client, ticker string, targetDate time.Time)
 
 		if allContent.Len() > 0 {
 			fmt.Printf("Successfully fetched %d exhibits\n", successCount)
-			return allContent.String()
+			return allContent.String(), bestFiling.parsedDate
 		}
 
 		fmt.Printf("Failed to fetch any exhibits, will try primary document\n")
@@ -665,7 +673,7 @@ func fetchFromSECEdgar(client *http.Client, ticker string, targetDate time.Time)
 	docURL := fmt.Sprintf("https://www.sec.gov/Archives/edgar/data/%s/%s/%s",
 		strings.TrimLeft(cik, "0"), accessionNoSlash, bestFiling.primaryDoc)
 
-	return fetchSECDocument(client, docURL, userAgent)
+	return fetchSECDocument(client, docURL, userAgent), bestFiling.parsedDate
 }
 
 // Find exhibits in an 8-K filing (like 99.1, 99.2)
@@ -1236,7 +1244,7 @@ func scrapeYahooFinance(client *http.Client, ticker string, targetDate time.Time
 			earnings := EarningsReport{
 				Ticker:      ticker,
 				CompanyName: extractCompanyName(title),
-				ReportDate:  targetDate.Format("2006-01-02"),
+				ReportDate:  publishedAt.Format("2006-01-02"), // Use the article's actual publication date
 				Summary:     cleanText(summary),
 				Source:      "Yahoo Finance",
 				URL:         url,
@@ -1335,7 +1343,7 @@ func scrapeMarketWatch(client *http.Client, ticker string, targetDate time.Time,
 			earnings := EarningsReport{
 				Ticker:      ticker,
 				CompanyName: extractCompanyName(title),
-				ReportDate:  targetDate.Format("2006-01-02"),
+				ReportDate:  publishedAt.Format("2006-01-02"), // Use the article's actual publication date
 				Summary:     cleanText(summary),
 				Source:      "MarketWatch",
 				URL:         url,
@@ -1426,7 +1434,7 @@ func scrapeFinviz(client *http.Client, ticker string, targetDate time.Time, news
 			earnings := EarningsReport{
 				Ticker:      ticker,
 				CompanyName: extractCompanyName(title),
-				ReportDate:  targetDate.Format("2006-01-02"),
+				ReportDate:  publishedAt.Format("2006-01-02"), // Use the article's actual publication date
 				Summary:     cleanText(title),
 				Source:      "Finviz",
 				URL:         url,
