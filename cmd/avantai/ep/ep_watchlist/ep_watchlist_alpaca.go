@@ -82,6 +82,7 @@ type RealtimePosition struct {
 	LastCheckDate   time.Time // tracks last calendar date we incremented DaysHeld
 
 	// Profit-taking flags
+	EarlyProfitTaken bool // fired once, ~30 min after entry
 	ProfitTaken  bool
 	ProfitTaken2 bool
 	ProfitTaken3 bool
@@ -680,6 +681,57 @@ func evaluatePosition(pos *RealtimePosition) bool {
 			log.Printf("[%s] ⚠️  No follow-through — stop tightened to $%.2f", pos.Symbol, pos.StopLoss)
 			if err := replaceStopOrder(pos); err != nil {
 				log.Printf("[%s] ❌ Failed to update stop in Alpaca: %v", pos.Symbol, err)
+			}
+		}
+	}
+
+	// ── 8a. 30-minute early profit take ──────────────────────────────────────
+	// Once, within the first trading day, if 30+ minutes have elapsed since
+	// entry and the position is profitable, sell 20% of shares.
+	if !pos.EarlyProfitTaken && pos.DaysHeld == 0 {
+		minutesSinceEntry := now.Sub(pos.PurchaseDate).Minutes()
+		if minutesSinceEntry >= 30 && currentPrice > pos.EntryPrice {
+			sharesToSell := int(math.Floor(pos.Shares * 0.20))
+			if sharesToSell < 1 {
+				sharesToSell = 1
+			}
+			if sharesToSell > int(pos.Shares) {
+				sharesToSell = int(pos.Shares)
+			}
+
+			pl := (currentPrice - pos.EntryPrice) * float64(sharesToSell)
+			rr := (currentPrice - pos.EntryPrice) / pos.InitialRisk
+
+			log.Printf("[%s] ⏱️  30-MIN PROFIT TAKE — selling %d shares (20%%) @ $%.2f",
+				pos.Symbol, sharesToSell, currentPrice)
+
+			if _, err := ep.PlaceSellOrder(pos.Symbol, sharesToSell, &currentPrice); err != nil {
+				log.Printf("[%s] ❌ PlaceSellOrder error: %v", pos.Symbol, err)
+			}
+
+			recordTrade(TradeRecord{
+				Symbol:      pos.Symbol,
+				EntryPrice:  pos.EntryPrice,
+				ExitPrice:   currentPrice,
+				Shares:      float64(sharesToSell),
+				InitialRisk: pos.InitialRisk,
+				ProfitLoss:  pl,
+				RiskReward:  rr,
+				EntryDate:   pos.PurchaseDate.Format("2006-01-02"),
+				ExitDate:    now.Format("2006-01-02"),
+				ExitReason:  "30-Min Early Profit Take (20%)",
+				IsWinner:    true,
+			})
+
+			pos.CumulativeProfit += pl
+			pos.Shares -= float64(sharesToSell)
+			pos.EarlyProfitTaken = true
+
+			log.Printf("[%s] ✅ %.0f shares remain after 30-min take | Cumulative P/L: $%.2f",
+				pos.Symbol, pos.Shares, pos.CumulativeProfit)
+
+			if pos.Shares <= 0 {
+				return true
 			}
 		}
 	}
