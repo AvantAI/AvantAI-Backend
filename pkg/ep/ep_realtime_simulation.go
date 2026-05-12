@@ -593,6 +593,7 @@ func outputSimulationResults(simConfig SimulationConfig, stocks []RealtimeResult
 					PreviousEarningsReaction: s.StockInfo.PreviousEarningsReaction,
 				},
 			},
+			Status:		     s.Status,
 			BacktestDate:    simConfig.Date,
 			DataQuality:     dq,
 			HistoricalDays:  simConfig.LookbackDays,

@@ -258,6 +258,7 @@ type BacktestResult struct {
 	BacktestDate    string   `json:"backtest_date"`
 	DataQuality     string   `json:"data_quality"`
 	HistoricalDays  int      `json:"historical_days_available"`
+	Status          string   `json:"status"`
 	ValidationNotes []string `json:"validation_notes"`
 }
 
@@ -377,7 +378,7 @@ func backtestStage1GapUp(config BacktestConfig) ([]StockData, error) {
 	}
 	LogInfo("S1", "Retrieved %d tradable symbols", len(symbols))
 	LogInfo("S1", "Criteria: Gap Up >= %.0f%%  |  Concurrency: %d  |  Rate: %d/s",
-		MIN_GAP_UP_PERCENT, MAX_CONCURRENT, API_CALLS_PER_SECOND)
+		MIN_GAP_UP_PERCENT, MAX_CONCURRENT, API_CALLS_PER_SECOND+34)
 
 	var gapUpStocks []StockData
 	var mu sync.Mutex
@@ -386,7 +387,7 @@ func backtestStage1GapUp(config BacktestConfig) ([]StockData, error) {
 
 	semaphore := make(chan struct{}, MAX_CONCURRENT)
 	var wg sync.WaitGroup
-	rateLimiter := time.Tick(time.Second / API_CALLS_PER_SECOND)
+	rateLimiter := time.Tick(time.Second / (API_CALLS_PER_SECOND+34))
 
 	for _, symbol := range symbols {
 		wg.Add(1)
@@ -737,9 +738,12 @@ func backtestStage4Final(stocks []BacktestResult) []BacktestResult {
 			LogDebug("S4", stock.Symbol, "❌ FAIL  Too Extended — %.2f ADRs > %.1f",
 				stock.StockInfo.DistanceFrom50EMA, TOO_EXTENDED_ADR)
 			allPassed = false
+			stock.Status = "Questionable"
 		}
 
+
 		if allPassed && !stock.StockInfo.IsTooExtended {
+			stock.Status = "Confident"
 			finalStocks = append(finalStocks, stock)
 			LogQualify("S4", stock.Symbol, fmt.Sprintf(
 				"Gap=%.2f%%  DolVol=$%.0fM  ADR=%.2f%%  Dist50EMA=%.2f  VolDriedUp=%v  EarningsRxn=%s",
