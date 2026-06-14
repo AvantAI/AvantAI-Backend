@@ -67,6 +67,8 @@ func main() {
 	// var wg sync.WaitGroup
 
 	// gets the news info for the respective stock
+
+
 	for _, stock := range stocks {
 		// Start the goroutine
 		// wg.Add(2)

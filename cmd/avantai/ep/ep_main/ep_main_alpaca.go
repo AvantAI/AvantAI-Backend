@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 	"github.com/joho/godotenv"
 	"github.com/tidwall/pretty"
 )
@@ -225,9 +226,25 @@ func main() {
 	}
 	alpacaKey := os.Getenv("ALPACA_API_KEY")
 	alpacaSecret := os.Getenv("ALPACA_SECRET_KEY")
+	baseURL := os.Getenv("ALPACA_PAPER_URL") // e.g. https://paper-api.alpaca.markets
 	if alpacaKey == "" || alpacaSecret == "" {
 		log.Fatal("ALPACA_API_KEY or ALPACA_SECRET_KEY not found in .env")
 	}
+
+	alpacaClient := alpaca.NewClient(alpaca.ClientOpts{
+		APIKey:    alpacaKey,
+		APISecret: alpacaSecret,
+		BaseURL:   baseURL,
+	})
+
+	acct, err := alpacaClient.GetAccount()
+	if err != nil {
+		log.Fatalf("Error fetching Alpaca account: %v", err)
+	}
+
+	accSize, _ := acct.Cash.Float64()
+	fmt.Printf("Alpaca account loaded. Cash balance: $%.2f\n", accSize)
+
 	filePath := "data/stockdata/filtered_stocks_latest.json"
 	raw, err := os.ReadFile(filePath)
 	if err != nil {
@@ -268,14 +285,14 @@ func main() {
 		wg.Add(1)
 		go func(idx int, sym, date string, sent string) {
 			defer wg.Done()
-			intradayWorker(alpacaKey, alpacaSecret, sym, date, sent, idx+1)
+			intradayWorker(alpacaKey, alpacaSecret, sym, date, sent, idx+1, accSize)
 		}(i, symbol, dates[i], sentiment[i])
 	}
 	wg.Wait()
 	fmt.Println("All workers finished. Done.")
 }
 
-func intradayWorker(apiKey, apiSecret, symbol, date string, sentiment string, goroutineId int) {
+func intradayWorker(apiKey, apiSecret, symbol, date string, sentiment string, goroutineId int, accSize float64) {
 	fmt.Printf("[#%d:%s] worker started for %s\n", goroutineId, symbol, date)
 	openNY, closeNY, err := sessionWindow(date)
 	if err != nil {
@@ -356,7 +373,7 @@ func intradayWorker(apiKey, apiSecret, symbol, date string, sentiment string, go
 		)
 
 		// Run manager agent and check if we should stop
-		shouldStop := runManagerAgent(epBars, symbol, sentiment, goroutineId)
+		shouldStop := runManagerAgent(epBars, symbol, sentiment, accSize, goroutineId)
 		if shouldStop {
 			fmt.Printf("[#%d:%s] 🛑 Buy recommendation received — stopping worker\n", goroutineId, symbol)
 			return
@@ -523,17 +540,19 @@ func addToWatchlist(entry WatchlistEntry) error {
 var riskPerTrade = 0.01
 
 // Modified runManagerAgent to return bool indicating whether to stop the worker
-func runManagerAgent(stockdata []ep.StockData, symbol string, sentiment string, goroutineId int) bool {
+func runManagerAgent(stockdata []ep.StockData, symbol string, sentiment string, accSize float64, goroutineId int) bool {
 	fmt.Printf("\n[Goroutine %d] --- Starting runManagerAgent for %s (Sentiment: %s) ---\n", goroutineId, symbol, sentiment)
 	defer fmt.Printf("[Goroutine %d] ✓ runManagerAgent completed for %s\n", goroutineId, symbol)
 	fmt.Printf("[Goroutine %d] Processing %d stock data points for %s\n", goroutineId, len(stockdata), symbol)
 	stock_data := ""
-	var latest_stock_instance ep.StockData
+	var stopLoss float64
 
 	for i, stockdataPoint := range stockdata {
-		if i == len(stockdata)-1 {
-			latest_stock_instance = stockdataPoint
+		
+		if stockdataPoint.Low < stopLoss || stopLoss == 0 {
+			stopLoss = stockdataPoint.Low
 		}
+
 		stock_data += fmt.Sprintf("%d min - Open: %v Close: %v High: %v Low: %v\n",
 			i, stockdataPoint.Open, stockdataPoint.PreviousClose, stockdataPoint.High, stockdataPoint.Low)
 		if i < 3 {
@@ -545,15 +564,15 @@ func runManagerAgent(stockdata []ep.StockData, symbol string, sentiment string, 
 	dataDir := "reports"
 	stockDir := filepath.Join(dataDir, symbol)
 	newsFilePath := filepath.Join(stockDir, "news_report.txt")
-	file, err := os.Open(newsFilePath)
+	newsFile, err := os.Open(newsFilePath)
 	if err != nil {
 		fmt.Printf("[Goroutine %d] ❌ Error opening news report file: %v\n", goroutineId, err)
 	} else {
-		defer file.Close()
+		defer newsFile.Close()
 	}
 	var news []byte
-	if file != nil {
-		news, err = io.ReadAll(file)
+	if newsFile != nil {
+		news, err = io.ReadAll(newsFile)
 		if err != nil {
 			fmt.Printf("[Goroutine %d] ❌ Error reading news file: %v\n", goroutineId, err)
 		} else {
@@ -561,15 +580,15 @@ func runManagerAgent(stockdata []ep.StockData, symbol string, sentiment string, 
 		}
 	}
 	earningsFilePath := filepath.Join(stockDir, "earnings_report.txt")
-	file, err = os.Open(earningsFilePath)
+	earningsFile, err := os.Open(earningsFilePath)
 	if err != nil {
 		fmt.Printf("[Goroutine %d] ❌ Error opening earnings report file: %v\n", goroutineId, err)
 	} else {
-		defer file.Close()
+		defer earningsFile.Close()
 	}
 	var earnings []byte
-	if file != nil {
-		earnings, err = io.ReadAll(file)
+	if earningsFile != nil {
+		earnings, err = io.ReadAll(earningsFile)
 		if err != nil {
 			fmt.Printf("[Goroutine %d] ❌ Error reading earnings file: %v\n", goroutineId, err)
 		} else {
@@ -595,15 +614,6 @@ func runManagerAgent(stockdata []ep.StockData, symbol string, sentiment string, 
 			goroutineId, currentMinute, err)
 		return false
 	}
-	if err := saveJSONResponse(symbol, currentMinute, managerResp); err != nil {
-		fmt.Printf("[Goroutine %d] ❌ Failed to save JSON response (minute %d): %v\n",
-			goroutineId, currentMinute, err)
-	} else {
-		fmt.Printf("[Goroutine %d] ✓ JSON response saved for minute %d\n", goroutineId, currentMinute)
-	}
-	if err := godotenv.Load(); err != nil {
-		log.Fatal("Error loading .env file")
-	}
 
 	// Save JSON response to file
 	if err := saveJSONResponse(symbol, currentMinute, managerResp); err != nil {
@@ -613,14 +623,7 @@ func runManagerAgent(stockdata []ep.StockData, symbol string, sentiment string, 
 		fmt.Printf("[Goroutine %d] ✓ JSON response saved for minute %d\n", goroutineId, currentMinute)
 	}
 
-	if strings.ToLower(strings.TrimSpace(managerResp.Recommendation)) != "buy" {
-		fmt.Printf("[Goroutine %d] 📊 Recommendation for %s at minute %d: %s\n",
-			goroutineId, symbol, currentMinute, managerResp.Recommendation)
-		return false
-	}
-
 	// Check if recommendation is "Buy" and add to watchlist
-
 	if strings.ToLower(strings.TrimSpace(managerResp.Recommendation)) != "buy" {
 		fmt.Printf("[Goroutine %d] 📊 Recommendation for %s at minute %d: %s\n",
 			goroutineId, symbol, currentMinute, managerResp.Recommendation)
@@ -628,18 +631,18 @@ func runManagerAgent(stockdata []ep.StockData, symbol string, sentiment string, 
 	}
 
 	stringPercent := strings.TrimSpace(strings.TrimSuffix(managerResp.RiskPercent, "%"))
-	riskPercent, err := strconv.ParseFloat(stringPercent, 64)
+	// riskPercent, err := strconv.ParseFloat(stringPercent, 64)
 	if err != nil {
 		fmt.Printf("[Goroutine %d] ❌ Failed to parse risk percent '%s': %v\n",
 			goroutineId, stringPercent, err)
 		return false
 	}
 
-	accSize, err := strconv.ParseFloat(os.Getenv("ACCOUNT_SIZE"), 64)
-	if err != nil {
-		fmt.Printf("[Goroutine %d] ❌ Failed to parse account size: %v\n", goroutineId, err)
-		return false
-	}
+	// accSize, err := strconv.ParseFloat(os.Getenv("ACCOUNT_SIZE"), 64)
+	// if err != nil {
+	// 	fmt.Printf("[Goroutine %d] ❌ Failed to parse account size: %v\n", goroutineId, err)
+	// 	return false
+	// }
 
 	riskPerTrade, err := strconv.ParseFloat(os.Getenv("RISK_PER_TRADE"), 64)
 	if err != nil {
@@ -661,8 +664,6 @@ func runManagerAgent(stockdata []ep.StockData, symbol string, sentiment string, 
 	// 	return false
 	// }
 
-	stopLoss := latest_stock_instance.Low
-
 	// Validate the risk calculation
 	riskPerShare := entryPrice - stopLoss
 	if riskPerShare <= 0 {
@@ -673,7 +674,12 @@ func runManagerAgent(stockdata []ep.StockData, symbol string, sentiment string, 
 
 	// Calculate shares
 	totalRisk := riskPerTrade * accSize
-	shares := math.Round(totalRisk / riskPerShare)
+
+	riskShares := totalRisk / riskPerShare
+	capShares := (accSize * 0.30) / entryPrice
+
+	shares := math.Floor(math.Min(riskShares, capShares))
+
 
 	if shares <= 0 {
 		fmt.Printf("[Goroutine %d] ❌ Invalid share calculation resulted in %.0f shares\n",
@@ -682,14 +688,14 @@ func runManagerAgent(stockdata []ep.StockData, symbol string, sentiment string, 
 	}
 
 	if strings.ToLower(strings.TrimSpace(managerResp.Recommendation)) == "buy" {
-		if managerResp.EntryPrice != "" && managerResp.StopLoss != "" {
-			shares := math.Round((((riskPercent) * (riskPerTrade * accSize)) * 1.0) / (entryPrice - stopLoss))
+		if managerResp.EntryPrice != "" && stopLoss != 0 {
+			// shares := math.Round((((riskPercent) * (riskPerTrade * accSize)) * 1.0) / (entryPrice - stopLoss))
 			entry := WatchlistEntry{
 				StockSymbol: symbol,
 				EntryPrice:  managerResp.EntryPrice,
-				StopLoss:    managerResp.StopLoss,
+				StopLoss:    strconv.FormatFloat(stopLoss, 'f', 2, 64),
 				Shares:      strconv.FormatFloat(float64(int(shares)), 'f', 2, 64),
-				InitialRisk: strconv.FormatFloat(riskPercent, 'f', 2, 64),
+				// InitialRisk: strconv.FormatFloat(riskPercent, 'f', 2, 64),
 			}
 
 			order, err := ep.PlaceEntryWithStop(symbol, stopLoss, int(shares), nil)

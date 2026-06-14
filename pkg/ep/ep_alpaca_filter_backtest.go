@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	mat64 "gonum.org/v1/gonum/mat"
 	"github.com/PuerkitoBio/goquery"
 )
 
@@ -200,7 +201,7 @@ type QuarterlyResult struct {
 // Constants for filtering criteria
 const (
 	MIN_GAP_UP_PERCENT = 8.0
-	MIN_STOCK_PRICE    = 3.00
+	MIN_STOCK_PRICE    = 5.00
 	MIN_DOLLAR_VOLUME  = 10000000 // $10M
 	MIN_MARKET_CAP     = 50000000 // $50M
 
@@ -214,8 +215,8 @@ const (
 	TOO_EXTENDED_ADR       = 8.0
 	NEAR_EMA_ADR_THRESHOLD = 2.0 // FIX: strategy says "within 2 ADRs" — was 1.5
 	MIN_ADR_PERCENT        = 5.0
-	MAX_CONCURRENT         = 166
-	API_CALLS_PER_SECOND   = 166
+	MAX_CONCURRENT         = 20
+	API_CALLS_PER_SECOND   = 160
 
 	// Number of prior quarters to evaluate for earnings reaction history
 	EARNINGS_LOOKBACK_QUARTERS = 4
@@ -234,23 +235,23 @@ type AlpacaBarsResponseMap struct {
 }
 
 // AlpacaSnapshot represents a snapshot from Alpaca API
-type AlpacaSnapshot struct {
-	Symbol      string `json:"symbol"`
-	LatestTrade struct {
-		Price float64 `json:"p"`
-	} `json:"latestTrade"`
-	LatestQuote struct {
-		BidPrice float64 `json:"bp"`
-		AskPrice float64 `json:"ap"`
-	} `json:"latestQuote"`
-	DailyBar     AlpacaBar `json:"dailyBar"`
-	PrevDailyBar AlpacaBar `json:"prevDailyBar"`
-}
+// type AlpacaSnapshot struct {
+// 	Symbol      string `json:"symbol"`
+// 	LatestTrade struct {
+// 		Price float64 `json:"p"`
+// 	} `json:"latestTrade"`
+// 	LatestQuote struct {
+// 		BidPrice float64 `json:"bp"`
+// 		AskPrice float64 `json:"ap"`
+// 	} `json:"latestQuote"`
+// 	DailyBar     AlpacaBar `json:"dailyBar"`
+// 	PrevDailyBar AlpacaBar `json:"prevDailyBar"`
+// }
 
 // AlpacaSnapshotResponse represents the response from Alpaca snapshots endpoint
-type AlpacaSnapshotResponse struct {
-	Snapshots map[string]AlpacaSnapshot `json:"snapshots"`
-}
+// type AlpacaSnapshotResponse struct {
+// 	Snapshots map[string]AlpacaSnapshot `json:"snapshots"`
+// }
 
 // BacktestResult extends FilteredStock with additional backtest metrics
 type BacktestResult struct {
@@ -377,97 +378,134 @@ func backtestStage1GapUp(config BacktestConfig) ([]StockData, error) {
 		return nil, fmt.Errorf("failed to get stock symbols: %v", err)
 	}
 	LogInfo("S1", "Retrieved %d tradable symbols", len(symbols))
-	LogInfo("S1", "Criteria: Gap Up >= %.0f%%  |  Concurrency: %d  |  Rate: %d/s",
-		MIN_GAP_UP_PERCENT, MAX_CONCURRENT, API_CALLS_PER_SECOND+34)
+	LogInfo("S1", "Criteria: Gap Up >= %.0f%%", MIN_GAP_UP_PERCENT)
 
-	var gapUpStocks []StockData
-	var mu sync.Mutex
-	processedCount := 0
-	qualifiedCount := 0
+	const batchSize = 400
+	var allGapUpStocks []StockData
 
-	semaphore := make(chan struct{}, MAX_CONCURRENT)
-	var wg sync.WaitGroup
-	rateLimiter := time.Tick(time.Second / (API_CALLS_PER_SECOND+34))
+	for batchStart := 0; batchStart < len(symbols); batchStart += batchSize {
+		batchEnd := batchStart + batchSize
+		if batchEnd > len(symbols) {
+			batchEnd = len(symbols)
+		}
+		batch := symbols[batchStart:batchEnd]
 
-	for _, symbol := range symbols {
-		wg.Add(1)
-		go func(sym string) {
-			defer wg.Done()
+		LogInfo("S1", "Processing batch %d–%d of %d",
+			batchStart+1, batchEnd, len(symbols))
 
-			semaphore <- struct{}{}
-			defer func() { <-semaphore }()
-			<-rateLimiter
+		// ── Step 1: one HTTP call for the entire batch ───────────────────
+		barMap, err := getHistoricalBarsForDateBatch(
+			config.AlpacaKey, config.AlpacaSecret, batch, config.TargetDate)
+		if err != nil {
+			LogInfo("S1", "Batch %d–%d bars error: %v — skipping", batchStart+1, batchEnd, err)
+			continue
+		}
 
-			mu.Lock()
-			processedCount++
-			currentCount := processedCount
-			currentQualified := qualifiedCount
-			mu.Unlock()
+		// ── Step 2: collect valid rows in batch order ────────────────────
+		type validRow struct {
+			symbol    string
+			current   *AlpacaBarData
+			previous  *AlpacaBarData
+		}
 
-			if currentCount%25 == 0 {
-				LogProgress("S1", currentCount, len(symbols),
-					fmt.Sprintf("%d qualified so far", currentQualified))
+		var rows []validRow
+		for _, sym := range batch {
+			pair, ok := barMap[sym]
+			if !ok {
+				continue
 			}
+			rows = append(rows, validRow{sym, pair[0], pair[1]})
+		}
 
-			LogDebug("S1", sym, "Fetching historical data around %s", config.TargetDate)
-			currentData, previousData, err := getHistoricalDataForDateAlpaca(
-				config.AlpacaKey, config.AlpacaSecret, sym, config.TargetDate)
-			if err != nil {
-				LogWarn("S1", sym, "Failed to get historical data: %v", err)
-				return
+		if len(rows) == 0 {
+			continue
+		}
+
+		// ── Step 3: gonum matrix for vectorised gap% computation ─────────
+		//
+		//   col 0  prevClose
+		//   col 1  currentOpen
+		//   col 2  currentClose
+		//   col 3  currentHigh
+		//   col 4  currentLow
+		//   col 5  currentVolume
+		//
+		// gap% = (col1 - col0) / col0 * 100
+
+		m := len(rows)
+		const cols = 6
+		flat := make([]float64, m*cols)
+		for i, r := range rows {
+			flat[i*cols+0] = r.previous.Close
+			flat[i*cols+1] = r.current.Open
+			flat[i*cols+2] = r.current.Close
+			flat[i*cols+3] = r.current.High
+			flat[i*cols+4] = r.current.Low
+			flat[i*cols+5] = r.current.Volume
+		}
+
+		matx := mat64.NewDense(m, cols, flat)
+
+		gapVec := make([]float64, m)
+		for i := 0; i < m; i++ {
+			prevClose := matx.At(i, 0)
+			open := matx.At(i, 1)
+			if prevClose > 0 {
+				gapVec[i] = ((open - prevClose) / prevClose) * 100
 			}
+		}
 
-			if currentData == nil || previousData == nil {
-				LogWarn("S1", sym, "Missing data (current=%v previous=%v)",
-					currentData != nil, previousData != nil)
-				return
-			}
+		// ── Step 4: filter qualifying stocks ────────────────────────────
+		var batchGapUps []StockData
+		for i, r := range rows {
+			gap := gapVec[i]
+			prevClose := matx.At(i, 0)
+			open := matx.At(i, 1)
+			close_ := matx.At(i, 2)
+			high := matx.At(i, 3)
+			low := matx.At(i, 4)
+			volume := matx.At(i, 5)
 
-			if previousData.Close <= 0 {
-				LogWarn("S1", sym, "Invalid previous close: %.2f", previousData.Close)
-				return
-			}
+			LogDebug("S1", r.symbol,
+				"CurrentDate=%s PrevDate=%s Open=%.2f PrevClose=%.2f GapUp=%.2f%%",
+				r.current.Timestamp[:10], r.previous.Timestamp[:10],
+				open, prevClose, gap)
 
-			gapUp := ((currentData.Open - previousData.Close) / previousData.Close) * 100
+			if gap >= MIN_GAP_UP_PERCENT {
+				LogQualify("S1", r.symbol, fmt.Sprintf(
+					"Gap=%.2f%%  Open=$%.2f  PrevClose=$%.2f", gap, open, prevClose))
 
-			LogDebug("S1", sym, "CurrentDate=%s PrevDate=%s Open=%.2f PrevClose=%.2f GapUp=%.2f%%",
-				currentData.Timestamp[:10], previousData.Timestamp[:10],
-				currentData.Open, previousData.Close, gapUp)
-
-			if gapUp >= MIN_GAP_UP_PERCENT {
-				stockData := StockData{
-					Symbol:                     sym,
-					Timestamp:                  currentData.Timestamp,
-					Open:                       currentData.Open,
-					High:                       currentData.High,
-					Low:                        currentData.Low,
-					Close:                      currentData.Close,
-					Volume:                     int64(currentData.Volume),
-					PreviousClose:              previousData.Close,
-					Change:                     currentData.Close - previousData.Close,
-					ChangePercent:              gapUp,
-					ExtendedHoursQuote:         currentData.Close,
-					ExtendedHoursChange:        currentData.Close - previousData.Close,
-					ExtendedHoursChangePercent: gapUp,
+				batchGapUps = append(batchGapUps, StockData{
+					Symbol:                     r.symbol,
+					Timestamp:                  r.current.Timestamp,
+					Open:                       open,
+					High:                       high,
+					Low:                        low,
+					Close:                      close_,
+					Volume:                     int64(volume),
+					PreviousClose:              prevClose,
+					Change:                     close_ - prevClose,
+					ChangePercent:              gap,
+					ExtendedHoursQuote:         close_,
+					ExtendedHoursChange:        close_ - prevClose,
+					ExtendedHoursChangePercent: gap,
 					Exchange:                   "US",
-					Name:                       sym,
-				}
-
-				mu.Lock()
-				qualifiedCount++
-				LogQualify("S1", sym, fmt.Sprintf("Gap=%.2f%%  Open=$%.2f  PrevClose=$%.2f",
-					gapUp, currentData.Open, previousData.Close))
-				gapUpStocks = append(gapUpStocks, stockData)
-				mu.Unlock()
+					Name:                       r.symbol,
+				})
 			} else {
-				LogReject("S1", sym, fmt.Sprintf("Gap=%.2f%% < %.0f%% minimum", gapUp, MIN_GAP_UP_PERCENT))
+				LogReject("S1", r.symbol, fmt.Sprintf(
+					"Gap=%.2f%% < %.0f%% minimum", gap, MIN_GAP_UP_PERCENT))
 			}
-		}(symbol)
+		}
+
+		allGapUpStocks = append(allGapUpStocks, batchGapUps...)
+		LogInfo("S1", "Batch %d–%d: %d/%d qualified",
+			batchStart+1, batchEnd, len(batchGapUps), len(batch))
 	}
 
-	wg.Wait()
-	LogInfo("S1", "Processing complete: %d / %d symbols qualified", len(gapUpStocks), len(symbols))
-	return gapUpStocks, nil
+	LogInfo("S1", "Processing complete: %d / %d symbols qualified",
+		len(allGapUpStocks), len(symbols))
+	return allGapUpStocks, nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -767,80 +805,183 @@ func backtestStage4Final(stocks []BacktestResult) []BacktestResult {
 // Alpaca API helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-func getHistoricalDataForDateAlpaca(apiKey, apiSecret, symbol, targetDate string) (*AlpacaBarData, *AlpacaBarData, error) {
+// AlpacaMultiBarResponse is the top-level response from /v2/stocks/bars
+// when multiple symbols are requested.
+type AlpacaMultiBarResponse struct {
+	Bars map[string][]AlpacaBar `json:"bars"`
+}
+
+// getHistoricalBarsForDateBatch fetches daily bars for a batch of symbols
+// around the target date in a single HTTP call, replacing the per-symbol
+// getHistoricalDataForDateAlpaca helper.
+func getHistoricalBarsForDateBatch(apiKey, apiSecret string, symbols []string, targetDate string) (map[string][2]*AlpacaBarData, error) {
 	target, err := time.Parse("2006-01-02", targetDate)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	startDate := target.AddDate(0, 0, -7).Format("2006-01-02")
 	endDate := target.AddDate(0, 0, 1).Format("2006-01-02")
 
+	joined := strings.Join(symbols, ",")
 	url := fmt.Sprintf(
-		"https://data.alpaca.markets/v2/stocks/%s/bars?start=%s&end=%s&timeframe=1Day&adjustment=split&feed=sip&limit=10000",
-		symbol, startDate, endDate)
+		"https://data.alpaca.markets/v2/stocks/bars?symbols=%s&start=%s&end=%s&timeframe=1Day&adjustment=split&feed=sip&limit=10000",
+		joined, startDate, endDate)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	req.Header.Add("APCA-API-KEY-ID", apiKey)
 	req.Header.Add("APCA-API-SECRET-KEY", apiSecret)
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, nil, fmt.Errorf("HTTP request failed: %v", err)
+		return nil, fmt.Errorf("HTTP request failed: %v", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read response: %v", err)
+		return nil, fmt.Errorf("failed to read response: %v", err)
 	}
 
-	LogDebug("API", symbol, "getHistoricalDataForDate status=%d body_preview=%s",
-		resp.StatusCode, string(body[:min(120, len(body))]))
-
-	var barsResponse AlpacaBarsResponse
-	if err := json.Unmarshal(body, &barsResponse); err != nil {
-		return nil, nil, fmt.Errorf("failed to parse JSON: %v", err)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("alpaca bars error %d: %s", resp.StatusCode, string(body))
 	}
 
-	bars := barsResponse.Bars
-	if len(bars) < 2 {
-		return nil, nil, fmt.Errorf("insufficient data: only %d bars", len(bars))
+	var barsResp AlpacaMultiBarResponse
+	if err := json.Unmarshal(body, &barsResp); err != nil {
+		return nil, fmt.Errorf("failed to parse multi-bar response: %v", err)
 	}
 
-	sort.Slice(bars, func(i, j int) bool { return bars[i].Timestamp > bars[j].Timestamp })
-
-	var currentData, previousData *AlpacaBarData
-	for i, bar := range bars {
-		if bar.Timestamp[:10] == targetDate {
-			currentData = &AlpacaBarData{
-				Symbol: symbol, Timestamp: bar.Timestamp,
-				Open: bar.Open, High: bar.High, Low: bar.Low, Close: bar.Close, Volume: bar.Volume,
-			}
-			if i+1 < len(bars) {
-				prev := bars[i+1]
-				previousData = &AlpacaBarData{
-					Symbol: symbol, Timestamp: prev.Timestamp,
-					Open: prev.Open, High: prev.High, Low: prev.Low, Close: prev.Close, Volume: prev.Volume,
-				}
-			}
-			break
+	// For each symbol resolve the target bar and its predecessor.
+	// Return value: map[symbol] -> [2]*AlpacaBarData{current, previous}
+	result := make(map[string][2]*AlpacaBarData, len(symbols))
+	for sym, bars := range barsResp.Bars {
+		if len(bars) < 2 {
+			LogDebug("S1", sym, "insufficient bars (%d) — skipping", len(bars))
+			continue
 		}
+
+		// Sort descending so bars[0] is the most recent.
+		sort.Slice(bars, func(i, j int) bool {
+			return bars[i].Timestamp > bars[j].Timestamp
+		})
+
+		var current, previous *AlpacaBarData
+		for i, bar := range bars {
+			if bar.Timestamp[:10] == targetDate {
+				current = &AlpacaBarData{
+					Symbol:    sym,
+					Timestamp: bar.Timestamp,
+					Open:      bar.Open,
+					High:      bar.High,
+					Low:       bar.Low,
+					Close:     bar.Close,
+					Volume:    bar.Volume,
+				}
+				if i+1 < len(bars) {
+					prev := bars[i+1]
+					previous = &AlpacaBarData{
+						Symbol:    sym,
+						Timestamp: prev.Timestamp,
+						Open:      prev.Open,
+						High:      prev.High,
+						Low:       prev.Low,
+						Close:     prev.Close,
+						Volume:    prev.Volume,
+					}
+				}
+				break
+			}
+		}
+
+		if current == nil || previous == nil || previous.Close <= 0 {
+			continue
+		}
+
+		result[sym] = [2]*AlpacaBarData{current, previous}
 	}
 
-	if currentData == nil {
-		return nil, nil, fmt.Errorf("no data found for target date %s", targetDate)
-	}
-	if previousData == nil {
-		return nil, nil, fmt.Errorf("no previous trading day data found for %s", targetDate)
-	}
-
-	return currentData, previousData, nil
+	return result, nil
 }
+
+// func getHistoricalDataForDateAlpaca(apiKey, apiSecret, symbol, targetDate string) (*AlpacaBarData, *AlpacaBarData, error) {
+// 	target, err := time.Parse("2006-01-02", targetDate)
+// 	if err != nil {
+// 		return nil, nil, err
+// 	}
+
+// 	startDate := target.AddDate(0, 0, -7).Format("2006-01-02")
+// 	endDate := target.AddDate(0, 0, 1).Format("2006-01-02")
+
+// 	url := fmt.Sprintf(
+// 		"https://data.alpaca.markets/v2/stocks/%s/bars?start=%s&end=%s&timeframe=1Day&adjustment=split&feed=sip&limit=10000",
+// 		symbol, startDate, endDate)
+
+// 	req, err := http.NewRequest("GET", url, nil)
+// 	if err != nil {
+// 		return nil, nil, err
+// 	}
+// 	req.Header.Add("APCA-API-KEY-ID", apiKey)
+// 	req.Header.Add("APCA-API-SECRET-KEY", apiSecret)
+
+// 	client := &http.Client{}
+// 	resp, err := client.Do(req)
+// 	if err != nil {
+// 		return nil, nil, fmt.Errorf("HTTP request failed: %v", err)
+// 	}
+// 	defer resp.Body.Close()
+
+// 	body, err := io.ReadAll(resp.Body)
+// 	if err != nil {
+// 		return nil, nil, fmt.Errorf("failed to read response: %v", err)
+// 	}
+
+// 	LogDebug("API", symbol, "getHistoricalDataForDate status=%d body_preview=%s",
+// 		resp.StatusCode, string(body[:min(120, len(body))]))
+
+// 	var barsResponse AlpacaBarsResponse
+// 	if err := json.Unmarshal(body, &barsResponse); err != nil {
+// 		return nil, nil, fmt.Errorf("failed to parse JSON: %v", err)
+// 	}
+
+// 	bars := barsResponse.Bars
+// 	if len(bars) < 2 {
+// 		return nil, nil, fmt.Errorf("insufficient data: only %d bars", len(bars))
+// 	}
+
+// 	sort.Slice(bars, func(i, j int) bool { return bars[i].Timestamp > bars[j].Timestamp })
+
+// 	var currentData, previousData *AlpacaBarData
+// 	for i, bar := range bars {
+// 		if bar.Timestamp[:10] == targetDate {
+// 			currentData = &AlpacaBarData{
+// 				Symbol: symbol, Timestamp: bar.Timestamp,
+// 				Open: bar.Open, High: bar.High, Low: bar.Low, Close: bar.Close, Volume: bar.Volume,
+// 			}
+// 			if i+1 < len(bars) {
+// 				prev := bars[i+1]
+// 				previousData = &AlpacaBarData{
+// 					Symbol: symbol, Timestamp: prev.Timestamp,
+// 					Open: prev.Open, High: prev.High, Low: prev.Low, Close: prev.Close, Volume: prev.Volume,
+// 				}
+// 			}
+// 			break
+// 		}
+// 	}
+
+// 	if currentData == nil {
+// 		return nil, nil, fmt.Errorf("no data found for target date %s", targetDate)
+// 	}
+// 	if previousData == nil {
+// 		return nil, nil, fmt.Errorf("no previous trading day data found for %s", targetDate)
+// 	}
+
+// 	return currentData, previousData, nil
+// }
 
 func getHistoricalDataUpToDateAlpaca(apiKey, apiSecret, symbol, targetDate string, lookbackDays int) ([]AlpacaBarData, error) {
 	target, err := time.Parse("2006-01-02", targetDate)

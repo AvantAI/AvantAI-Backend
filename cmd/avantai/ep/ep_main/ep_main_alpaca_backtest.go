@@ -757,7 +757,11 @@ package main
 
 // 	// ── Format OHLCV bar data ──────────────────────────────────────────────
 // 	stock_data := ""
+//  var stopLoss float64
 // 	for i, stockdataPoint := range stockdata {
+// 		if stockdataPoint.Low < stopLoss || stopLoss == 0 {
+// 			stopLoss = stockdataPoint.Low
+// 		}
 // 		stock_data += fmt.Sprintf("%d min - Open: %v Close: %v High: %v Low: %v Volume: %v\n",
 // 			i+1, stockdataPoint.Open, stockdataPoint.Close, stockdataPoint.High,
 // 			stockdataPoint.Low, stockdataPoint.Volume)
@@ -891,7 +895,7 @@ package main
 // 	// We prefer OR5Low when available (minute >= 5), OR15Low when available
 // 	// (minute >= 15). If neither is set yet (edge case: minute < 5), we fall
 // 	// back to VWAP, and only use the latest bar low as a last resort.
-// 	stopLoss := selectStopLoss(state, currentMinute)
+// 	// stopLoss := selectStopLoss(state, currentMinute)
 // 	stopLossStr := fmt.Sprintf("%.2f", stopLoss)
 
 // 	fmt.Printf("[Goroutine %d] 📐 Stop loss selected: %.2f (minute=%d, OR5Low=%.2f, OR15Low=%.2f, VWAP=%.2f)\n",

@@ -10,8 +10,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"time"
+
+	mat64 "gonum.org/v1/gonum/mat"
 )
 
 // AlpacaConfig holds the configuration for real-time scanning
@@ -173,103 +174,181 @@ func realtimeStage1GapUp(config AlpacaConfig) ([]RealtimeStockData, error) {
 	}
 	LogInfo("S1", "Scanning %d symbols for gap ups (NYSE + NASDAQ only)", len(symbols))
 
-	var gapUpStocks []RealtimeStockData
-	var mu sync.Mutex
-	processedCount := 0
+	const batchSize = 400
+	est, _ := time.LoadLocation("America/New_York")
+	today := time.Now().In(est).Format("2006-01-02")
 
-	semaphore := make(chan struct{}, MAX_CONCURRENT)
-	var wg sync.WaitGroup
-	rateLimiter := time.Tick(time.Second / API_CALLS_PER_SECOND)
+	var allGapUpStocks []RealtimeStockData
 
-	for _, symbol := range symbols {
-		wg.Add(1)
-		go func(sym string) {
-			defer wg.Done()
+	for batchStart := 0; batchStart < len(symbols); batchStart += batchSize {
+		batchEnd := batchStart + batchSize
+		if batchEnd > len(symbols) {
+			batchEnd = len(symbols)
+		}
+		batch := symbols[batchStart:batchEnd]
 
-			semaphore <- struct{}{}
-			defer func() { <-semaphore }()
-			<-rateLimiter
+		LogInfo("S1", "Processing batch %d–%d of %d",
+			batchStart+1, batchEnd, len(symbols))
 
-			mu.Lock()
-			processedCount++
-			current := processedCount
-			mu.Unlock()
+		// ── Step 1: one HTTP call for the entire batch ───────────────────
+		snapshots, err := getAlpacaSnapshots(config, batch)
+		if err != nil {
+			LogInfo("S1", "Batch %d–%d snapshots error: %v — skipping", batchStart+1, batchEnd, err)
+			continue
+		}
 
-			if current%50 == 0 {
-				LogProgress("S1", current, len(symbols), "")
+		// ── Step 2: collect valid rows ───────────────────────────────────
+		type validRow struct {
+			symbol       string
+			prevClose    float64
+			gapPrice     float64
+			pmVolume     float64
+			pmClose      float64
+			pmOpen       float64
+			pmHigh       float64
+			pmLow        float64
+			isRegularOpen bool
+		}
+
+		var rows []validRow
+		for _, sym := range batch {
+			snap, ok := snapshots[sym]
+			if !ok {
+				LogDebug("S1", sym, "No snapshot returned")
+				continue
 			}
 
-			previousClose, err := getAlpacaPreviousClose(config, sym)
-			if err != nil {
-				LogDebug("S1", sym, "Failed to get previous close: %v", err)
-				return
-			}
-			if previousClose <= 0 {
-				LogDebug("S1", sym, "Invalid previous close: $%.2f", previousClose)
-				return
+			prevClose := snap.PrevDailyBar.Close
+			if prevClose <= 0 {
+				LogDebug("S1", sym, "Invalid previous close: $%.2f", prevClose)
+				continue
 			}
 
-			premarketData, err := getAlpacaPremarketData(config, sym)
-			if err != nil {
-				LogDebug("S1", sym, "No premarket data: %v", err)
-				return
-			}
-			if premarketData == nil {
-				return
-			}
-
-			// Prefer the regular-session open once the market is open.
-			// Before 9:30am fall back to the premarket session high.
-			regularOpen, err := getAlpacaRegularSessionOpen(config, sym)
+			// Determine gap price: prefer today's daily bar open (regular
+			// session), fall back to the minute bar close (premarket proxy).
 			var gapPrice float64
-			var gapPriceLabel string
-			if err == nil && regularOpen > 0 {
-				gapPrice = regularOpen
-				gapPriceLabel = fmt.Sprintf("RegularOpen=$%.2f", regularOpen)
-				premarketData.RegularSessionOpen = regularOpen
+			var isRegularOpen bool
+			if strings.HasPrefix(snap.DailyBar.Timestamp, today) && snap.DailyBar.Open > 0 {
+				gapPrice = snap.DailyBar.Open
+				isRegularOpen = true
 			} else {
-				gapPrice = premarketData.PremarketHigh
-				gapPriceLabel = fmt.Sprintf("PMHigh=$%.2f (regular session not yet open)", premarketData.PremarketHigh)
+				gapPrice = snap.MinuteBar.High
+				isRegularOpen = false
 			}
 
 			if gapPrice <= 0 {
-				return
+				LogDebug("S1", sym, "No usable gap price")
+				continue
 			}
 
-			gapUp := ((gapPrice - previousClose) / previousClose) * 100
-			premarketData.GapUsedPrice = gapPrice
+			// Use minute bar volume as premarket volume proxy.
+			pmVolume := snap.MinuteBar.Volume
+			if pmVolume == 0 {
+				pmVolume = snap.DailyBar.Volume
+			}
 
-			LogDebug("S1", sym, "PrevClose=$%.2f  %s  PMVol=%.0f  GapUp=%.2f%%",
-				previousClose, gapPriceLabel, premarketData.PremarketVolume, gapUp)
+			rows = append(rows, validRow{
+				symbol:        sym,
+				prevClose:     prevClose,
+				gapPrice:      gapPrice,
+				pmVolume:      pmVolume,
+				pmClose:       snap.MinuteBar.Close,
+				pmOpen:        snap.MinuteBar.Open,
+				pmHigh:        snap.MinuteBar.High,
+				pmLow:         snap.MinuteBar.Low,
+				isRegularOpen: isRegularOpen,
+			})
+		}
 
-			if gapUp >= MIN_GAP_UP_PERCENT && gapPrice >= MIN_STOCK_PRICE {
-				stockData := RealtimeStockData{
-					Symbol:          sym,
-					CurrentPrice:    premarketData.PremarketClose,
-					PremarketOpen:   premarketData.PremarketOpen,
-					PremarketHigh:   premarketData.PremarketHigh,
-					PremarketLow:    premarketData.PremarketLow,
-					PremarketClose:  premarketData.PremarketClose,
-					PremarketVolume: premarketData.PremarketVolume,
-					PreviousClose:   previousClose,
-					GapUpPercent:    gapUp,
-					GapUsedPrice:    gapPrice,
+		if len(rows) == 0 {
+			continue
+		}
+
+		// ── Step 3: gonum matrix for vectorised gap% computation ─────────
+		//
+		//   col 0  prevClose
+		//   col 1  gapPrice
+		//   col 2  pmVolume
+		//   col 3  pmClose
+		//
+		// gap% = (col1 - col0) / col0 * 100
+
+		m := len(rows)
+		const cols = 4
+		flat := make([]float64, m*cols)
+		for i, r := range rows {
+			flat[i*cols+0] = r.prevClose
+			flat[i*cols+1] = r.gapPrice
+			flat[i*cols+2] = r.pmVolume
+			flat[i*cols+3] = r.pmClose
+		}
+
+		matx := mat64.NewDense(m, cols, flat)
+
+		// Compute gap vector: element-wise (col1 - col0) / col0 * 100
+		gapVec := make([]float64, m)
+		for i := 0; i < m; i++ {
+			prevClose := matx.At(i, 0)
+			gapPrice := matx.At(i, 1)
+			if prevClose > 0 {
+				gapVec[i] = ((gapPrice - prevClose) / prevClose) * 100
+			}
+		}
+
+		// ── Step 4: filter qualifying stocks ────────────────────────────
+		var batchGapUps []RealtimeStockData
+		for i, r := range rows {
+			gap := gapVec[i]
+			prevClose := matx.At(i, 0)
+			gapPrice := matx.At(i, 1)
+			pmVol := matx.At(i, 2)
+			pmClose := matx.At(i, 3)
+
+			var gapPriceLabel string
+			if r.isRegularOpen {
+				gapPriceLabel = fmt.Sprintf("RegularOpen=$%.2f", gapPrice)
+			} else {
+				gapPriceLabel = fmt.Sprintf("PMHigh=$%.2f (regular session not yet open)", gapPrice)
+			}
+
+			LogDebug("S1", r.symbol, "PrevClose=$%.2f  %s  PMVol=%.0f  GapUp=%.2f%%",
+				prevClose, gapPriceLabel, pmVol, gap)
+
+			if gap >= MIN_GAP_UP_PERCENT && gapPrice >= MIN_STOCK_PRICE {
+				LogQualify("S1", r.symbol, fmt.Sprintf(
+					"Gap=%.2f%%  PrevClose=$%.2f  GapPrice=$%.2f  PMVol=%.0f",
+					gap, prevClose, gapPrice, pmVol))
+
+				var regularOpen float64
+				if r.isRegularOpen {
+					regularOpen = gapPrice
 				}
 
-				mu.Lock()
-				LogQualify("S1", sym, fmt.Sprintf("Gap=%.2f%%  PrevClose=$%.2f  GapPrice=$%.2f  PMVol=%.0f",
-					gapUp, previousClose, gapPrice, premarketData.PremarketVolume))
-				gapUpStocks = append(gapUpStocks, stockData)
-				mu.Unlock()
+				batchGapUps = append(batchGapUps, RealtimeStockData{
+					Symbol:             r.symbol,
+					CurrentPrice:       pmClose,
+					PremarketOpen:      r.pmOpen,
+					PremarketHigh:      r.pmHigh,
+					PremarketLow:       r.pmLow,
+					PremarketClose:     pmClose,
+					PremarketVolume:    pmVol,
+					PreviousClose:      prevClose,
+					GapUpPercent:       gap,
+					GapUsedPrice:       gapPrice,
+					RegularSessionOpen: regularOpen,
+				})
 			} else {
-				LogReject("S1", sym, fmt.Sprintf("Gap=%.2f%% < %.0f%% minimum", gapUp, MIN_GAP_UP_PERCENT))
-				LogReject("S1", sym, fmt.Sprintf("Stock price=$%.2f < $%.2f minimum", gapPrice, MIN_STOCK_PRICE))
+				LogReject("S1", r.symbol, fmt.Sprintf("Gap=%.2f%% < %.0f%% minimum", gap, MIN_GAP_UP_PERCENT))
+				LogReject("S1", r.symbol, fmt.Sprintf("Stock price=$%.2f < $%.2f minimum", gapPrice, MIN_STOCK_PRICE))
 			}
-		}(symbol)
+		}
+
+		allGapUpStocks = append(allGapUpStocks, batchGapUps...)
+		LogInfo("S1", "Batch %d–%d: %d/%d qualified",
+			batchStart+1, batchEnd, len(batchGapUps), len(batch))
 	}
 
-	wg.Wait()
-	return gapUpStocks, nil
+	return allGapUpStocks, nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -646,6 +725,68 @@ func getAlpacaTradableSymbolsMain(config AlpacaConfig) ([]string, error) {
 		}
 	}
 	return symbols, nil
+}
+
+// AlpacaSnapshotBar mirrors the abbreviated OHLCV object inside a snapshot.
+type AlpacaSnapshotBar struct {
+	Timestamp  string  `json:"t"`
+	Open       float64 `json:"o"`
+	High       float64 `json:"h"`
+	Low        float64 `json:"l"`
+	Close      float64 `json:"c"`
+	Volume     float64 `json:"v"`
+	TradeCount int64   `json:"n"`
+	VWAP       float64 `json:"vw"`
+}
+
+// AlpacaSnapshot is one symbol's entry in the snapshots response.
+type AlpacaSnapshot struct {
+	MinuteBar    AlpacaSnapshotBar   `json:"minuteBar"`
+	DailyBar     AlpacaSnapshotBar   `json:"dailyBar"`
+	PrevDailyBar AlpacaSnapshotBar   `json:"prevDailyBar"`
+}
+
+// AlpacaSnapshotsResponse is the top-level map returned by /v2/stocks/snapshots.
+type AlpacaSnapshotsResponse map[string]AlpacaSnapshot
+
+// getAlpacaSnapshots fetches a single batch of up to 400 symbols from the
+// snapshots endpoint, replacing the three per-symbol helpers.
+func getAlpacaSnapshots(config AlpacaConfig, symbols []string) (AlpacaSnapshotsResponse, error) {
+	joined := strings.Join(symbols, ",")
+	url := fmt.Sprintf(
+		"%s/v2/stocks/snapshots?symbols=%s&feed=sip",
+		config.DataURL, joined,
+	)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("APCA-API-KEY-ID", config.APIKey)
+	req.Header.Set("APCA-API-SECRET-KEY", config.APISecret)
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("alpaca snapshots error %d: %s", resp.StatusCode, string(body))
+	}
+
+	var snapshots AlpacaSnapshotsResponse
+	if err := json.Unmarshal(body, &snapshots); err != nil {
+		return nil, fmt.Errorf("failed to parse snapshots: %v. Body: %s", err, string(body))
+	}
+
+	return snapshots, nil
 }
 
 func getAlpacaPreviousClose(config AlpacaConfig, symbol string) (float64, error) {
